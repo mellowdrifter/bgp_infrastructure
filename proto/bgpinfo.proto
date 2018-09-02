@@ -3,8 +3,7 @@ syntax = "proto3";
 package bgpinfo;
 
 message values {
-    // UTC in UNIX time
-    int64 time = 1;
+    int64 time = 1; // UTC in UNIX time
     prefix_count prefix_count = 2;
     peer_count peer_count = 3;
     // Any single line used for tweet info is marked
