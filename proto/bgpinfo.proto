@@ -2,15 +2,24 @@ syntax = "proto3";
 
 package bgpinfo;
 
+service bgp_info {
+    rpc add_latest(values) returns (result);
+}
+
 message values {
-    int64 time = 1; // UTC in UNIX time
+    // UTC in UNIX time
+    int64 time = 1;
     prefix_count prefix_count = 2;
-    peer_count peer_count = 3;
+    repeated peer_count peers = 3;
     // Any single line used for tweet info is marked
-    tweet bool = 4;
-    mem_use mem_use = 5;
+    bool tweet = 4;
+    repeated memory mem_use = 5;
     as_count as_count = 6;
-    mask_counts mask_counts = 7;
+    repeated mask masks = 7;
+}
+
+message result {
+    bool success = 1;
 }
 
 // as_count will hold the total amount of unique ASs
@@ -20,7 +29,7 @@ message as_count {
 }
 
 // total memory used by the daemon
-message mem_use {
+message memory {
     address_family family = 1;
     string tables = 2;
     string total = 3;
@@ -45,12 +54,8 @@ enum address_family {
 // prefix counts. Most used info
 message prefix_count {
     address_family family = 1;
-    int32 total = 1;
-    int32 active = 2;
-}
-
-message mask_counts {
-    repeated mask = 1;
+    int32 total = 2;
+    int32 active = 3;
 }
 
 // how many subnets of each mask is active
