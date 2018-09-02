@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package bgpinfo;
+
+message values {
+    // UTC in UNIX time
+    int64 time = 1;
+    prefix_count prefix_count = 2;
+    peer_count peer_count = 3;
+    // Any single line used for tweet info is marked
+    tweet bool = 4;
+    mem_use mem_use = 5;
+    as_count as_count = 6;
+    mask_counts mask_counts = 7;
+}
+
+// as_count will hold the total amount of unique ASs
+message as_count {
+    int32 as4_len = 1;
+    int32 as6_len = 2;
+}
+
+// total memory used by the daemon
+message mem_use {
+    address_family family = 1;
+    string tables = 2;
+    string total = 3;
+    string protocols = 4;
+    string attributes = 5;
+    string roa = 6;
+}
+
+// how many peers do I have
+message peer_count {
+    address_family family = 1;
+    int32 configured = 2;
+    int32 up = 3;
+}
+
+enum address_family {
+    UNKNOWN = 0;
+    IPV6 = 1;
+    IPV4 = 2;
+}
+
+// prefix counts. Most used info
+message prefix_count {
+    address_family family = 1;
+    int32 total = 1;
+    int32 active = 2;
+}
+
+message mask_counts {
+    repeated mask = 1;
+}
+
+// how many subnets of each mask is active
+message mask {
+    address_family address_family = 1;
+    int32 mask = 2;
+    int32 active = 3;
+}
