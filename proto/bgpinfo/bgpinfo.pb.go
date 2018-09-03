@@ -46,10 +46,11 @@ func (x AddressFamily) String() string {
 	return proto.EnumName(AddressFamily_name, int32(x))
 }
 func (AddressFamily) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{0}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{0}
 }
 
 type Values struct {
+	// UTC in UNIX time
 	Time        int64        `protobuf:"varint,1,opt,name=time,proto3" json:"time,omitempty"`
 	PrefixCount *PrefixCount `protobuf:"bytes,2,opt,name=prefix_count,json=prefixCount,proto3" json:"prefix_count,omitempty"`
 	Peers       []*PeerCount `protobuf:"bytes,3,rep,name=peers,proto3" json:"peers,omitempty"`
@@ -67,7 +68,7 @@ func (m *Values) Reset()         { *m = Values{} }
 func (m *Values) String() string { return proto.CompactTextString(m) }
 func (*Values) ProtoMessage()    {}
 func (*Values) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{0}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{0}
 }
 func (m *Values) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Values.Unmarshal(m, b)
@@ -147,7 +148,7 @@ func (m *Result) Reset()         { *m = Result{} }
 func (m *Result) String() string { return proto.CompactTextString(m) }
 func (*Result) ProtoMessage()    {}
 func (*Result) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{1}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{1}
 }
 func (m *Result) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Result.Unmarshal(m, b)
@@ -187,7 +188,7 @@ func (m *AsCount) Reset()         { *m = AsCount{} }
 func (m *AsCount) String() string { return proto.CompactTextString(m) }
 func (*AsCount) ProtoMessage()    {}
 func (*AsCount) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{2}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{2}
 }
 func (m *AsCount) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AsCount.Unmarshal(m, b)
@@ -238,7 +239,7 @@ func (m *Memory) Reset()         { *m = Memory{} }
 func (m *Memory) String() string { return proto.CompactTextString(m) }
 func (*Memory) ProtoMessage()    {}
 func (*Memory) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{3}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{3}
 }
 func (m *Memory) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Memory.Unmarshal(m, b)
@@ -314,7 +315,7 @@ func (m *PeerCount) Reset()         { *m = PeerCount{} }
 func (m *PeerCount) String() string { return proto.CompactTextString(m) }
 func (*PeerCount) ProtoMessage()    {}
 func (*PeerCount) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{4}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{4}
 }
 func (m *PeerCount) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PeerCount.Unmarshal(m, b)
@@ -369,7 +370,7 @@ func (m *PrefixCount) Reset()         { *m = PrefixCount{} }
 func (m *PrefixCount) String() string { return proto.CompactTextString(m) }
 func (*PrefixCount) ProtoMessage()    {}
 func (*PrefixCount) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{5}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{5}
 }
 func (m *PrefixCount) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PrefixCount.Unmarshal(m, b)
@@ -424,7 +425,7 @@ func (m *Mask) Reset()         { *m = Mask{} }
 func (m *Mask) String() string { return proto.CompactTextString(m) }
 func (*Mask) ProtoMessage()    {}
 func (*Mask) Descriptor() ([]byte, []int) {
-	return fileDescriptor_bgpinfo_fb8abbf28ad092b4, []int{6}
+	return fileDescriptor_bgpinfo_8203e89f7138ede9, []int{6}
 }
 func (m *Mask) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Mask.Unmarshal(m, b)
@@ -548,9 +549,9 @@ var _BgpInfo_serviceDesc = grpc.ServiceDesc{
 	Metadata: "bgpinfo.proto",
 }
 
-func init() { proto.RegisterFile("bgpinfo.proto", fileDescriptor_bgpinfo_fb8abbf28ad092b4) }
+func init() { proto.RegisterFile("bgpinfo.proto", fileDescriptor_bgpinfo_8203e89f7138ede9) }
 
-var fileDescriptor_bgpinfo_fb8abbf28ad092b4 = []byte{
+var fileDescriptor_bgpinfo_8203e89f7138ede9 = []byte{
 	// 514 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x53, 0xd1, 0x8a, 0xd3, 0x40,
 	0x14, 0x35, 0x69, 0x93, 0xb4, 0xb7, 0x6e, 0xad, 0x57, 0xdd, 0x0d, 0x22, 0x4b, 0x89, 0x2f, 0x55,
