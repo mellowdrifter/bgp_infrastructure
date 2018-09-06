@@ -26,7 +26,7 @@ func main() {
 }
 
 func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
-	log.Println("Received an update")
+	log.Printf("Received an update: %+v", v)
 
 	return &pb.Result{
 		Success: true,
