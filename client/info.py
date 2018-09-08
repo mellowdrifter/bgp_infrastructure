@@ -48,11 +48,11 @@ def getSrcAS():
 
 def getPeers(family):
     if family == 4:
-        peers = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info'", shell=True)
-        state = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $6'} | grep -Ev 'BIRD|device1|name|info'", shell=True)
+        peers = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
+        state = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $6'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
     elif family == 6:
-        peers = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info'", shell=True)
-        state = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $6'} | grep -Ev 'BIRD|device1|name|info'", shell=True)
+        peers = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
+        state = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $6'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
     peers = peers.rstrip()
     state = state.rstrip()
     peers = peers.splitlines()
@@ -73,9 +73,9 @@ def getPeers(family):
 def getMem(family):
     values = {}
     if family == 4:
-        mem = subprocess.check_output("/usr/sbin/birdc 'show mem'", shell=True)
+        mem = subprocess.check_output("/usr/sbin/birdc 'show mem'", shell=True).decode("utf-8")
     elif family == 6:
-        mem = subprocess.check_output("/usr/sbin/birdc6 'show mem'", shell=True)
+        mem = subprocess.check_output("/usr/sbin/birdc6 'show mem'", shell=True).decode("utf-8")
     else:
         return False
     mem = mem.splitlines()
@@ -91,10 +91,6 @@ def getMem(family):
 
     values[total.group(1)] = total.group(2).replace(" ", "")
     return values
-
-
-
-
 
 
 if __name__ == "__main__":

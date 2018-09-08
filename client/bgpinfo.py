@@ -40,11 +40,14 @@ def main():
     peers4 = info.getPeers(4)
     peers6 = info.getPeers(6)
 
-
-if __name__ == "__main__":
-    main()
     current_values = pb.values(
         time = int(time.time()),
     )
+
+    return current_values
+
+
+if __name__ == "__main__":
+    current_values = main()
     result = stub.add_latest(current_values)
     print(result)

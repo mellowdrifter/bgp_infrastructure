@@ -8,8 +8,8 @@ service bgp_info {
 
 message values {
     // UTC in UNIX time
-    int64 time = 1;
-    prefix_count prefix_count = 2;
+    uint64 time = 1;
+    repeated prefix_count prefix_count = 2;
     repeated peer_count peers = 3;
     // Any single line used for tweet info is marked
     bool tweet = 4;
@@ -22,10 +22,21 @@ message result {
     bool success = 1;
 }
 
-// as_count will hold the total amount of unique ASs
+// as_count will hold the total amount of unique ASs.
 message as_count {
-    int32 as4_len = 1;
-    int32 as6_len = 2;
+    // Total number of unique IPv4 source AS numbers.
+    uint32 as4 = 1;
+    // Total number of unique IPv6 source AS numbers.
+    uint32 as6 = 2;
+    // Total unique source AS numbers
+    uint32 as10 = 3;
+    // IPv4-only source AS.
+    uint32 as4_only = 4;
+    // IPv6-only source AS.
+    uint32 as6_only = 5;
+    // Unique AS originating both IPv4 and IPv6
+    uint32 as_both = 6;
+
 }
 
 // total memory used by the daemon
@@ -41,8 +52,8 @@ message memory {
 // how many peers do I have
 message peer_count {
     address_family family = 1;
-    int32 configured = 2;
-    int32 up = 3;
+    uint32 configured = 2;
+    uint32 up = 3;
 }
 
 enum address_family {
@@ -54,13 +65,13 @@ enum address_family {
 // prefix counts. Most used info
 message prefix_count {
     address_family family = 1;
-    int32 total = 2;
-    int32 active = 3;
+    uint32 total = 2;
+    uint32 active = 3;
 }
 
 // how many subnets of each mask is active
 message mask {
     address_family address_family = 1;
-    int32 mask = 2;
-    int32 active = 3;
+    uint32 mask = 2;
+    uint32 active = 3;
 }
