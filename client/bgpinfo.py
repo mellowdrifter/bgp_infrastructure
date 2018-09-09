@@ -4,7 +4,7 @@ import bgpinfo_pb2 as pb
 import bgpinfo_pb2_grpc
 import configparser
 import grpc
-import parser
+import birdparse
 import time
 
 
@@ -22,8 +22,8 @@ stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 def main():
 
     # Prefix counts.
-    bgp4 = parser.getTotals(4)
-    bgp6 = parser.getTotals(6)
+    bgp4 = birdparse.getTotals(4)
+    bgp6 = birdparse.getTotals(6)
     prefix_count = []
     prefix4 = pb.prefix_count(
         family = pb.address_family.Value('IPV4'),
@@ -41,26 +41,26 @@ def main():
 
 
     # Peer Count.
-    peer4count = parser.getPeers(4)
-    peer6count = parser.getPeers(6)
+    peers4, state4 = birdparse.getPeers(4)
+    peers6, state6 = birdparse.getPeers(6)
 
     peers = []
     peers4 = pb.peer_count(
         family = pb.address_family.Value('IPV4'),
-        configured = int(peer4count['peersConfigured']),
-        up = int(peer4count['peersUp']),
+        configured = int(peers4),
+        up = int(state4)
     )
     peers6 = pb.peer_count(
         family = pb.address_family.Value('IPV6'),
-        configured = int(peer6count['peersConfigured']),
-        up = int(peer6count['peersUp']),
+        configured = int(peers6),
+        up = int(state6)
     )
     peers.append(peers4)
     peers.append(peers6)
 
 
     # AS number count.
-    as4, as6, as10, as4_only, as6_only, as_both = parser.getSrcAS()
+    as4, as6, as10, as4_only, as6_only, as_both = birdparse.getSrcAS()
     as_count = pb.as_count(
         as4 = as4,
         as6 = as6,
@@ -72,8 +72,8 @@ def main():
 
 
     # Memory use.
-    bgp4Mem = parser.getMem(4)
-    bgp6Mem = parser.getMem(6)
+    bgp4Mem = birdparse.getMem(4)
+    bgp6Mem = birdparse.getMem(6)
 
     memory = []
     mem4 = pb.memory(
@@ -96,8 +96,14 @@ def main():
     memory.append(mem6)
 
 
-    bgp4Subnets = parser.getSubnets(4)
-    bgp6Subnets = parser.getSubnets(6)
+    bgp4Subnets = masker(4, birdparse.getSubnets(4))
+    bgp6Subnets = masker(6, birdparse.getSubnets(6))
+
+    large4, large6 = birdparse.getLargeCommunitys()
+    large = pb.large_community(
+        c4 = large4,
+        c6 = large6,
+    )
 
     current_values = pb.values(
         time = int(time.time()),
@@ -105,9 +111,27 @@ def main():
         as_count = as_count,
         peers = peers,
         mem_use = memory,
+        large_community = large,
+        masks = bgp4Subnets + bgp6Subnets,
     )
 
     return current_values
+
+def masker(family, masks):
+    non_zero = []
+    if family == 4:
+        family = pb.address_family.Value('IPV4')
+    else:
+        family = pb.address_family.Value('IPV6')
+    for k, v in masks.items():
+        if v != 0:
+            non_zero.append(pb.mask(
+                address_family = family,
+                mask = int(k),
+                active = int(v),
+            ))
+    return non_zero
+
 
 
 if __name__ == "__main__":

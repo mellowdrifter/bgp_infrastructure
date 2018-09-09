@@ -5,27 +5,22 @@ import re
 
 def getSubnets(family):
     regex = r'(?<=\/)\d{1,3}'
+    subnets = {}
     if family == 4:
-        routeDict = {'8': 0, '9': 0, '10': 0, '11': 0, '12': 0, '13': 0,
-                     '14': 0, '15': 0, '16': 0, '17': 0, '18': 0, '19': 0,
-                     '20': 0, '21': 0, '22': 0, '23': 0, '24': 0}
+        last = 25
         routes = subprocess.check_output("/usr/sbin/birdc 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
     elif family == 6:
-        routeDict = {'8': 0,  '9': 0,  '10': 0,  '11': 0,  '12': 0,  '13': 0,
-                     '14': 0,  '15': 0,  '16': 0,  '17': 0,  '18': 0,  '19': 0,
-                     '20': 0,  '21': 0,  '22': 0,  '23': 0,  '24': 0,  '25': 0,
-                     '26': 0,  '27': 0,  '28': 0,  '29': 0,  '30': 0,  '31': 0,
-                     '32': 0,  '33': 0,  '34': 0,  '35': 0,  '36': 0,  '37': 0,
-                     '38': 0,  '39': 0,  '40': 0,  '41': 0,  '42': 0,  '43': 0,
-                     '44': 0,  '45': 0,  '46': 0,  '47': 0,  '48': 0}
+        last = 49
         routes = subprocess.check_output("/usr/sbin/birdc6 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
     else:
         return False
+    for i in range(8, last):
+        subnets[str(i)] = 0
     routes = routes.rstrip()
     routeList = re.findall(regex, routes)
     for route in routeList:
-        routeDict[route] += 1
-    return routeDict
+        subnets[route] += 1
+    return subnets
 
 def getTotals(family):
     if family == 4:
@@ -48,27 +43,19 @@ def getSrcAS():
 
 def getPeers(family):
     if family == 4:
-        peers = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
-        state = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $6'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
+        peers = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l", shell=True).decode("utf-8")
+        state = subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $6'} | grep Established | wc -l", shell=True).decode("utf-8")
     elif family == 6:
-        peers = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
-        state = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $6'} | grep -Ev 'BIRD|device1|name|info'", shell=True).decode("utf-8")
-    peers = peers.rstrip()
-    state = state.rstrip()
-    peers = peers.splitlines()
-    state = state.splitlines()
-    state = filter(None, state)
-    peerState = {}
-    for p,s in zip(peers, state):
-        peerState[p] = s
-    peerState['peersConfigured'] = len(peers)
-    peers_up = 0
-    for status in state:
-        if 'Established' in status:
-            peers_up += 1
-    peerState['peersUp'] = peers_up
+        peers = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l", shell=True).decode("utf-8")
+        state = subprocess.check_output("/usr/sbin/birdc6 'show protocols' | awk {'print $6'} | grep Established | wc -l", shell=True).decode("utf-8")
 
-    return peerState
+    return peers, state
+
+def getLargeCommunitys():
+    large4 = int(subprocess.check_output("/usr/sbin/birdc 'show route where bgp_large_community ~ [(*,*,*)]' | wc -l", shell=True).decode("utf-8")) - 1
+    large6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route where bgp_large_community ~ [(*,*,*)]' | wc -l", shell=True).decode("utf-8")) - 1
+
+    return large4, large6
 
 def getMem(family):
     values = {}

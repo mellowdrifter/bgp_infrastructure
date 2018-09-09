@@ -5,8 +5,11 @@ import (
 	"log"
 	"net"
 
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	"github.com/golang/protobuf/proto"
+	"github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	"google.golang.org/grpc"
+
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
 type server struct{}
@@ -26,9 +29,16 @@ func main() {
 }
 
 func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
-	log.Printf("Received an update: %+v", v)
+	log.Println("Received an update")
+	log.Println(proto.MarshalTextString(v))
 
 	return &pb.Result{
 		Success: true,
 	}, nil
+}
+
+func (s *server) Tweet(ctx context.Context, t *bgpinfo.TweetType) (*pb.Result, error) {
+	log.Println("Not yet implemented")
+	return &pb.Result{}, nil
+
 }
