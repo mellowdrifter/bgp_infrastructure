@@ -27,7 +27,7 @@ type bgpUpdate struct {
 	peersUp, peers6Up                 uint8
 	tweet                             bool
 	as4, as6, as10                    uint32
-	asOnly, as6Only                   uint32
+	as4Only, as6Only                  uint32
 	asBoth                            uint32
 	largeC4, largeC6                  uint32
 	memTable, memTotal                string
@@ -100,8 +100,8 @@ func add(b bgpUpdate) (sql.Result, error) {
 							V6_24, V6_23, V6_22, V6_21, V6_20, V6_19, V6_18,
 							V6_17, V6_16, V6_15, V6_14, V6_13, V6_12, V6_11,
 							V6_10, V6_09, V6_08, MEMTABLES, MEMTOTAL,
-							MEMPROTOCOLS, MEMATTR, MEMROA, MEMTABLES6,
-							MEMTOTAL6, MEMPROTOCOLS6, MEMATTR6, MEMROA6, AS4_LEN,
+							MEMPROTOCOLS, MEMATTR, MEMTABLES6,
+							MEMTOTAL6, MEMPROTOCOLS6, MEMATTR6, AS4_LEN,
 							AS6_LEN, AS10_LEN, AS4_ONLY, AS6_ONLY, AS_BOTH)
 
 							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -110,8 +110,7 @@ func add(b bgpUpdate) (sql.Result, error) {
 							$34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45,
 							$46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57,
 							$58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69,
-							$70, $71, $72, $73, $74, $75, $76, $77, $78, $79, $80, $81,
-							$82, $83)`,
+							$70, $71, $72, $73, $74, $75, $76, $77, $78, $79, $80, $81)`,
 		b.time, b.v4Count, b.v6Count, b.v4Total, b.v6Total, b.peersConfigured,
 		b.peersUp, b.peers6Configured, b.peers6Configured, b.peers6Up, b.v4_24,
 		b.v4_23, b.v4_22, b.v4_21, b.v4_20, b.v4_19, b.v4_18, b.v4_17, b.v4_16,
@@ -121,7 +120,9 @@ func add(b bgpUpdate) (sql.Result, error) {
 		b.v6_32, b.v6_31, b.v6_30, b.v6_29, b.v6_28, b.v6_27, b.v6_26, b.v6_25,
 		b.v6_24, b.v6_23, b.v6_22, b.v6_21, b.v6_20, b.v6_19, b.v6_18, b.v6_17,
 		b.v6_16, b.v6_15, b.v6_14, b.v6_13, b.v6_12, b.v6_11, b.v6_10, b.v6_09,
-		b.v6_08)
+		b.v6_08, b.memTable, b.memTotal, b.memProto, b.memAttr, b.memTable6,
+		b.memTotal6, b.memProto6, b.memAttr6, b.as4, b.as6, b.as10, b.as4Only,
+		b.as6Only, b.asBoth)
 
 	if err != nil {
 		return result, fmt.Errorf("Unable to update database: %v", err)
