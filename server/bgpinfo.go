@@ -15,6 +15,9 @@ import (
 type server struct{}
 
 func main() {
+	// Connected to db server check
+	add()
+
 	//Set up gRPC server
 	log.Println("Listening on port 7179")
 	lis, err := net.Listen("tcp", ":7179")

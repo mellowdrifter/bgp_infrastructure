@@ -22,8 +22,7 @@ stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 def main():
 
     # Prefix counts.
-    bgp4 = birdparse.getTotals(4)
-    bgp6 = birdparse.getTotals(6)
+    bgp4, bgp6 = birdparse.getTotals()
     prefix_count = []
     prefix4 = pb.prefix_count(
         family = pb.address_family.Value('IPV4'),
@@ -47,13 +46,13 @@ def main():
     peers = []
     peers4 = pb.peer_count(
         family = pb.address_family.Value('IPV4'),
-        configured = int(peers4),
-        up = int(state4)
+        configured = peers4,
+        up = state4
     )
     peers6 = pb.peer_count(
         family = pb.address_family.Value('IPV6'),
-        configured = int(peers6),
-        up = int(state6)
+        configured = peers6,
+        up = state6
     )
     peers.append(peers4)
     peers.append(peers6)
