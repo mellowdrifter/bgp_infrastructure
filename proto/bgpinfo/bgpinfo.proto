@@ -4,7 +4,7 @@ package bgpinfo;
 
 service bgp_info {
     rpc add_latest(values) returns (result);
-    rpc tweet(tweet_type) returns (result);
+    rpc get_tweet_data(tweet_type) returns (result);
 }
 
 message values {
@@ -55,18 +55,23 @@ message as_count {
 // total memory used by the daemon
 message memory {
     address_family family = 1;
-    string tables = 2;
-    string total = 3;
-    string protocols = 4;
-    string attributes = 5;
-    string roa = 6;
+    repeated memstats memstats = 2;
+}
+
+message memstats {
+    string tables = 1;
+    string total = 2;
+    string protocols = 3;
+    string attributes = 4;
+    string roa = 5;
 }
 
 // how many peers do I have
 message peer_count {
-    address_family family = 1;
-    uint32 configured = 2;
-    uint32 up = 3;
+    uint32 peer_count_4 = 1;
+    uint32 peer_up_4 = 2;
+    uint32 peer_count_6 = 3;
+    uint32 peer_up_6 = 4;
 }
 
 enum address_family {
@@ -77,16 +82,21 @@ enum address_family {
 
 // prefix counts. Most used info
 message prefix_count {
-    address_family family = 1;
-    uint32 total = 2;
-    uint32 active = 3;
+    uint32 total_4 = 1;
+    uint32 active_4 = 2;
+    uint32 total_6 = 3;
+    uint32 active_6 = 4;
 }
 
 // how many subnets of each mask is active
 message mask {
     address_family address_family = 1;
-    uint32 mask = 2;
-    uint32 active = 3;
+    repeated masks masks = 2;
+}
+
+message masks {
+    uint32 mask = 1;
+    uint32 total = 2;
 }
 
 // Large Community count (RFC 8092)
