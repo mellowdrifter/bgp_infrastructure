@@ -8,46 +8,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// A struct to hold the AS information altogether
-type bgpStat struct {
-	time              uint64
-	v4Count, v6Count  uint32
-	peersConfigured   uint8
-	peers6Configured  uint8
-	peersUp, peers6Up uint8
-	v4Total, v6Total  uint32
-}
-
-type bgpUpdate struct {
-	time                              uint64
-	v4Count, v6Count                  uint32
-	v4Total, v6Total                  uint32
-	peersConfigured                   uint8
-	peers6Configured                  uint8
-	peersUp, peers6Up                 uint8
-	tweet                             bool
-	as4, as6, as10                    uint32
-	as4Only, as6Only                  uint32
-	asBoth                            uint32
-	largeC4, largeC6                  uint32
-	memTable, memTotal                string
-	memProto, memAttr                 string
-	memTable6, memTotal6              string
-	memProto6, memAttr6               string
-	v4_23, v4_22, v4_21, v4_20, v4_19 uint32
-	v4_18, v4_17, v4_16, v4_15, v4_14 uint32
-	v4_13, v4_12, v4_11, v4_10, v4_09 uint32
-	v4_08, v6_48, v6_47, v6_46, v6_45 uint32
-	v6_44, v6_43, v6_42, v6_41, v6_40 uint32
-	v6_39, v6_38, v6_37, v6_36, v6_35 uint32
-	v6_34, v6_33, v6_32, v6_31, v6_30 uint32
-	v6_29, v6_28, v6_27, v6_26, v6_25 uint32
-	v6_24, v6_23, v6_22, v6_21, v6_20 uint32
-	v6_19, v6_18, v6_17, v6_16, v6_15 uint32
-	v6_14, v6_13, v6_12, v6_11, v6_10 uint32
-	v6_09, v6_08, v4_24               uint32
-}
-
 func query() {
 	// Create sql handle
 	db, err := sql.Open("mysql",
@@ -79,7 +39,7 @@ func query() {
 	fmt.Printf("%+v\n", bgpInfo)
 }
 
-func add(b bgpUpdate) (sql.Result, error) {
+func add(b *bgpUpdate) error {
 	// Create sql handle
 	db, err := sql.Open("mysql",
 		"bgpinfo:testpassword@tcp(127.0.0.1:3306)/BGP_STATISTICS")
@@ -124,8 +84,10 @@ func add(b bgpUpdate) (sql.Result, error) {
 		b.memTotal6, b.memProto6, b.memAttr6, b.as4, b.as6, b.as10, b.as4Only,
 		b.as6Only, b.asBoth)
 
+	log.Printf("updated database: %v", result)
+
 	if err != nil {
-		return result, fmt.Errorf("Unable to update database: %v", err)
+		return fmt.Errorf("Unable to update database: %v", err)
 	}
-	return result, nil
+	return nil
 }

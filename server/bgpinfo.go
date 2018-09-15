@@ -15,8 +15,6 @@ import (
 type server struct{}
 
 func main() {
-	// Connected to db server check
-	add()
 
 	//Set up gRPC server
 	log.Println("Listening on port 7179")
@@ -34,13 +32,20 @@ func main() {
 func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
 	log.Println("Received an update")
 	log.Println(proto.MarshalTextString(v))
+	update := repack(v)
+	err := add(update)
+	if err != nil {
+		return &pb.Result{
+			Success: false,
+		}, err
+	}
 
 	return &pb.Result{
 		Success: true,
 	}, nil
 }
 
-func (s *server) Tweet(ctx context.Context, t *bgpinfo.TweetType) (*pb.Result, error) {
+func (s *server) GetTweetData(ctx context.Context, t *bgpinfo.TweetType) (*pb.Result, error) {
 	log.Println("Not yet implemented")
 	return &pb.Result{}, nil
 
