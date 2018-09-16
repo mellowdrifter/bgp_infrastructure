@@ -3,25 +3,33 @@ import subprocess
 import re
 
 
-def getSubnets(family):
+def getSubnets():
     regex = r'(?<=\/)\d{1,3}'
-    subnets = {}
-    if family == 4:
-        last = 25
-        routes = subprocess.check_output("/usr/sbin/birdc 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
-    elif family == 6:
-        last = 49
-        routes = subprocess.check_output("/usr/sbin/birdc6 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
-    else:
-        return False
-    for i in range(8, last):
-        subnets[str(i)] = 0
-    routes = routes.rstrip()
-    routeList = re.findall(regex, routes)
-    for route in routeList:
-        subnets[route] += 1
+    subnets4 = {}
+    subnets6 = {}
+    routes4 = subprocess.check_output("/usr/sbin/birdc 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
+    routes6 = subprocess.check_output("/usr/sbin/birdc6 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
+    for i in range(8, 25):
+        subnets4[str(i)] = 0
+    for i in range(8, 49):
+        subnets6[str(i)] = 0
+    routes4 = routes4.rstrip()
+    routes6 = routes6.rstrip()
+    routeList4 = re.findall(regex, routes4)
+    routeList6 = re.findall(regex, routes6)
+    for route in routeList4:
+        subnets4[route] += 1
+    for route in routeList6:
+        subnets6[route] += 1
 
-    return subnets
+    subnet4 = []
+    subnet6 = []
+    for i in range(8, 25):
+        subnet4.append(subnets4.get(i))
+    for i in range(8, 49):
+        subnet6.append(subnets6.get(i))
+
+    return subnet4, subnet6
 
 def getTotals():
     total4 = subprocess.check_output("/usr/sbin/birdc 'show route count' | grep 'routes' | awk {'print $3, $6'}", shell=True).decode("utf-8")

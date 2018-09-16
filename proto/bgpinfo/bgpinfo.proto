@@ -156,3 +156,14 @@ message large_community {
     uint32 c4 = 1;
     uint32 c6 = 2;
 }
+
+message four_byte_asn {
+    uint32 c4 = 1;
+    uint32 c6 = 2;
+}
+
+// RPKI (RFC 6480)
+message roa {
+    uint32 roa_valid = 1;
+    uint32 roa_invalid = 2;
+}
