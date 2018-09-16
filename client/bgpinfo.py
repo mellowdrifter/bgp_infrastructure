@@ -121,15 +121,52 @@ def masker(mask4, mask6):
         v4_23 = mask4[15],
         v4_24 = mask4[16],
         v6_08 = mask6[0],
+        v6_09 = mask6[1],
+        v6_10 = mask6[2],
+        v6_11 = mask6[3],
+        v6_12 = mask6[4],
+        v6_13 = mask6[5],
+        v6_14 = mask6[6],
+        v6_15 = mask6[7],
+        v6_16 = mask6[8],
+        v6_17 = mask6[9],
+        v6_18 = mask6[10],
+        v6_19 = mask6[11],
+        v6_20 = mask6[12],
+        v6_21 = mask6[13],
+        v6_22 = mask6[14],
+        v6_23 = mask6[15],
+        v6_24 = mask6[16],
+        v6_25 = mask6[17],
+        v6_26 = mask6[18],
+        v6_27 = mask6[19],
+        v6_28 = mask6[20],
+        v6_29 = mask6[21],
+        v6_30 = mask6[22],
+        v6_31 = mask6[23],
+        v6_32 = mask6[24],
+        v6_33 = mask6[25],
+        v6_34 = mask6[26],
+        v6_35 = mask6[27],
+        v6_36 = mask6[28],
+        v6_37 = mask6[29],
+        v6_38 = mask6[30],
+        v6_39 = mask6[31],
+        v6_40 = mask6[32],
+        v6_41 = mask6[33],
+        v6_42 = mask6[34],
+        v6_43 = mask6[35],
+        v6_44 = mask6[36],
+        v6_45 = mask6[37],
+        v6_46 = mask6[38],
+        v6_47 = mask6[39],
+        v6_48 = mask6[40],
     )
     return masks
 
-
-
-
-
 if __name__ == "__main__":
+    print("Gathering data.")
     current_values = main()
-    print("Finished gathering data. Now sending to server")
+    print("Finished gathering data. Now sending to server.")
     result = stub.add_latest(current_values)
     print(result)

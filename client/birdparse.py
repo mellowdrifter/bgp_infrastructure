@@ -25,9 +25,9 @@ def getSubnets():
     subnet4 = []
     subnet6 = []
     for i in range(8, 25):
-        subnet4.append(subnets4.get(i))
+        subnet4.append(subnets4.get(str(i)))
     for i in range(8, 49):
-        subnet6.append(subnets6.get(i))
+        subnet6.append(subnets6.get(str(i)))
 
     return subnet4, subnet6
 
@@ -89,7 +89,11 @@ def getMem(family):
 
 
 if __name__ == "__main__":
-    print('IPv6 Subnets\n============\n', getSubnets(6))
-    print('IPv4 Subnets\n============\n', getSubnets(4))
+    print('Subnets\n============\n', getSubnets())
     print('Total count\n=========\n', getTotals())
-    print('None test\n=========\n', getSubnets('r'))
+    print('Source AS\n', getSrcAS())
+    print('Peers\n', getPeers(4))
+    print('Peers\n', getPeers(6))
+    print('Large Comm\n', getLargeCommunitys())
+    print('Peers\n', getMem(4))
+    print('Peers\n', getMem(6))
