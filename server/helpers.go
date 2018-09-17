@@ -46,6 +46,9 @@ type bgpUpdate struct {
 }
 
 func repack(v *pb.Values) *bgpUpdate {
+	// While we receive this information in a protobuf, the
+	// format needs to be adjusted a bit to insert into the
+	// database later.
 	as := v.GetAsCount()
 	mem := v.GetMemUse()
 	mask := v.GetMasks()

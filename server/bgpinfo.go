@@ -30,6 +30,7 @@ func main() {
 }
 
 func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
+	// Receive the latest BGP info updates and add this to the database
 	log.Println("Received an update")
 	log.Println(proto.MarshalTextString(v))
 	update := repack(v)
