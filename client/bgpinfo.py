@@ -2,9 +2,11 @@
 
 import bgpinfo_pb2 as pb
 import bgpinfo_pb2_grpc
+import birdparse
+import checkBird
 import configparser
 import grpc
-import birdparse
+import logging
 import time
 
 
@@ -13,15 +15,21 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 server = str(config.get('grpc', 'server'))
 port = str(config.get('grpc', 'port'))
+log = config.get('grpc', 'logfile')
+
+# Set up logging
+format_string = '%(levelname)s: %(asctime)s: %(message)s'
+logging.basicConfig(filename=log, level=logging.INFO, format=format_string)
 
 #Set up GRPC server details
 grpcserver = "%s:%s" % (server, port)
 channel = grpc.insecure_channel(grpcserver)
 stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 
-def main():
+def get_data():
 
     # Prefix counts.
+    logging.info('prefix count')
     bgp4, bgp6 = birdparse.getTotals()
     prefix_count = pb.prefix_count(
         active_4 = int(bgp4[1]),
@@ -31,6 +39,7 @@ def main():
     )
 
     # Peer Count.
+    logging.info('peer count')
     peers4, state4 = birdparse.getPeers(4)
     peers6, state6 = birdparse.getPeers(6)
 
@@ -43,6 +52,7 @@ def main():
     )
 
     # AS number count.
+    logging.info('AS numbers')
     as4, as6, as10, as4_only, as6_only, as_both = birdparse.getSrcAS()
     as_count = pb.as_count(
         as4 = as4,
@@ -55,6 +65,7 @@ def main():
 
 
     # Memory use.
+    logging.info('memory')
     bgp4Mem = birdparse.getMem(4)
     bgp6Mem = birdparse.getMem(6)
 
@@ -80,9 +91,11 @@ def main():
     memory.append(mem4)
     memory.append(mem6)
 
+    logging.info('subnets')
     mask4, mask6 = birdparse.getSubnets()
     masks = masker(mask4, mask6)
 
+    logging.info('large communities')
     large4, large6 = birdparse.getLargeCommunitys()
     large = pb.large_community(
         c4 = large4,
@@ -165,8 +178,19 @@ def masker(mask4, mask6):
     return masks
 
 if __name__ == "__main__":
-    print("Gathering data.")
-    current_values = main()
-    print("Finished gathering data. Now sending to server.")
+    if not checkBird.isRun('bird6') and not checkBird.isRun('bird'):
+        logging.info('both bird and bird6 are not running')
+        exit()
+    if not checkBird.isRun('bird'):
+        logging.info('bird is not running')
+        exit()
+    if not checkBird.isRun('bird6'):
+        logging.info('bird6 is not running')
+        exit()
+
+    logging.info('Gathering data')
+    current_values = get_data()
+
+    logging.info('Sending data to server')
     result = stub.add_latest(current_values)
-    print(result)
+    logging.info('server response: ' + str(result))
