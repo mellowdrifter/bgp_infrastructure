@@ -2,23 +2,40 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
+	"os"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	"google.golang.org/grpc"
+	ini "gopkg.in/ini.v1"
 
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
 type server struct{}
 
+type sqlCon struct {
+	database string
+	username string
+	password string
+}
+
 func main() {
 
-	//Set up gRPC server
-	log.Println("Listening on port 7179")
-	lis, err := net.Listen("tcp", ":7179")
+	// read config
+	cfg, err := ini.Load("config.ini")
+	if err != nil {
+		fmt.Printf("Fail to read file: %v\n", err)
+		os.Exit(1)
+	}
+	port := fmt.Sprintf(":" + cfg.Section("grpc").Key("port").String())
+
+	// set up gRPC server
+	log.Printf("Listening on port %s\n", port)
+	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
@@ -33,8 +50,26 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	// Receive the latest BGP info updates and add this to the database
 	log.Println("Received an update")
 	log.Println(proto.MarshalTextString(v))
+
+	// get database credentials
+	cfg, err := ini.Load("config.ini")
+	if err != nil {
+		return &pb.Result{
+			Success: false,
+		}, err
+	}
+	//TODO: Move this to a new function and error if values empty
+	sqlcon := sqlCon{
+		database: cfg.Section("sql").Key("database").String(),
+		username: cfg.Section("sql").Key("username").String(),
+		password: cfg.Section("sql").Key("password").String(),
+	}
+
+	// get correct struct
 	update := repack(v)
-	err := add(update)
+
+	// update database
+	err = add(update, sqlcon)
 	if err != nil {
 		return &pb.Result{
 			Success: false,

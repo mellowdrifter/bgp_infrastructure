@@ -39,12 +39,13 @@ func query() {
 	fmt.Printf("%+v\n", bgpInfo)
 }
 
-func add(b *bgpUpdate) error {
+func add(b *bgpUpdate, s sqlCon) error {
 	// Create sql handle
-	db, err := sql.Open("mysql",
-		"bgpinfo:testpassword@tcp(127.0.0.1:3306)/BGP_STATISTICS")
+	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", s.username, s.password, s.database)
+	fmt.Printf("server is %v\n", server)
+	db, err := sql.Open("mysql", server)
 	if err != nil {
-		log.Fatalf("Can't open database. Got %v", err)
+		return fmt.Errorf("can't open database. Got %v", err)
 	}
 	defer db.Close()
 
