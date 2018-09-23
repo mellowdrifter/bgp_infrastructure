@@ -7,12 +7,14 @@ import checkBird
 import configparser
 import grpc
 import logging
+import os
 import time
 
 
 # Load config
 config = configparser.ConfigParser()
-config.read("config.ini")
+path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
+config.read(path)
 server = str(config.get('grpc', 'server'))
 port = str(config.get('grpc', 'port'))
 log = config.get('grpc', 'logfile')

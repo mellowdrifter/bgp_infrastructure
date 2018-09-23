@@ -52,8 +52,13 @@ func repack(v *pb.Values) *bgpUpdate {
 	as := v.GetAsCount()
 	mem := v.GetMemUse()
 	mask := v.GetMasks()
+	p := v.GetPrefixCount()
 	update := &bgpUpdate{
 		time:             v.GetTime(),
+		v4Count:          p.GetActive_4(),
+		v6Count:          p.GetActive_6(),
+		v4Total:          p.GetTotal_4(),
+		v6Total:          p.GetTotal_6(),
 		as4:              as.GetAs4(),
 		as6:              as.GetAs6(),
 		as10:             as.GetAs10(),

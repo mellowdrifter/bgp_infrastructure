@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
@@ -26,10 +27,14 @@ type sqlCon struct {
 func main() {
 
 	// read config
-	cfg, err := ini.Load("config.ini")
+	exe, err := os.Executable()
 	if err != nil {
-		fmt.Printf("Fail to read file: %v\n", err)
-		os.Exit(1)
+		log.Fatal(err)
+	}
+	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
+	cfg, err := ini.Load(path)
+	if err != nil {
+		log.Fatalf("failed to read config file: %v\n", err)
 	}
 	port := fmt.Sprintf(":" + cfg.Section("grpc").Key("port").String())
 

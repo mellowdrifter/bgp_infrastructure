@@ -42,13 +42,13 @@ func query() {
 func add(b *bgpUpdate, s sqlCon) error {
 	// Create sql handle
 	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", s.username, s.password, s.database)
-	fmt.Printf("server is %v\n", server)
 	db, err := sql.Open("mysql", server)
 	if err != nil {
 		return fmt.Errorf("can't open database. Got %v", err)
 	}
 	defer db.Close()
 
+	fmt.Printf("Update is %+v\n", b)
 	// All the required info. Fields can be added/deleted in future
 	result, err := db.Exec(
 		`INSERT INTO INFO (TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
