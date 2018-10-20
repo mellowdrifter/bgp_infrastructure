@@ -48,7 +48,7 @@ func add(b *bgpUpdate, s sqlCon) error {
 	}
 	defer db.Close()
 
-	fmt.Printf("Update is %+v\n", b)
+	// fmt.Printf("Update is %+v\n", b)
 	// All the required info. Fields can be added/deleted in future
 	result, err := db.Exec(
 		`INSERT INTO INFO (TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,

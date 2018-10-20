@@ -37,6 +37,15 @@ func main() {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
 	port := fmt.Sprintf(":" + cfg.Section("grpc").Key("port").String())
+	logFile := fmt.Sprintf(cfg.Section("log").Key("file").String())
+
+	// Open log file
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("failed to open logfile: %v\n", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
 
 	// set up gRPC server
 	log.Printf("Listening on port %s\n", port)
@@ -52,7 +61,7 @@ func main() {
 }
 
 func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
-	// Receive the latest BGP info updates and add this to the database
+	// Receive the latest BGP info updates and add to the database
 	log.Println("Received an update")
 	log.Println(proto.MarshalTextString(v))
 
