@@ -88,6 +88,16 @@ def getMem(family):
 
     return values
 
+def getPrivateASLeak():
+    # How many private AS numbers are in use
+    # How many are source and 'transit'
+    # Which is the most common
+    # 16 bit vs 32 bit
+    # TODO
+    # 16bit range: 64512 - 65535 rfc1930
+    # 32bit range: 4200000000 - 4294967294 rfc6996
+    pass
+
 
 if __name__ == "__main__":
     print('Subnets\n============\n', getSubnets())
