@@ -9,11 +9,9 @@ import (
 	"path"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	"google.golang.org/grpc"
 	ini "gopkg.in/ini.v1"
-
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
 type server struct{}
@@ -65,6 +63,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	log.Println("Received an update")
 	log.Println(proto.MarshalTextString(v))
 
+	//TODO: Move this to a new function and error if values empty
 	// get database credentials
 	cfg, err := ini.Load("config.ini")
 	if err != nil {
@@ -72,7 +71,6 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 			Success: false,
 		}, err
 	}
-	//TODO: Move this to a new function and error if values empty
 	sqlcon := sqlCon{
 		database: cfg.Section("sql").Key("database").String(),
 		username: cfg.Section("sql").Key("username").String(),
@@ -95,8 +93,25 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	}, nil
 }
 
-func (s *server) GetTweetData(ctx context.Context, t *bgpinfo.TweetType) (*pb.Result, error) {
-	log.Println("Not yet implemented")
-	return &pb.Result{}, nil
+func (s *server) GetTweetData(ctx context.Context, t *pb.TweetType) (*pb.PrefixCount, error) {
+	// Get BGP data from the database to advertise to the world
+	log.Println("Fetching data for tweets")
+	log.Println(proto.MarshalTextString(t))
 
+	//TODO: Move this to a new function and error if values empty
+	// get database credentials
+	cfg, err := ini.Load("config.ini")
+	if err != nil {
+		return nil, err
+	}
+	sqlcon := sqlCon{
+		database: cfg.Section("sql").Key("database").String(),
+		username: cfg.Section("sql").Key("username").String(),
+		password: cfg.Section("sql").Key("password").String(),
+	}
+	prefixes, err := getPrefixCount(t, sqlcon)
+	if err != nil {
+		return nil, fmt.Errorf("error occured: %v", err)
+	}
+	return prefixes, nil
 }

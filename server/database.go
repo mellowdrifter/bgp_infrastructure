@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
 func query() {
@@ -68,7 +70,7 @@ func add(b *bgpUpdate, s sqlCon) error {
 		LARGEC4, LARGEC6)
 
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-  				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?)`,
@@ -91,4 +93,41 @@ func add(b *bgpUpdate, s sqlCon) error {
 		return fmt.Errorf("Unable to update database: %v", err)
 	}
 	return nil
+}
+
+func getPrefixCount(t *pb.TweetType, s sqlCon) (*pb.PrefixCount, error) {
+	// format the query correctly
+	var sq string
+	switch t.GetAction() {
+	case pb.PointInTime_LATEST:
+		sq = `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+				ORDER BY TIME DESC LIMIT 1`
+	case pb.PointInTime_SIXHOURSAGO:
+		sq = `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL ORDER BY TIME DESC LIMIT 1`
+	case pb.PointInTime_ONEWEEKAGO:
+		lastWeek := int32(time.Now().Unix())
+		sq = fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
+	}
+
+	// create sql handle
+	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", s.username, s.password, s.database)
+	db, err := sql.Open("mysql", server)
+	if err != nil {
+		return nil, fmt.Errorf("can't open database. Got %v", err)
+	}
+	defer db.Close()
+
+	// pull the prefix counts
+	var counts pb.PrefixCount
+	err = db.QueryRow(sq).Scan(
+		&counts.Time,
+		&counts.Active_4,
+		&counts.Active_6,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+
+	return &counts, nil
 }

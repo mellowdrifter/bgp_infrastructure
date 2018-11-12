@@ -4,7 +4,7 @@ package bgpinfo;
 
 service bgp_info {
     rpc add_latest(values) returns (result);
-    rpc get_tweet_data(tweet_type) returns (result);
+    rpc get_tweet_data(tweet_type) returns (prefix_count);
 }
 
 message values {
@@ -24,16 +24,13 @@ message result {
 }
 
 message tweet_type {
-    enum action {
-        UNKNOWN = 0;
-        QDS = 1;
-        WEEKLY = 2;
-        MONTHLY = 3;
-        HALFYEAR = 4;
-        ANNUAL = 5;
-        APRILFOOL = 6;
-        DISTRIBUTION = 7;
-    }
+    point_in_time action = 1;
+}
+
+enum point_in_time {
+    LATEST = 0;
+    SIXHOURSAGO = 1;
+    ONEWEEKAGO = 2;
 }
 
 // as_count will hold the total amount of unique ASs.
@@ -76,9 +73,8 @@ message peer_count {
 }
 
 enum address_family {
-    UNKNOWN = 0;
-    IPV6 = 1;
-    IPV4 = 2;
+    IPV6 = 0;
+    IPV4 = 1;
 }
 
 // prefix counts. Most used info
@@ -87,6 +83,7 @@ message prefix_count {
     uint32 active_4 = 2;
     uint32 total_6 = 3;
     uint32 active_6 = 4;
+    uint64 time = 5;
 }
 
 // how many subnets of each mask is active
