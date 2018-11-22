@@ -1,1 +1,8 @@
 client/config.ini
+server/config.ini
+client/bgpinfo_pb2.py
+client/bgpinfo_pb2_grpc.py
+client/check.py
+proto/bgpinfo/*.go
+proto/bgpinfo/*.py
+

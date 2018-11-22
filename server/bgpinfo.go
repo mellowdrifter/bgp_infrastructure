@@ -115,3 +115,36 @@ func (s *server) GetTweetData(ctx context.Context, t *pb.TweetType) (*pb.PrefixC
 	}
 	return prefixes, nil
 }
+
+func (s *server) Alive(ctx context.Context, req *pb.Request) (*pb.Response, error) {
+	// When incoming request, should do local health check.
+	// then return status with priority set
+	cfg, _ := ini.Load("config.ini")
+
+	lp, err := cfg.Section("failover").Key("priority").Uint()
+	if err != nil {
+		log.Printf("Unable to read keepalive config from config.ini")
+		return nil, err
+	}
+	peer := cfg.Section("failover").Key("peer").String()
+	log.Printf("Incoming priority is %d\n", req.GetPriority())
+	if isHealthy() {
+		return &pb.Response{
+			Status:   true,
+			Priority: uint32(lp),
+		}, nil
+	}
+
+	// If not healthy, return failed
+	return &pb.Response{
+		Status: false,
+	}, nil
+}
+
+func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) bool {
+	return true
+}
+
+func isHealthy() bool {
+	return true
+}
