@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -16,13 +17,18 @@ import (
 
 type server struct{}
 
-type sqlCon struct {
-	database string
-	username string
-	password string
+type config struct {
+	port     string
+	priority uint
+	peer     string
 }
 
-func main() {
+var cfg config
+var db *sql.DB
+
+// init is here to read all the config.ini options. Ensure they are correct.
+// also sets up database connection and does initial db ping to check connectivity.
+func init() {
 
 	// read config
 	exe, err := os.Executable()
@@ -30,14 +36,25 @@ func main() {
 		log.Fatal(err)
 	}
 	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
-	cfg, err := ini.Load(path)
+	cf, err := ini.Load(path)
 	if err != nil {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
-	port := fmt.Sprintf(":" + cfg.Section("grpc").Key("port").String())
-	logFile := fmt.Sprintf(cfg.Section("log").Key("file").String())
+	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
+	cfg.peer = cf.Section("failover").Key("peer").String()
+	if cfg.peer == "" {
+		log.Fatalf("failover peer must be set")
+	}
+	cfg.priority, err = cf.Section("failover").Key("priority").Uint()
+	if err != nil {
+		log.Fatal(err)
+	}
+	logFile := fmt.Sprintf(cf.Section("log").Key("file").String())
+	dname := cf.Section("sql").Key("database").String()
+	user := cf.Section("sql").Key("username").String()
+	pass := cf.Section("sql").Key("password").String()
 
-	// Open log file
+	// Set up log file
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
@@ -45,9 +62,23 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
+	// Create sql handle and test database connection
+	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", user, pass, dname)
+	db, err = sql.Open("mysql", server)
+	if err != nil {
+		log.Fatalf("can't open database. Got %v", err)
+	}
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("can't ping database. Got %v", err)
+	}
+	defer db.Close()
+}
+
+func main() {
 	// set up gRPC server
-	log.Printf("Listening on port %s\n", port)
-	lis, err := net.Listen("tcp", port)
+	log.Printf("Listening on port %s\n", cfg.port)
+	lis, err := net.Listen("tcp", cfg.port)
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
@@ -63,25 +94,11 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	log.Println("Received an update")
 	log.Println(proto.MarshalTextString(v))
 
-	//TODO: Move this to a new function and error if values empty
-	// get database credentials
-	cfg, err := ini.Load("config.ini")
-	if err != nil {
-		return &pb.Result{
-			Success: false,
-		}, err
-	}
-	sqlcon := sqlCon{
-		database: cfg.Section("sql").Key("database").String(),
-		username: cfg.Section("sql").Key("username").String(),
-		password: cfg.Section("sql").Key("password").String(),
-	}
-
 	// get correct struct
 	update := repack(v)
 
 	// update database
-	err = add(update, sqlcon)
+	err := add(update)
 	if err != nil {
 		return &pb.Result{
 			Success: false,
@@ -98,18 +115,7 @@ func (s *server) GetTweetData(ctx context.Context, t *pb.TweetType) (*pb.PrefixC
 	log.Println("Fetching data for tweets")
 	log.Println(proto.MarshalTextString(t))
 
-	//TODO: Move this to a new function and error if values empty
-	// get database credentials
-	cfg, err := ini.Load("config.ini")
-	if err != nil {
-		return nil, err
-	}
-	sqlcon := sqlCon{
-		database: cfg.Section("sql").Key("database").String(),
-		username: cfg.Section("sql").Key("username").String(),
-		password: cfg.Section("sql").Key("password").String(),
-	}
-	prefixes, err := getPrefixCount(t, sqlcon)
+	prefixes, err := getPrefixCount(t)
 	if err != nil {
 		return nil, fmt.Errorf("error occured: %v", err)
 	}
@@ -119,16 +125,10 @@ func (s *server) GetTweetData(ctx context.Context, t *pb.TweetType) (*pb.PrefixC
 func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {
 	// When incoming request, should do local health check.
 	// then return status with priority set
-	cfg, _ := ini.Load("config.ini")
-	lp, err := cfg.Section("failover").Key("priority").Uint()
-	if err != nil {
-		log.Printf("Unable to read keepalive config from config.ini")
-		return nil, err
-	}
 	if isHealthy() {
 		return &pb.Response{
 			Status:   true,
-			Priority: uint32(lp),
+			Priority: uint32(cfg.priority),
 		}, nil
 	}
 
@@ -138,35 +138,37 @@ func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error)
 	}, nil
 }
 
-func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (bool, error) {
-	// load peer address and local priority
-	cfg, _ := ini.Load("config.ini")
-	peerAddress := cfg.Section("failover").Key("peer").String()
-	lp, err := cfg.Section("failover").Key("priority").Uint()
-	if err != nil {
-		log.Printf("Unable to read keepalive config from config.ini")
-		return false, err
+func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (*pb.Active, error) {
+	// If our priority is 0, then we are not primary
+	if cfg.priority == 0 {
+		return &pb.Active{}, nil
 	}
 
-	// connect to peer server
-	conn, err := grpc.Dial(peerAddress, grpc.WithInsecure())
+	// Connect to peer server. If we can't connect, we are primary
+	conn, err := grpc.Dial(cfg.peer, grpc.WithInsecure())
 	if err != nil {
-		return true, err
+		return &pb.Active{
+			Primary: true,
+		}, err
 	}
 	defer conn.Close()
 	c := pb.NewBgpInfoClient(conn)
 
-	// check to see if peer is okay, and if so it's priority
+	// Check to see if peer is okay, and if so it's priority
 	peerState, err := c.Alive(ctx, m)
 	if err != nil {
-		return true, err
+		return &pb.Active{
+			Primary: true,
+		}, err
 	}
 
-	// not primary if our priority is less than or equal, else we're primary at this point
+	// Not primary if our priority is less than or equal, else we're primary at this point
 	if peerState.GetStatus() {
-		if uint32(lp) <= peerState.GetPriority() {
-			return false, nil
+		if uint32(cfg.priority) <= peerState.GetPriority() {
+			return &pb.Active{}, err
 		}
 	}
-	return true, nil
+	return &pb.Active{
+		Primary: true,
+	}, nil
 }

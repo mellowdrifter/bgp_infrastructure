@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"time"
@@ -11,17 +10,9 @@ import (
 )
 
 func query() {
-	// Create sql handle
-	db, err := sql.Open("mysql",
-		"bgpinfo:testpassword@tcp(127.0.0.1:3306)/BGP_STATISTICS")
-	if err != nil {
-		log.Fatalf("Can't open database. Got %v", err)
-	}
-
-	defer db.Close()
 
 	bgpInfo := bgpStat{}
-	err = db.QueryRow(`select TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
+	err := db.QueryRow(`select TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
 		PEERS6_CONFIGURED, PEERS_UP, PEERS6_UP
 		from INFO ORDER by TIME DESC limit 1`).Scan(
 		&bgpInfo.time,
@@ -41,15 +32,7 @@ func query() {
 	fmt.Printf("%+v\n", bgpInfo)
 }
 
-func add(b *bgpUpdate, s sqlCon) error {
-	// Create sql handle
-	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", s.username, s.password, s.database)
-	db, err := sql.Open("mysql", server)
-	if err != nil {
-		return fmt.Errorf("can't open database. Got %v", err)
-	}
-	defer db.Close()
-
+func add(b *bgpUpdate) error {
 	// fmt.Printf("Update is %+v\n", b)
 	// All the required info. Fields can be added/deleted in future
 	result, err := db.Exec(
@@ -95,7 +78,7 @@ func add(b *bgpUpdate, s sqlCon) error {
 	return nil
 }
 
-func getPrefixCount(t *pb.TweetType, s sqlCon) (*pb.PrefixCount, error) {
+func getPrefixCount(t *pb.TweetType) (*pb.PrefixCount, error) {
 	// format the query correctly
 	var sq string
 	switch t.GetAction() {
@@ -110,17 +93,9 @@ func getPrefixCount(t *pb.TweetType, s sqlCon) (*pb.PrefixCount, error) {
 				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
 	}
 
-	// create sql handle
-	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", s.username, s.password, s.database)
-	db, err := sql.Open("mysql", server)
-	if err != nil {
-		return nil, fmt.Errorf("can't open database. Got %v", err)
-	}
-	defer db.Close()
-
 	// pull the prefix counts
 	var counts pb.PrefixCount
-	err = db.QueryRow(sq).Scan(
+	err := db.QueryRow(sq).Scan(
 		&counts.Time,
 		&counts.Active_4,
 		&counts.Active_6,
