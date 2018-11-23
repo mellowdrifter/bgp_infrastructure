@@ -116,18 +116,15 @@ func (s *server) GetTweetData(ctx context.Context, t *pb.TweetType) (*pb.PrefixC
 	return prefixes, nil
 }
 
-func (s *server) Alive(ctx context.Context, req *pb.Request) (*pb.Response, error) {
+func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {
 	// When incoming request, should do local health check.
 	// then return status with priority set
 	cfg, _ := ini.Load("config.ini")
-
 	lp, err := cfg.Section("failover").Key("priority").Uint()
 	if err != nil {
 		log.Printf("Unable to read keepalive config from config.ini")
 		return nil, err
 	}
-	peer := cfg.Section("failover").Key("peer").String()
-	log.Printf("Incoming priority is %d\n", req.GetPriority())
 	if isHealthy() {
 		return &pb.Response{
 			Status:   true,
@@ -141,10 +138,35 @@ func (s *server) Alive(ctx context.Context, req *pb.Request) (*pb.Response, erro
 	}, nil
 }
 
-func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) bool {
-	return true
-}
+func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (bool, error) {
+	// load peer address and local priority
+	cfg, _ := ini.Load("config.ini")
+	peerAddress := cfg.Section("failover").Key("peer").String()
+	lp, err := cfg.Section("failover").Key("priority").Uint()
+	if err != nil {
+		log.Printf("Unable to read keepalive config from config.ini")
+		return false, err
+	}
 
-func isHealthy() bool {
-	return true
+	// connect to peer server
+	conn, err := grpc.Dial(peerAddress, grpc.WithInsecure())
+	if err != nil {
+		return true, err
+	}
+	defer conn.Close()
+	c := pb.NewBgpInfoClient(conn)
+
+	// check to see if peer is okay, and if so it's priority
+	peerState, err := c.Alive(ctx, m)
+	if err != nil {
+		return true, err
+	}
+
+	// not primary if our priority is less than or equal, else we're primary at this point
+	if peerState.GetStatus() {
+		if uint32(lp) <= peerState.GetPriority() {
+			return false, nil
+		}
+	}
+	return true, nil
 }

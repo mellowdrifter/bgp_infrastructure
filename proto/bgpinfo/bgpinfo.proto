@@ -5,7 +5,7 @@ package bgpinfo;
 service bgp_info {
     rpc add_latest(values) returns (result);
     rpc get_tweet_data(tweet_type) returns (prefix_count);
-    rpc alive(request) returns (response);
+    rpc alive(empty) returns (response);
     rpc is_primary(empty) returns (active);
 }
 
@@ -165,10 +165,6 @@ message four_byte_asn {
 message roa {
     uint32 roa_valid = 1;
     uint32 roa_invalid = 2;
-}
-
-message request {
-    uint32 priority = 1;
 }
 
 message response {
