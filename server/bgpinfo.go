@@ -81,13 +81,13 @@ func main() {
 		log.Fatalf("can't ping database. Got %v", err)
 	}
 	defer db.Close()
+
 	// set up gRPC server
 	log.Printf("Listening on port %s\n", cfg.port)
 	lis, err := net.Listen("tcp", cfg.port)
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
-
 	grpcServer := grpc.NewServer()
 	pb.RegisterBgpInfoServer(grpcServer, &server{})
 
@@ -167,9 +167,9 @@ func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (*pb.Active, error)
 		}, err
 	}
 
-	// Not primary if our priority is less than or equal, else we're primary at this point
+	// Not primary if our priority is higher than or equal, else we're primary at this point
 	if peerState.GetStatus() {
-		if uint32(cfg.priority) <= peerState.GetPriority() {
+		if uint32(cfg.priority) >= peerState.GetPriority() {
 			return &pb.Active{}, err
 		}
 	}
