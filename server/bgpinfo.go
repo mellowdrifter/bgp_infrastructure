@@ -21,13 +21,18 @@ type config struct {
 	port     string
 	priority uint
 	peer     string
+	logfile  string
+	db       dbinfo
+}
+
+type dbinfo struct {
+	user, pass, dbname string
 }
 
 var cfg config
 var db *sql.DB
 
 // init is here to read all the config.ini options. Ensure they are correct.
-// also sets up database connection and does initial db ping to check connectivity.
 func init() {
 
 	// read config
@@ -49,13 +54,16 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	logFile := fmt.Sprintf(cf.Section("log").Key("file").String())
-	dname := cf.Section("sql").Key("database").String()
-	user := cf.Section("sql").Key("username").String()
-	pass := cf.Section("sql").Key("password").String()
+	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
+	cfg.db.dbname = cf.Section("sql").Key("database").String()
+	cfg.db.user = cf.Section("sql").Key("username").String()
+	cfg.db.pass = cf.Section("sql").Key("password").String()
 
+}
+
+func main() {
 	// Set up log file
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
@@ -63,8 +71,8 @@ func init() {
 	log.SetOutput(f)
 
 	// Create sql handle and test database connection
-	server := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", user, pass, dname)
-	db, err = sql.Open("mysql", server)
+	sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", cfg.db.user, cfg.db.pass, cfg.db.dbname)
+	db, err = sql.Open("mysql", sqlserver)
 	if err != nil {
 		log.Fatalf("can't open database. Got %v", err)
 	}
@@ -73,9 +81,6 @@ func init() {
 		log.Fatalf("can't ping database. Got %v", err)
 	}
 	defer db.Close()
-}
-
-func main() {
 	// set up gRPC server
 	log.Printf("Listening on port %s\n", cfg.port)
 	lis, err := net.Listen("tcp", cfg.port)
