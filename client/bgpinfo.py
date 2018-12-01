@@ -66,7 +66,8 @@ def get_data():
     )
 
 
-    # Memory use.
+    # Memory use
+    # TODO: Remove this from everywhere. I really don't care about memory usage
     logging.info('memory')
     bgp4Mem = birdparse.getMem(4)
     bgp6Mem = birdparse.getMem(6)
@@ -97,6 +98,7 @@ def get_data():
     mask4, mask6 = birdparse.getSubnets()
     masks = masker(mask4, mask6)
 
+    # TODO: Fix this. Seems to be wrong
     logging.info('large communities')
     large4, large6 = birdparse.getLargeCommunitys()
     large = pb.large_community(
