@@ -126,15 +126,15 @@ func (s *server) GetPrefixCount(ctx context.Context, m *pb.Empty) (*pb.Counts, e
 	return counts, nil
 }
 
-func (s *server) GetGraphInfo(ctx context.Context, m *pb.Empty) (*pb.Counts, error) {
+func (s *server) GetGraphData(ctx context.Context, t *pb.Length) (*pb.GraphData, error) {
 	// Get count data of various timescales to graph
 	log.Println("Fetching graph data for tweets")
 
-	counts, err := getGraph(period)
+	graphData, err := getGraph(t)
 	if err != nil {
 		return nil, fmt.Errorf("error occured: %v", err)
 	}
-	return counts, nil
+	return graphData, nil
 }
 
 func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {

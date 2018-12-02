@@ -7,6 +7,7 @@ service bgp_info {
     rpc alive(empty) returns (response);
     rpc is_primary(empty) returns (active);
     rpc get_prefix_count(empty) returns (counts);
+    rpc get_graph_data(length) returns (graph_data);
 }
 
 message values {
@@ -23,6 +24,17 @@ message values {
 message result {
     bool success = 1;
     string result = 2;
+}
+
+message length {
+    time_length time = 1;
+}
+
+enum time_length {
+    WEEK = 0;
+    MONTH = 1;
+    SIXMONTH = 2;
+    YEAR = 3;
 }
 
 // as_count will hold the total amount of unique ASs.
@@ -178,4 +190,14 @@ message counts {
     uint32 sixhoursv6 = 5;
     uint32 weekagov4 = 6;
     uint32 weekagov6 = 7;
+}
+
+message time_v4_v6 {
+    uint64 time = 1;
+    uint32 v4 = 2;
+    uint32 v6 = 3;
+}
+
+message graph_data {
+    repeated time_v4_v6 tick = 1;
 }

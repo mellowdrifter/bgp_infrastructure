@@ -15,19 +15,6 @@ import bgpinfo_pb2 as pb
 import bgpinfo_pb2_grpc
 import grpc
 
-# Load config
-config = configparser.ConfigParser()
-path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
-config.read(path)
-server = str(config.get('grpc', 'server'))
-port = str(config.get('grpc', 'port'))
-
-#TODO: SET UP LOGGING
-
-#Set up GRPC server details
-grpcserver = "%s:%s" % (server, port)
-channel = grpc.insecure_channel(grpcserver)
-stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 
 def sendCount():
     print('Running send counts')
@@ -39,6 +26,17 @@ def sendPie():
 
 def sendGraph(period):
     print('send graph for', period)
+    req = pb.length()
+    if period == 'w':
+        req.time = pb.WEEK
+    if period == 'm':
+        req.time = pb.MONTH
+    if period == 's':
+        req.time = pb.SIXMONTH
+    if period == 'y':
+        req.time = pb.YEAR
+    result = stub.get_graph_data(req)
+    print(len(result.tick))
 
 def tweet(message, image, family, dryRun):
     if dryRun:
@@ -68,7 +66,7 @@ def accountKeys(family):
 # sanity checking on the request.
 if __name__ == "__main__":
     validTypes = ['count', 'pie', 'graph']
-    validPeriod = ['w', 'm', 's', 'a']
+    validPeriod = ['w', 'm', 's', 'y']
     parser = argparse.ArgumentParser(description='Formulate tweets and send to the world')
     parser.add_argument('-t', '--type', required=True, type=str, help='Type of tweet')
     parser.add_argument('-p', '--period', required=False)
@@ -79,6 +77,20 @@ if __name__ == "__main__":
         print("will dry run")
     else:
         print("Won't dry run")
+
+    # Load config
+    config = configparser.ConfigParser()
+    path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
+    config.read(path)
+    server = str(config.get('grpc', 'server'))
+    port = str(config.get('grpc', 'port'))
+
+    #TODO: SET UP LOGGING
+
+    #Set up GRPC server details
+    grpcserver = "%s:%s" % (server, port)
+    channel = grpc.insecure_channel(grpcserver)
+    stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 
     # only handle correct types
     if args.type not in validTypes:

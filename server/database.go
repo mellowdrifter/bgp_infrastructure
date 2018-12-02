@@ -84,7 +84,7 @@ func getCounts() (*pb.Counts, error) {
 	sq1 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO ORDER BY TIME DESC LIMIT 1`
 	sq2 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
 				ORDER BY TIME DESC LIMIT 1`
-	lastWeek := int32(time.Now().Unix())
+	lastWeek := int32(time.Now().Unix()) - 604800
 	sq3 := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
 				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
 
@@ -116,17 +116,18 @@ func getCounts() (*pb.Counts, error) {
 	return &counts, nil
 }
 
-func getGraph(period string) ([]string, error) {
+func getGraph(period *pb.Length) (*pb.GraphData, error) {
 	var startTime int32
+	graphData := &pb.GraphData{}
 	lastNight := int32(time.Now().Unix() - 66600)
-	switch period {
-	case "w":
+	switch period.GetTime() {
+	case pb.TimeLength_WEEK:
 		startTime = lastNight - 604800
-	case "m":
+	case pb.TimeLength_MONTH:
 		startTime = lastNight - 2628000
-	case "s":
+	case pb.TimeLength_SIXMONTH:
 		startTime = lastNight - 15768000
-	case "y":
+	case pb.TimeLength_YEAR:
 		startTime = lastNight - 31536000
 	}
 	sq := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >= '%d'
@@ -138,21 +139,19 @@ func getGraph(period string) ([]string, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		// This should be a single message
-		var time uint64
-		var v4Count uint32
-		var v6count uint32
+		var t46 pb.TimeV4V6
 		err = rows.Scan(
 			// insert into that message struct
-			&time,
-			&v4Count,
-			&v6count,
+			&t46.Time,
+			&t46.V4,
+			&t46.V6,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("Can't extract information. Got %v", err)
 		}
-		// append that message into a list of messages
+		// Add time interval to the list
+		graphData.Tick = append(graphData.Tick, &t46)
 	}
 	// return that list of messages
-	return listofInfo, nil
+	return graphData, nil
 }
