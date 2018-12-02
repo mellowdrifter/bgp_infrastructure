@@ -11,6 +11,40 @@ import matplotlib.dates as mdates
 from twython import Twython
 import argparse
 import os
+import bgpinfo_pb2 as pb
+import bgpinfo_pb2_grpc
+import grpc
+
+# Load config
+config = configparser.ConfigParser()
+path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
+config.read(path)
+server = str(config.get('grpc', 'server'))
+port = str(config.get('grpc', 'port'))
+
+#TODO: SET UP LOGGING
+
+#Set up GRPC server details
+grpcserver = "%s:%s" % (server, port)
+channel = grpc.insecure_channel(grpcserver)
+stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
+
+def sendCount():
+    print('Running send counts')
+    result = stub.get_prefix_count(pb.empty())
+    print(result)
+
+def sendPie():
+    print('send pie')
+
+def sendGraph(period):
+    print('send graph for', period)
+
+def tweet(message, image, family, dryRun):
+    if dryRun:
+        print(message)
+        return
+
 
 # Each twitter account has their own keys
 def accountKeys(family):
@@ -29,15 +63,9 @@ def accountKeys(family):
         access_token_secret = config.get('bgp6_account', 'access_token_secret')
     return consumer_key, consumer_secret, access_token, access_token_secret
 
-def sendCount():
-    print('send counts')
 
-def sendPie():
-    print('send pie')
-
-def sendGraph(period):
-    print('send graph for', period)
-
+# main figures out which tweet is being requested and does
+# sanity checking on the request.
 if __name__ == "__main__":
     validTypes = ['count', 'pie', 'graph']
     validPeriod = ['w', 'm', 's', 'a']

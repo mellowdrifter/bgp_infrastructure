@@ -115,16 +115,26 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	}, nil
 }
 
-func (s *server) GetTweetData(ctx context.Context, t *pb.TweetType) (*pb.PrefixCount, error) {
+func (s *server) GetPrefixCount(ctx context.Context, m *pb.Empty) (*pb.Counts, error) {
 	// Get BGP data from the database to advertise to the world
-	log.Println("Fetching data for tweets")
-	log.Println(proto.MarshalTextString(t))
+	log.Println("Fetching prefix data for tweets")
 
-	prefixes, err := getPrefixCount(t)
+	counts, err := getCounts()
 	if err != nil {
 		return nil, fmt.Errorf("error occured: %v", err)
 	}
-	return prefixes, nil
+	return counts, nil
+}
+
+func (s *server) GetGraphInfo(ctx context.Context, m *pb.Empty) (*pb.Counts, error) {
+	// Get count data of various timescales to graph
+	log.Println("Fetching graph data for tweets")
+
+	counts, err := getGraph(period)
+	if err != nil {
+		return nil, fmt.Errorf("error occured: %v", err)
+	}
+	return counts, nil
 }
 
 func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {

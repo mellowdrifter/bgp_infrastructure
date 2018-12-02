@@ -4,9 +4,9 @@ package bgpinfo;
 
 service bgp_info {
     rpc add_latest(values) returns (result);
-    rpc get_tweet_data(tweet_type) returns (prefix_count);
     rpc alive(empty) returns (response);
     rpc is_primary(empty) returns (active);
+    rpc get_prefix_count(empty) returns (counts);
 }
 
 message values {
@@ -23,16 +23,6 @@ message values {
 message result {
     bool success = 1;
     string result = 2;
-}
-
-message tweet_type {
-    point_in_time action = 1;
-}
-
-enum point_in_time {
-    LATEST = 0;
-    SIXHOURSAGO = 1;
-    ONEWEEKAGO = 2;
 }
 
 // as_count will hold the total amount of unique ASs.
@@ -176,4 +166,16 @@ message empty {}
 
 message active{
     bool primary = 1;
+}
+
+// get_count is used to return all the required information to
+// send the six-hourly tweet
+message counts {
+    uint64 time = 1;
+    uint32 currentv4 = 2;
+    uint32 currentv6 = 3;
+    uint32 sixhoursv4 = 4;
+    uint32 sixhoursv6 = 5;
+    uint32 weekagov4 = 6;
+    uint32 weekagov6 = 7;
 }

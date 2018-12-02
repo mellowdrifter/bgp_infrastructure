@@ -78,31 +78,81 @@ func add(b *bgpUpdate) error {
 	return nil
 }
 
-func getPrefixCount(t *pb.TweetType) (*pb.PrefixCount, error) {
+func getCounts() (*pb.Counts, error) {
+	var counts pb.Counts
 	// format the query correctly
-	var sq string
-	switch t.GetAction() {
-	case pb.PointInTime_LATEST:
-		sq = `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+	sq1 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO ORDER BY TIME DESC LIMIT 1`
+	sq2 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
 				ORDER BY TIME DESC LIMIT 1`
-	case pb.PointInTime_SIXHOURSAGO:
-		sq = `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL ORDER BY TIME DESC LIMIT 1`
-	case pb.PointInTime_ONEWEEKAGO:
-		lastWeek := int32(time.Now().Unix())
-		sq = fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+	lastWeek := int32(time.Now().Unix())
+	sq3 := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
 				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
-	}
 
-	// pull the prefix counts
-	var counts pb.PrefixCount
-	err := db.QueryRow(sq).Scan(
+	err := db.QueryRow(sq1).Scan(
 		&counts.Time,
-		&counts.Active_4,
-		&counts.Active_6,
+		&counts.Currentv4,
+		&counts.Currentv6,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+	err = db.QueryRow(sq2).Scan(
+		&counts.Time,
+		&counts.Sixhoursv4,
+		&counts.Sixhoursv6,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+	err = db.QueryRow(sq3).Scan(
+		&counts.Time,
+		&counts.Weekagov4,
+		&counts.Weekagov6,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Can't extract information. Got %v", err)
 	}
 
 	return &counts, nil
+}
+
+func getGraph(period string) ([]string, error) {
+	var startTime int32
+	lastNight := int32(time.Now().Unix() - 66600)
+	switch period {
+	case "w":
+		startTime = lastNight - 604800
+	case "m":
+		startTime = lastNight - 2628000
+	case "s":
+		startTime = lastNight - 15768000
+	case "y":
+		startTime = lastNight - 31536000
+	}
+	sq := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >= '%d'
+						&& TIME <= '%d'`, startTime, lastNight)
+
+	rows, err := db.Query(sq)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		// This should be a single message
+		var time uint64
+		var v4Count uint32
+		var v6count uint32
+		err = rows.Scan(
+			// insert into that message struct
+			&time,
+			&v4Count,
+			&v6count,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("Can't extract information. Got %v", err)
+		}
+		// append that message into a list of messages
+	}
+	// return that list of messages
+	return listofInfo, nil
 }
