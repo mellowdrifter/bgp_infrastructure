@@ -137,6 +137,18 @@ func (s *server) GetGraphData(ctx context.Context, t *pb.Length) (*pb.GraphData,
 	return graphData, nil
 }
 
+func (s *server) GetPieSubnetData(ctx context.Context, m *pb.Empty) (*pb.Masks, error) {
+	// Get subnets mask data for pie graph.
+	log.Println("Fetching pie data for tweets")
+
+	masks, err := getMasks()
+	if err != nil {
+		return nil, fmt.Errorf("error occured: %v", err)
+	}
+	return masks, nil
+
+}
+
 func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {
 	// When incoming request, should do local health check.
 	// then return status with priority set

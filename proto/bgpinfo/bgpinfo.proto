@@ -8,6 +8,7 @@ service bgp_info {
     rpc is_primary(empty) returns (active);
     rpc get_prefix_count(empty) returns (counts);
     rpc get_graph_data(length) returns (graph_data);
+    rpc get_pie_subnet_data(empty) returns (masks);
 }
 
 message values {

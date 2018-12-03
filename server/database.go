@@ -155,3 +155,43 @@ func getGraph(period *pb.Length) (*pb.GraphData, error) {
 	// return that list of messages
 	return graphData, nil
 }
+
+func getMasks() (*pb.Masks, error) {
+	masks := pb.Masks{}
+	sq := `SELECT V4_08,V4_09,V4_10,V4_11,V4_12,V4_13,V4_14,
+			V4_15,V4_16,V4_17,V4_18,V4_19,V4_20,V4_21,V4_22,
+			V4_23,V4_24,V4COUNT,V6_48,V6_47,V6_46,V6_45,V6_44,
+			V6_43,V6_42,V6_41,V6_40,V6_39,V6_38,V6_37,V6_36,
+			V6_35,V6_34,V6_33,V6_32,V6_31,V6_30,V6_29,V6_28,
+			V6_27,V6_26,V6_25,V6_24,V6_23,V6_22,V6_21,V6_20,
+			V6_19,V6_18,V6_17,V6_16,V6_15,V6_14,V6_13,V6_12,
+			V6_11,V6_10,V6_09,V6_08,V6COUNT, TIME FROM INFO
+			ORDER BY TIME DESC LIMIT 1`
+
+	// Need to hold v4 and v6 total. Need to add v6 here as well
+	// Also what to do with the time?
+	err := db.QueryRow(sq).Scan(
+		&masks.V4_08,
+		&masks.V4_09,
+		&masks.V4_10,
+		&masks.V4_11,
+		&masks.V4_12,
+		&masks.V4_13,
+		&masks.V4_14,
+		&masks.V4_15,
+		&masks.V4_16,
+		&masks.V4_17,
+		&masks.V4_18,
+		&masks.V4_19,
+		&masks.V4_20,
+		&masks.V4_21,
+		&masks.V4_22,
+		&masks.V4_23,
+		&masks.V4_24,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+
+	return &masks, nil
+}
