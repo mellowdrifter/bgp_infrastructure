@@ -194,4 +194,5 @@ func getMasks() (*pb.Masks, error) {
 	}
 
 	return &masks, nil
+
 }
