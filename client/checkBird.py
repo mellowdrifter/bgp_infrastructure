@@ -2,7 +2,7 @@
 
 import psutil
 
-def isRun(process):
+def isRun(process: str):
     for proc in psutil.process_iter():
         if proc.name() == process:
             return True

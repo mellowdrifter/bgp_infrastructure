@@ -23,12 +23,13 @@ log = config.get('grpc', 'logfile')
 format_string = '%(levelname)s: %(asctime)s: %(message)s'
 logging.basicConfig(filename=log, level=logging.INFO, format=format_string)
 
-#Set up GRPC server details
+# Set up GRPC server details
 grpcserver = "%s:%s" % (server, port)
 channel = grpc.insecure_channel(grpcserver)
 stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 
-def get_data():
+
+def get_data() -> pb.values:
 
     # Prefix counts.
     logging.info('prefix count')
@@ -118,7 +119,7 @@ def get_data():
 
     return current_values
 
-def masker(mask4, mask6):
+def masker(mask4, mask6) -> pb.masks:
     masks = pb.masks(
         v4_08 = mask4[0],
         v4_09 = mask4[1],

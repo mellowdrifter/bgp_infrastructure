@@ -4,7 +4,7 @@ import subprocess
 import re
 
 
-def getSubnets():
+def getSubnets() -> (list, list):
     regex = r'(?<=\/)\d{1,3}'
     subnets4 = {}
     subnets6 = {}
@@ -32,13 +32,13 @@ def getSubnets():
 
     return subnet4, subnet6
 
-def getTotals():
+def getTotals() -> (list, list):
     total4 = subprocess.check_output("/usr/sbin/birdc 'show route count' | grep 'routes' | awk {'print $3, $6'}", shell=True).decode("utf-8")
     total6 = subprocess.check_output("/usr/sbin/birdc6 'show route count' | grep 'routes' | awk {'print $3, $6'}", shell=True).decode("utf-8")
 
     return total4.split(), total6.split()
 
-def getSrcAS():
+def getSrcAS() -> (int, int, int, int, int, int):
     as4  = subprocess.check_output("/usr/sbin/birdc 'show route primary' | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'", shell=True).decode("utf-8")
     as6  = subprocess.check_output("/usr/sbin/birdc6 'show route primary' | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'", shell=True).decode("utf-8")
     as4  = set(as4.split())         # Total number of unique IPv4 source AS numbers
@@ -50,7 +50,7 @@ def getSrcAS():
 
     return len(as4), len(as6), len(as10), len(as4_only), len(as6_only), len(as_both)
 
-def getPeers(family):
+def getPeers(family: int) -> (int, int):
     if family == 4:
         peers = int(subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l", shell=True).decode("utf-8"))
         state = int(subprocess.check_output("/usr/sbin/birdc 'show protocols' | awk {'print $6'} | grep Established | wc -l", shell=True).decode("utf-8"))
@@ -60,13 +60,13 @@ def getPeers(family):
 
     return peers, state
 
-def getLargeCommunitys():
+def getLargeCommunitys() -> (int, int):
     large4 = int(subprocess.check_output("/usr/sbin/birdc 'show route where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
     large6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route where bgp_large_community ~ [(*,*,*)]'| sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
 
     return large4, large6
 
-def getMem(family):
+def getMem(family: int) -> (int, int):
     values = {}
     if family == 4:
         mem = subprocess.check_output("/usr/sbin/birdc 'show mem'", shell=True).decode("utf-8")

@@ -24,7 +24,7 @@ def sendCount():
 def sendPie():
     print('send pie')
 
-def sendGraph(period):
+def sendGraph(period: str):
     print('send graph for', period)
     req = pb.length()
     if period == 'w':
@@ -45,7 +45,7 @@ def tweet(message, image, family, dryRun):
 
 
 # Each twitter account has their own keys
-def accountKeys(family):
+def accountKeys(family: int):
     config = configparser.ConfigParser()
     path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
     config.read(path)
