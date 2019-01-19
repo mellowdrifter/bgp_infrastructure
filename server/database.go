@@ -141,7 +141,6 @@ func getGraph(period *pb.Length) (*pb.GraphData, error) {
 	for rows.Next() {
 		var t46 pb.TimeV4V6
 		err = rows.Scan(
-			// insert into that message struct
 			&t46.Time,
 			&t46.V4,
 			&t46.V6,
@@ -149,7 +148,6 @@ func getGraph(period *pb.Length) (*pb.GraphData, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Can't extract information. Got %v", err)
 		}
-		// Add time interval to the list
 		graphData.Tick = append(graphData.Tick, &t46)
 	}
 	// return that list of messages

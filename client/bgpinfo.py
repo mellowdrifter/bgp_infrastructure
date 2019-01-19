@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+birdparse.py will check to ensure both bird anbd bird6 are running locally.
+It'll then call birdparse.py to get requested information and send it
+to the BGP collector service.
+
+This file is planned to be called via cron every five minutes
+"""
 
 import bgpinfo_pb2 as pb
 import bgpinfo_pb2_grpc
@@ -119,7 +126,7 @@ def get_data() -> pb.values:
 
     return current_values
 
-def masker(mask4, mask6) -> pb.masks:
+def masker(mask4: list, mask6: list) -> pb.masks:
     masks = pb.masks(
         v4_08 = mask4[0],
         v4_09 = mask4[1],

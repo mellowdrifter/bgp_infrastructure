@@ -27,10 +27,14 @@ func birdRunning() bool {
 	_, err := net.Dial("tcp", ":179")
 	if err != nil {
 		b4 = true
+	} else {
+		log.Printf("bird is not running")
 	}
 	_, err = net.Dial("tcp", "[::]179")
 	if err != nil {
 		b6 = true
+	} else {
+		log.Printf("bird6 is not running")
 	}
 	return b4 && b6
 }

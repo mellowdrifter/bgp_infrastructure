@@ -152,7 +152,9 @@ func (s *server) GetPieSubnetData(ctx context.Context, m *pb.Empty) (*pb.Masks, 
 func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {
 	// When incoming request, should do local health check.
 	// then return status with priority set
+	log.Println("checking if I am alive")
 	if isHealthy() {
+		log.Println("I am healthy")
 		return &pb.Response{
 			Status:   true,
 			Priority: uint32(cfg.priority),
@@ -160,20 +162,24 @@ func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error)
 	}
 
 	// If not healthy, return failed
+	log.Println("I am not healthy")
 	return &pb.Response{
 		Status: false,
 	}, nil
 }
 
 func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (*pb.Active, error) {
-	// If our priority is 0, then we are not primary
-	if cfg.priority == 0 {
+	log.Println("Checking to see if local device is primary")
+	// If our priority is 1, then we are not primary
+	if cfg.priority == 1 {
+		log.Println("My priority is set to 1, so I can't be primary")
 		return &pb.Active{}, nil
 	}
 
 	// Connect to peer server. If we can't connect, we are primary
 	conn, err := grpc.Dial(cfg.peer, grpc.WithInsecure())
 	if err != nil {
+		log.Println("Unable to connect to peer, so I must be primary")
 		return &pb.Active{
 			Primary: true,
 		}, err
@@ -184,17 +190,21 @@ func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (*pb.Active, error)
 	// Check to see if peer is okay, and if so it's priority
 	peerState, err := c.Alive(ctx, m)
 	if err != nil {
+		log.Println("Unable to connect to peer, so I must be primary")
 		return &pb.Active{
 			Primary: true,
 		}, err
 	}
 
-	// Not primary if our priority is higher than or equal, else we're primary at this point
+	// Not primary if our priority is lower than or equal, else we're primary at this point
+	p := uint32(cfg.priority)
 	if peerState.GetStatus() {
-		if uint32(cfg.priority) >= peerState.GetPriority() {
+		if p <= peerState.GetPriority() {
+			log.Printf("Peers priority is %d and mine is %d, so I am not primary", peerState.GetPriority(), p)
 			return &pb.Active{}, err
 		}
 	}
+	log.Printf("Peers priority is %d and mine is %d, so I am primary", peerState.GetPriority(), p)
 	return &pb.Active{
 		Primary: true,
 	}, nil

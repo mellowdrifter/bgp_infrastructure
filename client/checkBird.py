@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+checkBird.py checks to ensure both bird and bird6 are running.
+"""
 
 import psutil
 

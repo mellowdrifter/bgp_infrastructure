@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+tweet.py is used to interact with twitter. It will use
+the correct account details and send the requested messages.
+
+It also creates the visual graphs using matplotlib.
+"""
+
 
 import datetime
 import configparser
