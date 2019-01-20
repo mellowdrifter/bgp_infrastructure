@@ -106,7 +106,6 @@ def get_data() -> pb.values:
     mask4, mask6 = birdparse.getSubnets()
     masks = masker(mask4, mask6)
 
-    # TODO: Fix this. Seems to be wrong
     logging.info('large communities')
     large4, large6 = birdparse.getLargeCommunitys()
     large = pb.large_community(

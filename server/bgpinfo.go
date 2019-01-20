@@ -188,12 +188,12 @@ func (s *server) IsPrimary(ctx context.Context, m *pb.Empty) (*pb.Active, error)
 	c := pb.NewBgpInfoClient(conn)
 
 	// Check to see if peer is okay, and if so it's priority
-	peerState, err := c.Alive(ctx, m)
-	if err != nil {
-		log.Println("Unable to connect to peer, so I must be primary")
+	peerState, _ := c.Alive(ctx, m)
+	if !peerState.GetStatus() {
+		log.Println("Peer is not healthy, so I am primary")
 		return &pb.Active{
 			Primary: true,
-		}, err
+		}, nil
 	}
 
 	// Not primary if our priority is lower than or equal, else we're primary at this point

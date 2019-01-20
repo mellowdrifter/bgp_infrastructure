@@ -4,7 +4,7 @@ package main
 
 import (
 	"log"
-	"net"
+	"os/exec"
 )
 
 func isHealthy() bool {
@@ -24,17 +24,17 @@ func dbHealth() bool {
 // Is bird running
 func birdRunning() bool {
 	var b4, b6 bool
-	_, err := net.Dial("tcp", ":179")
-	if err != nil {
+	cmd := exec.Command("pgrep", "bird$")
+	out, _ := cmd.CombinedOutput()
+	if len(out) > 0 {
+		log.Printf("bird4 is running")
 		b4 = true
-	} else {
-		log.Printf("bird is not running")
 	}
-	_, err = net.Dial("tcp", "[::]179")
-	if err != nil {
+	cmd = exec.Command("pgrep", "bird6$")
+	out, _ = cmd.CombinedOutput()
+	if len(out) > 0 {
+		log.Printf("bird6 is running")
 		b6 = true
-	} else {
-		log.Printf("bird6 is not running")
 	}
 	return b4 && b6
 }
