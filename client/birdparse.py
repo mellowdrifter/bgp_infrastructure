@@ -66,8 +66,8 @@ def getPeers(family: int) -> (int, int):
     return peers, state
 
 def getLargeCommunitys() -> (int, int):
-    large4 = int(subprocess.check_output("/usr/sbin/birdc 'show route where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
-    large6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route where bgp_large_community ~ [(*,*,*)]'| sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
+    large4 = int(subprocess.check_output("/usr/sbin/birdc 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
+    large6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route primary where bgp_large_community ~ [(*,*,*)]'| sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
 
     return large4, large6
 
