@@ -36,7 +36,6 @@ func birdRunning() bool {
 		log.Printf("bird6 is running")
 		b6 = true
 	}
-
 	return b4 && b6
 }
 
