@@ -80,16 +80,19 @@ func add(b *bgpUpdate) error {
 
 func getCounts() (*pb.Counts, error) {
 	var counts pb.Counts
-	// format the query correctly
 	sq1 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO ORDER BY TIME DESC LIMIT 1`
-	sq2 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
-				ORDER BY TIME DESC LIMIT 1`
-	lastWeek := int32(time.Now().Unix()) - 604800
-	sq3 := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
-				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
-
-	err := db.QueryRow(sq2).Scan(
+	err := db.QueryRow(sq1).Scan(
 		&counts.Time,
+		&counts.Currentv4,
+		&counts.Currentv6,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+
+	sq2 := `SELECT V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+			ORDER BY TIME DESC LIMIT 1`
+	err = db.QueryRow(sq2).Scan(
 		&counts.Sixhoursv4,
 		&counts.Sixhoursv6,
 	)
@@ -97,8 +100,10 @@ func getCounts() (*pb.Counts, error) {
 		return nil, fmt.Errorf("Can't extract information. Got %v", err)
 	}
 
+	lastWeek := int32(time.Now().Unix()) - 604800
+	sq3 := fmt.Sprintf(`SELECT V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
 	err = db.QueryRow(sq3).Scan(
-		&counts.Time,
 		&counts.Weekagov4,
 		&counts.Weekagov6,
 	)
@@ -106,10 +111,10 @@ func getCounts() (*pb.Counts, error) {
 		return nil, fmt.Errorf("Can't extract information. Got %v", err)
 	}
 
-	err = db.QueryRow(sq1).Scan(
-		&counts.Time,
-		&counts.Currentv4,
-		&counts.Currentv6,
+	sq4 := `SELECT V4_24, V6_48 FROM INFO ORDER BY TIME DESC LIMIT 1`
+	err = db.QueryRow(sq4).Scan(
+		&counts.Slash24,
+		&counts.Slash48,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Can't extract information. Got %v", err)

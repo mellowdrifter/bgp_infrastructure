@@ -192,6 +192,8 @@ message counts {
     uint32 sixhoursv6 = 5;
     uint32 weekagov4 = 6;
     uint32 weekagov6 = 7;
+    uint32 slash24 = 8;
+    uint32 slash48 = 9;
 }
 
 message time_v4_v6 {

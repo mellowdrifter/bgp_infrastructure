@@ -50,15 +50,6 @@ def update(deltaH: int, deltaW:int) -> str:
 
 
 def sendCount(dry: bool) -> (str, str):
-    """
-    time: 1543096519
-    currentv4: 754727
-    currentv6: 62466
-    sixhoursv4: 740192
-    sixhoursv6: 60556
-    weekagov4: 740192
-    weekagov6: 60556
-    """
     print('Running send counts')
     counts = stub.get_prefix_count(pb.empty())
 
@@ -73,6 +64,10 @@ def sendCount(dry: bool) -> (str, str):
 
     t4 += update(v4_deltaH, v4_deltaW)
     t6 += update(v6_deltaH, v6_deltaW)
+
+    # What percentage is taken up by /24 and /48?
+    t4 += ". " + str(round(counts.slash24/float(counts.currentv4) * 100, 2)) + "% of prefixes are /24."
+    t6 += ". " + str(round(counts.slash48/float(counts.currentv6) * 100, 2)) + "% of prefixes are /48."
 
     if dry:
         print("DRY RUN!!!")
