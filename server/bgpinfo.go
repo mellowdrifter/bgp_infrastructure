@@ -105,9 +105,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	// update database
 	err := add(update)
 	if err != nil {
-		return &pb.Result{
-			Success: false,
-		}, err
+		return &pb.Result{}, err
 	}
 
 	return &pb.Result{
@@ -146,7 +144,18 @@ func (s *server) GetPieSubnetData(ctx context.Context, m *pb.Empty) (*pb.Masks, 
 		return nil, fmt.Errorf("error occured: %v", err)
 	}
 	return masks, nil
+}
 
+func (s *server) SetTweetBit(ctx context.Context, t *pb.TimeV4V6) (*pb.Result, error) {
+	// Set the tweet bit so we know the values tweeted in the past
+	log.Println("Setting the tweet bit")
+	err := setTweetBit(t)
+	if err != nil {
+		return &pb.Result{}, err
+	}
+	return &pb.Result{
+		Success: true,
+	}, nil
 }
 
 func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {

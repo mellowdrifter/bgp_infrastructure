@@ -88,15 +88,7 @@ func getCounts() (*pb.Counts, error) {
 	sq3 := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
 				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
 
-	err := db.QueryRow(sq1).Scan(
-		&counts.Time,
-		&counts.Currentv4,
-		&counts.Currentv6,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("Can't extract information. Got %v", err)
-	}
-	err = db.QueryRow(sq2).Scan(
+	err := db.QueryRow(sq2).Scan(
 		&counts.Time,
 		&counts.Sixhoursv4,
 		&counts.Sixhoursv6,
@@ -104,10 +96,20 @@ func getCounts() (*pb.Counts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Can't extract information. Got %v", err)
 	}
+
 	err = db.QueryRow(sq3).Scan(
 		&counts.Time,
 		&counts.Weekagov4,
 		&counts.Weekagov6,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Can't extract information. Got %v", err)
+	}
+
+	err = db.QueryRow(sq1).Scan(
+		&counts.Time,
+		&counts.Currentv4,
+		&counts.Currentv6,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("Can't extract information. Got %v", err)
@@ -193,4 +195,14 @@ func getMasks() (*pb.Masks, error) {
 
 	return &masks, nil
 
+}
+
+func setTweetBit(t *pb.TimeV4V6) error {
+	u := fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t.GetTime())
+	log.Printf(u)
+	_, err := db.Exec(u)
+	if err != nil {
+		return err
+	}
+	return nil
 }

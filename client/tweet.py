@@ -23,10 +23,66 @@ import bgpinfo_pb2_grpc
 import grpc
 
 
-def sendCount():
+def update(deltaH: int, deltaW:int) -> str:
+    if deltaH == 1:
+        update = "This is 1 more prefix than 6 hours ago "
+    elif deltaH == -1:
+        update = "This is 1 less prefix than 6 hours ago "
+    elif deltaH < 0:
+        update = "This is " + str(-deltaH) + " fewer prefixes than 6 hours ago "
+    elif deltaH > 0:
+        update = "This is " + str(deltaH) + " more prefixes than 6 hours ago "
+    else:
+        update = "No change in the amount of prefixes from 6 hours ago "
+
+    if deltaW == 1:
+        update += "and 1 more than a week ago"
+    elif deltaW == -1:
+        update += "and 1 less than a week ago"
+    elif deltaW < 0:
+        update += "and " + str(-deltaW) + " fewer than a week ago"
+    elif deltaW > 0:
+        update += "and " + str(deltaW) + " more than a week ago"
+    else:
+        update += "and no change in the amount from a week ago"
+
+    return update
+
+
+def sendCount(dry: bool) -> (str, str):
+    """
+    time: 1543096519
+    currentv4: 754727
+    currentv6: 62466
+    sixhoursv4: 740192
+    sixhoursv6: 60556
+    weekagov4: 740192
+    weekagov6: 60556
+    """
     print('Running send counts')
-    result = stub.get_prefix_count(pb.empty())
-    print(result)
+    counts = stub.get_prefix_count(pb.empty())
+
+    t4 = "I see " + str(counts.currentv4) + " IPv4 prefixes. "
+    t6 = "I see " + str(counts.currentv6) + " IPv6 prefixes. "
+
+    # Work out deltas
+    v4_deltaH = counts.currentv4 - counts.sixhoursv4
+    v6_deltaH = counts.currentv6 - counts.sixhoursv6
+    v4_deltaW = counts.currentv4 - counts.weekagov4
+    v6_deltaW = counts.currentv6 - counts.weekagov6
+
+    t4 += update(v4_deltaH, v4_deltaW)
+    t6 += update(v6_deltaH, v6_deltaW)
+
+    if dry:
+        print("DRY RUN!!!")
+    else:
+        print(counts.time)
+        stub.set_tweet_bit(pb.time_v4_v6(
+            time = counts.time
+        ))
+
+    return t4, t6
 
 def sendPie():
     print('send pie')
@@ -46,6 +102,7 @@ def sendGraph(period: str):
     print(len(result.tick))
 
 def tweet(message, image, family, dryRun):
+    suffix = str(config.get('tweet', 'suffix'))
     if dryRun:
         print(message)
         return
@@ -80,8 +137,12 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--dry_run', required=False)
     args = parser.parse_args()
 
+
+    dry = False
+
     if args.dry_run:
         print("will dry run")
+        dry = True
     else:
         print("Won't dry run")
 
@@ -105,7 +166,7 @@ if __name__ == "__main__":
         sys.exit()
 
     if args.type == 'count':
-        sendCount()
+        print(sendCount(dry))
     elif args.type == 'pie':
         sendPie()
     elif args.type == 'graph':

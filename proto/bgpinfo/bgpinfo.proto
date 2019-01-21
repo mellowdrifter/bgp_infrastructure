@@ -9,6 +9,7 @@ service bgp_info {
     rpc get_prefix_count(empty) returns (counts);
     rpc get_graph_data(length) returns (graph_data);
     rpc get_pie_subnet_data(empty) returns (masks);
+    rpc set_tweet_bit(time_v4_v6) returns (result);
 }
 
 message values {
