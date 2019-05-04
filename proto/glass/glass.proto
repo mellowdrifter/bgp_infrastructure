@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package glass;
 
-service bgp_info {
+service looking_glass {
 
     // check will return something.
     //rpc check(check_request) returns (check_response);
