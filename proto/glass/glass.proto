@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package glass;
+
+service bgp_info {
+
+    // check will return something.
+    //rpc check(check_request) returns (check_response);
+
+    // origin will return the origin AS number
+    rpc origin(origin_request) returns (origin_response);
+
+    // aspath will return the aspath, except for the first to hide my peers.
+    rpc aspath(aspath_request) returns (aspath_response);
+
+    // route will return the full ip route output.
+    rpc route(route_request) returns (route_response);
+
+    // asname will return the AS name.
+    rpc asname(asname_request) returns (asname_response);
+}
+
+message ip_address {
+    // An address is made up of a string prefix and a int mask. Both IPv4 and IPv6.
+    string address = 1;
+    uint32 mask = 2;
+}
+
+message origin_request {
+    ip_address ip_address = 1;
+}
+
+message origin_response {
+    // origin_response shows the current origin ASN for active route.
+    uint32 origin_asn = 1;
+}
+
+message aspath_request {
+    ip_address ip_address = 1;
+}
+
+message aspath_response {
+    // aspath_response shows the current aspath for the active route.
+    repeated uint32 asn = 1;
+}
+
+message route_request {
+    ip_address ip_address = 1;
+}
+
+message route_response {
+    // route_response shows the current prefix/mask for the active route.
+    ip_address ip_address = 1;
+}
+
+message asname_request {
+    uint32 as_number = 1;
+}
+
+message asname_response {
+    // asname_response returns the string name for the passed AS number.
+    string as_name = 1;
+}

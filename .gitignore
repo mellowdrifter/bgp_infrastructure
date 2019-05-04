@@ -5,6 +5,7 @@ client/bgpinfo_pb2_grpc.py
 client/check.py
 proto/bgpinfo/*.go
 proto/bgpinfo/*.py
+proto/glass/*.go
+proto/glass/*.py
 keepalive/*.cc
 keepalive/*.h
-
