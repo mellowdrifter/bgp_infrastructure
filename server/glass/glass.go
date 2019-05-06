@@ -15,8 +15,8 @@ type server struct{}
 
 func main() {
 	// set up gRPC server
-	log.Printf("Listening on port %d\n", 9999)
-	lis, err := net.Listen("tcp", ":9999")
+	log.Printf("Listening on port %d\n", 2179)
+	lis, err := net.Listen("tcp", ":2179")
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}

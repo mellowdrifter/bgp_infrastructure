@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 birdparse.py does the grunt work of pulling information from bird.
-Information is the formatted and compiled into the correct structure
+Information is formatted and compiled into the correct structure
 and sent back to bgpinfo.py
 """
 

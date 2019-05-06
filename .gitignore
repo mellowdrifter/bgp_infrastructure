@@ -9,3 +9,4 @@ proto/glass/*.go
 proto/glass/*.py
 keepalive/*.cc
 keepalive/*.h
+server/twitter_glass/config.ini
