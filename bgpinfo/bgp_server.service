@@ -1,0 +1,15 @@
+[Unit]
+Description=BGP RPC Server
+Wants=network.target
+After=mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/scripts/bgp_infrastructure/server
+ExecStart=/root/scripts/bgp_infrastructure/server/bgpinfo
+Restart=always
+RestartSec=20s
+
+[Install]
+WantedBy=multi-user.target
