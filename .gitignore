@@ -10,3 +10,7 @@ proto/glass/*.py
 keepalive/*.cc
 keepalive/*.h
 server/twitter_glass/config.ini
+server/twitter_glass/twitter_glass
+twitter_glass/config.ini
+.vscode/*
+tweeter/config.ini
