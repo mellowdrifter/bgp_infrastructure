@@ -15,3 +15,6 @@ twitter_glass/config.ini
 .vscode/*
 tweeter/config.ini
 bgpinfo/bgpinfo
+tweeter/__pycache__/*
+tweeter/bgpinfo_pb2.py
+tweeter/bgpinfo_pb2_grpc.py
