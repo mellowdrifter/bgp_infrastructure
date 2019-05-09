@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import bgpinfo_pb2 as pb
+import bgpinfo_pb2_grpc
 import configparser
 import grpc
 import logging
@@ -26,7 +28,17 @@ def getCurrent():
     """Grabs current v4 and v6 table count.
     This function will grab the current
     v4 and v6 count to tweet.
+
+    requires:
+     - address family
+     - current count
+     - count from 6 hours ago
+     - count from a week ago
+     - How many /24 or /48
+     - ASNs? Not sure anymore
     """
+    result = stub.get_prefix_count(pb.empty())
+    print(result)
 
 def getWeek():
     """Grabs weekly data for tweet.
@@ -89,4 +101,4 @@ def tweet(
 
 
 if __name__ == "__main__":
-  do_something)()
+  getCurrent()

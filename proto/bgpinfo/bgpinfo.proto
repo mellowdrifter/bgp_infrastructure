@@ -4,16 +4,11 @@ package bgpinfo;
 
 service bgp_info {
     rpc add_latest(values) returns (result);
-    rpc alive(empty) returns (response);
-    rpc is_primary(empty) returns (active);
-    rpc get_prefix_count(empty) returns (counts);
-    rpc get_graph_data(length) returns (graph_data);
-    rpc get_pie_subnet_data(empty) returns (masks);
-    rpc set_tweet_bit(time_v4_v6) returns (result);
+    rpc get_prefix_count(empty) returns (prefix_count_response);
 }
 
 message values {
-    // UTC in UNIX time
+    // Values holds the data required to update the database every five minutes.
     uint64 time = 1;
     prefix_count prefix_count = 2;
     peer_count peers = 3;
@@ -23,24 +18,35 @@ message values {
     large_community large_community = 7;
 }
 
+
+message empty {
+    // Sometimes we just need to request last data. No inputs required.
+}
+
+message prefix_count_response {
+    // Used to formulate a tweet every six hours with
+    // the current status, plus compared to both 6 hours ago
+    // and a week ago. Contains count of /24 and /48.
+    uint32 active_4 = 1;
+    uint32 active_6 = 2;
+    uint32 sixhoursv4 = 3;
+    uint32 sixhoursv6 = 4;
+    uint32 weekagov4 = 5;
+    uint32 weekagov6 = 6;
+    uint32 slash24 = 7;
+    uint32 slash48 = 8;
+    uint64 time = 9;
+}
+
 message result {
+    // Bool stating whether the update was a success or not.
+    // Ragerdless of result, we can check that via the returned result.
     bool success = 1;
     string result = 2;
 }
 
-message length {
-    time_length time = 1;
-}
-
-enum time_length {
-    WEEK = 0;
-    MONTH = 1;
-    SIXMONTH = 2;
-    YEAR = 3;
-}
-
-// as_count will hold the total amount of unique ASs.
 message as_count {
+    // as_count will hold the total amount of unique ASs.
     // Total number of unique IPv4 source AS numbers.
     uint32 as4 = 1;
     // Total number of unique IPv6 source AS numbers.
@@ -56,8 +62,8 @@ message as_count {
 
 }
 
-// total memory used by the daemon
 message memory {
+    // total memory used by the daemon
     address_family family = 1;
     memstats memstats = 2;
 }
@@ -70,8 +76,8 @@ message memstats {
     string roa = 5;
 }
 
-// how many peers do I have
 message peer_count {
+    // how many peers do I have
     uint32 peer_count_4 = 1;
     uint32 peer_up_4 = 2;
     uint32 peer_count_6 = 3;
@@ -83,8 +89,8 @@ enum address_family {
     IPV4 = 1;
 }
 
-// prefix counts. Most used info
 message prefix_count {
+    // prefix counts. Most used info
     uint32 total_4 = 1;
     uint32 active_4 = 2;
     uint32 total_6 = 3;
@@ -92,8 +98,8 @@ message prefix_count {
     uint64 time = 5;
 }
 
-// how many subnets of each mask is active
 message masks {
+    // how many subnets of each mask is active
     uint32 v4_08 = 1;
     uint32 v4_09 = 2;
     uint32 v4_10 = 3;
@@ -154,54 +160,13 @@ message masks {
     uint32 v6_48 = 58;
 }
 
-// Large Community count (RFC 8092)
-message large_community {
-    uint32 c4 = 1;
-    uint32 c6 = 2;
-}
-
-message four_byte_asn {
-    uint32 c4 = 1;
-    uint32 c6 = 2;
-}
-
-// RPKI (RFC 6480)
-message roa {
-    uint32 roa_valid = 1;
-    uint32 roa_invalid = 2;
-}
-
 message response {
     bool status = 1;
     uint32 priority = 2;
 }
 
-message empty {}
-
-message active{
-    bool primary = 1;
-}
-
-// get_count is used to return all the required information to
-// send the six-hourly tweet
-message counts {
-    uint64 time = 1;
-    uint32 currentv4 = 2;
-    uint32 currentv6 = 3;
-    uint32 sixhoursv4 = 4;
-    uint32 sixhoursv6 = 5;
-    uint32 weekagov4 = 6;
-    uint32 weekagov6 = 7;
-    uint32 slash24 = 8;
-    uint32 slash48 = 9;
-}
-
-message time_v4_v6 {
-    uint64 time = 1;
-    uint32 v4 = 2;
-    uint32 v6 = 3;
-}
-
-message graph_data {
-    repeated time_v4_v6 tick = 1;
+message large_community {
+    // Large Community count (RFC 8092)
+    uint32 c4 = 1;
+    uint32 c6 = 2;
 }

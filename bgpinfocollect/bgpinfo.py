@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-birdparse.py will check to ensure both bird anbd bird6 are running locally.
+birdparse.py will check to ensure both bird and bird6 are running locally.
 It'll then call birdparse.py to get requested information and send it
 to the BGP collector service.
 
@@ -75,7 +75,6 @@ def get_data() -> pb.values:
 
 
     # Memory use
-    # TODO: Remove this from everywhere. I really don't care about memory usage
     logging.info('memory')
     bgp4Mem = birdparse.getMem(4)
     bgp6Mem = birdparse.getMem(6)

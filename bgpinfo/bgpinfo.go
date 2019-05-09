@@ -46,14 +46,6 @@ func init() {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
 	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
-	cfg.peer = cf.Section("failover").Key("peer").String()
-	if cfg.peer == "" {
-		log.Fatalf("failover peer must be set")
-	}
-	cfg.priority, err = cf.Section("failover").Key("priority").Uint()
-	if err != nil {
-		log.Fatal(err)
-	}
 	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
 	cfg.db.dbname = cf.Section("sql").Key("database").String()
 	cfg.db.user = cf.Section("sql").Key("username").String()
@@ -113,66 +105,14 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	}, nil
 }
 
-func (s *server) GetPrefixCount(ctx context.Context, m *pb.Empty) (*pb.Counts, error) {
-	// Get BGP data from the database to advertise to the world
-	log.Println("Fetching prefix data for tweets")
+func (s *server) GetPrefixCount(ctx context.Context, v *pb.Empty) (*pb.PrefixCountResponse, error) {
+	// Pull prefix counts for tweeting. Latest, 6 hours ago, and a week ago.
+	log.Println("Running GetPrefixCount")
 
-	counts, err := getCounts()
+	res, err := getPrefixCountHelper()
 	if err != nil {
-		return nil, fmt.Errorf("error occured: %v", err)
-	}
-	return counts, nil
-}
-
-func (s *server) GetGraphData(ctx context.Context, t *pb.Length) (*pb.GraphData, error) {
-	// Get count data of various timescales to graph
-	log.Println("Fetching graph data for tweets")
-
-	graphData, err := getGraph(t)
-	if err != nil {
-		return nil, fmt.Errorf("error occured: %v", err)
-	}
-	return graphData, nil
-}
-
-func (s *server) GetPieSubnetData(ctx context.Context, m *pb.Empty) (*pb.Masks, error) {
-	// Get subnets mask data for pie graph.
-	log.Println("Fetching pie data for tweets")
-
-	masks, err := getMasks()
-	if err != nil {
-		return nil, fmt.Errorf("error occured: %v", err)
-	}
-	return masks, nil
-}
-
-func (s *server) SetTweetBit(ctx context.Context, t *pb.TimeV4V6) (*pb.Result, error) {
-	// Set the tweet bit so we know the values tweeted in the past
-	log.Println("Setting the tweet bit")
-	err := setTweetBit(t)
-	if err != nil {
-		return &pb.Result{}, err
-	}
-	return &pb.Result{
-		Success: true,
-	}, nil
-}
-
-func (s *server) Alive(ctx context.Context, req *pb.Empty) (*pb.Response, error) {
-	// When incoming request, should do local health check.
-	// then return status with priority set
-	log.Println("checking if I am alive")
-	if isHealthy() {
-		log.Println("I am healthy")
-		return &pb.Response{
-			Status:   true,
-			Priority: uint32(cfg.priority),
-		}, nil
+		return &pb.PrefixCountResponse{}, err
 	}
 
-	// If not healthy, return failed
-	log.Println("I am not healthy")
-	return &pb.Response{
-		Status: false,
-	}, nil
+	return res, nil
 }
