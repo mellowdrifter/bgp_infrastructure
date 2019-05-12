@@ -5,6 +5,7 @@ package bgpinfo;
 service bgp_info {
     rpc add_latest(values) returns (result);
     rpc get_prefix_count(empty) returns (prefix_count_response);
+    rpc get_pie_subnets(empty) returns (pie_subnets_response);
 }
 
 message values {
@@ -37,6 +38,16 @@ message prefix_count_response {
     uint32 slash48 = 8;
     uint64 time = 9;
 }
+
+message pie_subnets_response { 
+    // Used to create a pie graph showing the percentage
+    // that each subnet is using from the complete total.
+    uint32 v4_total = 1;
+    uint32 v6_total = 2;
+    masks masks = 3;
+    uint64 time = 4;
+}
+
 
 message result {
     // Bool stating whether the update was a success or not.

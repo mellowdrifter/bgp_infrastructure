@@ -128,43 +128,52 @@ func getPrefixCountHelper() (*pb.PrefixCountResponse, error) {
 	return &data, nil
 }
 
-//func getGraph(period *pb.Length) (*pb.GraphData, error) {
-//var startTime int32
-//graphData := &pb.GraphData{}
-//lastNight := int32(time.Now().Unix() - 66600)
-//switch period.GetTime() {
-//case pb.TimeLength_WEEK:
-//startTime = lastNight - 604800
-//case pb.TimeLength_MONTH:
-//startTime = lastNight - 2628000
-//case pb.TimeLength_SIXMONTH:
-//startTime = lastNight - 15768000
-//case pb.TimeLength_YEAR:
-//startTime = lastNight - 31536000
-//}
-//sq := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >= '%d'
-//&& TIME <= '%d'`, startTime, lastNight)
+func getPieSubnetsHelper() (*pb.PieSubnetsResponse, error) {
+	var pie pb.PieSubnetsResponse
+	// Need to separate this field and add later.
+	var masks pb.Masks
 
-//rows, err := db.Query(sq)
-//if err != nil {
-//return nil, fmt.Errorf("Can't extract information. Got %v", err)
-//}
-//defer rows.Close()
-//for rows.Next() {
-//var t46 pb.TimeV4V6
-//err = rows.Scan(
-//&t46.Time,
-//&t46.V4,
-//&t46.V6,
-//)
-//if err != nil {
-//return nil, fmt.Errorf("Can't extract information. Got %v", err)
-//}
-//graphData.Tick = append(graphData.Tick, &t46)
-//}
-//// return that list of messages
-//return graphData, nil
-//}
+	err := db.QueryRow(`SELECT V4_08,V4_09,V4_10,V4_11,V4_12,V4_13,V4_14,
+        V4_15,V4_16,V4_17,V4_18,V4_19,V4_20,V4_21,V4_22,
+        V4_23,V4_24,V4COUNT,V6_48,V6_47,V6_46,V6_45,V6_44,
+        V6_43,V6_42,V6_41,V6_40,V6_39,V6_38,V6_37,V6_36,
+        V6_35,V6_34,V6_33,V6_32,V6_31,V6_30,V6_29,V6_28,
+        V6_27,V6_26,V6_25,V6_24,V6_23,V6_22,V6_21,V6_20,
+        V6_19,V6_18,V6_17,V6_16,V6_15,V6_14,V6_13,V6_12,
+		V6_11,V6_10,V6_09,V6_08,V6COUNT,
+        TIME FROM INFO ORDER BY TIME DESC LIMIT 1`).Scan(
+		&masks.V4_08, &masks.V4_09, &masks.V4_10,
+		&masks.V4_11, &masks.V4_12, &masks.V4_13,
+		&masks.V4_14, &masks.V4_15, &masks.V4_16,
+		&masks.V4_17, &masks.V4_18, &masks.V4_19,
+		&masks.V4_20, &masks.V4_21, &masks.V4_22,
+		&masks.V4_23, &masks.V4_24, &pie.V4Total,
+		&masks.V6_48, &masks.V6_47, &masks.V6_46,
+		&masks.V6_45, &masks.V6_44, &masks.V6_43,
+		&masks.V6_42, &masks.V6_41, &masks.V6_40,
+		&masks.V6_39, &masks.V6_38, &masks.V6_37,
+		&masks.V6_36, &masks.V6_35, &masks.V6_34,
+		&masks.V6_33, &masks.V6_32, &masks.V6_31,
+		&masks.V6_30, &masks.V6_29, &masks.V6_28,
+		&masks.V6_27, &masks.V6_26, &masks.V6_25,
+		&masks.V6_24, &masks.V6_23, &masks.V6_22,
+		&masks.V6_21, &masks.V6_20, &masks.V6_19,
+		&masks.V6_18, &masks.V6_17, &masks.V6_16,
+		&masks.V6_15, &masks.V6_14, &masks.V6_13,
+		&masks.V6_12, &masks.V6_11, &masks.V6_10,
+		&masks.V6_09, &masks.V6_08, &pie.V6Total,
+		&pie.Time,
+	)
+	if err != nil {
+		log.Printf("ERROR: %s\n", err)
+		return nil, err
+	}
+	// Add masks to the pie response.
+	pie.Masks = &masks
+
+	return &pie, nil
+
+}
 
 //func getMasks() (*pb.Masks, error) {
 //masks := pb.Masks{}

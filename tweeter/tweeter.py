@@ -6,6 +6,8 @@ import bgpinfo_pb2_grpc
 import configparser
 import grpc
 import logging
+import matplotlib
+matplotlib.use('Agg')
 import os
 
 # Load config
@@ -36,12 +38,10 @@ def getCurrent():
     v4 and v6 count to tweet.
 
     requires:
-     - address family
      - current count
      - count from 6 hours ago
      - count from a week ago
      - How many /24 or /48
-     - ASNs? Not sure anymore
     """
     result = stub.get_prefix_count(pb.empty())
     
@@ -63,13 +63,9 @@ def getCurrent():
     delta4 += '. ' + str(percent_v4) + '% of prefixes are /24.'
     delta6 += '. ' + str(percent_v6) + '% of prefixes are /48.'
 
-    if args.test:
-      print(delta4)
-      print(delta6)
-    else:
-      tweet(4, delta4, None)
-      tweet(6, delta6, None)
-      setTweetBit(result.time)
+    tweet(4, delta4, None)
+    tweet(6, delta6, None)
+    setTweetBit(result.time)
 
 
 def getWeek():
@@ -101,13 +97,20 @@ def getPrefixPie():
     Grab the latest subnet size count and
     create pie graphs with those counts
     for each address family
+    requires:
+     - current spread of all subnet sizes.
     """
+    result = stub.get_pie_subnets(pb.empty())
+    print(result)
 
-def setTweetBit():
+def setTweetBit(time: str):
     """Set tweet bit.
     Updates database to show the latest tweeted
     values. Useful when comparing historically.
     """
+    if args.test:
+        print("Will set tweet bit with time {}".format(time))
+        return
 
 def plotGraph(
     entries: list(),
@@ -158,8 +161,12 @@ def tweet(
     Tweets the message, and image if it exists.
     Account used to determine which account to use.
     """
+    if args.test:
+        print("account: {}, message: {}".format(account, message))
+        return
 
 
 
 if __name__ == "__main__":
   getCurrent()
+  getPrefixPie()

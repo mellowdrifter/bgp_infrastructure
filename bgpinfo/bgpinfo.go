@@ -97,6 +97,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	// update database
 	err := add(update)
 	if err != nil {
+		log.Printf("Got error in AddLatest: %s\n", err)
 		return &pb.Result{}, err
 	}
 
@@ -111,7 +112,21 @@ func (s *server) GetPrefixCount(ctx context.Context, v *pb.Empty) (*pb.PrefixCou
 
 	res, err := getPrefixCountHelper()
 	if err != nil {
+		log.Printf("Got error in GetPrefixCount: %s\n", err)
 		return &pb.PrefixCountResponse{}, err
+	}
+
+	return res, nil
+}
+
+func (s *server) GetPieSubnets(ctx context.Context, v *pb.Empty) (*pb.PieSubnetsResponse, error) {
+	// Pull subnets counts to create Pie graph.
+	log.Println("Running GetPieSubnets")
+
+	res, err := getPieSubnetsHelper()
+	if err != nil {
+		log.Printf("Got error in GetPieSubnets: %s\n", err)
+		return &pb.PieSubnetsResponse{}, err
 	}
 
 	return res, nil
