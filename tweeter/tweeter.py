@@ -163,6 +163,10 @@ def createPieGraph(
     v6_explode = (0, 0, 0, 0, 0, 0, 0.1)
     v6_colours = ['lightgreen', 'burlywood', 'lightskyblue', 'violet', 'linen', 'lightcoral', 'gold']
 
+    # TODO: files need to be saved to a bytes object and returned so I don't
+    # need to save to disc. Can dump image to disc in the tweet section
+    # if running a test
+
     # Start with the IPv4 pie
     plt.figure(figsize=(12, 10))
     plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
@@ -181,7 +185,7 @@ def createPieGraph(
             autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
     plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
-    plt.savefig("v5.png")
+    plt.savefig("v6.png")
 
 
 
