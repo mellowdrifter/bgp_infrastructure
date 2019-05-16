@@ -6,6 +6,7 @@ import bgpinfo_pb2_grpc
 import configparser
 import datetime
 import grpc
+import io
 import logging
 import matplotlib
 matplotlib.use('Agg')
@@ -109,7 +110,13 @@ def getPrefixPie():
     """
     result = stub.get_pie_subnets(pb.empty())
     print(result)
-    createPieGraph(result)
+    v4, v6 = createPieGraph(result)
+    # TODO - This will get sent to tweet. Here
+    # for testing
+    with open("444.png", "wb") as f:
+        f.write(v4.read())
+    with open("666.png", "wb") as f:
+        f.write(v6.read())
 
 def setTweetBit(time: str):
     """Set tweet bit.
@@ -133,8 +140,7 @@ def createPlotGraph(
 
 def createPieGraph(
     entries: pb.pie_subnets_response,
-    ):
-    #) -> Tuple[bytes(), bytes()]:
+    ) -> Tuple[io.BytesIO, io.BytesIO]:
 
     # Extract the values and all the smaller prefix lengths
     v4_subnets = []
@@ -163,10 +169,6 @@ def createPieGraph(
     v6_explode = (0, 0, 0, 0, 0, 0, 0.1)
     v6_colours = ['lightgreen', 'burlywood', 'lightskyblue', 'violet', 'linen', 'lightcoral', 'gold']
 
-    # TODO: files need to be saved to a bytes object and returned so I don't
-    # need to save to disc. Can dump image to disc in the tweet section
-    # if running a test
-
     # Start with the IPv4 pie
     plt.figure(figsize=(12, 10))
     plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
@@ -175,7 +177,9 @@ def createPieGraph(
             autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
     plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
-    plt.savefig("v4.png")
+    v4pie = io.BytesIO()
+    plt.savefig(v4pie, format='png')
+    plt.close()
 
     # Now the IPv6 pie
     plt.figure(figsize=(12, 10))
@@ -185,7 +189,14 @@ def createPieGraph(
             autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
     plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
-    plt.savefig("v6.png")
+    v6pie = io.BytesIO()
+    plt.savefig(v6pie, format='png')
+    plt.close()
+
+    # Need to seek to zero then return the images in memory.
+    v4pie.seek(0)
+    v6pie.seek(0)
+    return v4pie, v6pie
 
 
 
