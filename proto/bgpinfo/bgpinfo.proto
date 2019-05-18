@@ -6,6 +6,7 @@ service bgp_info {
     rpc add_latest(values) returns (result);
     rpc get_prefix_count(empty) returns (prefix_count_response);
     rpc get_pie_subnets(empty) returns (pie_subnets_response);
+    rpc get_movement_totals(movement_request) returns (movement_totals_response);
 }
 
 message values {
@@ -21,7 +22,7 @@ message values {
 
 
 message empty {
-    // Sometimes we just need to request last data. No inputs required.
+    // Sometimes we just need to request data. No inputs required.
 }
 
 message prefix_count_response {
@@ -48,6 +49,13 @@ message pie_subnets_response {
     uint64 time = 4;
 }
 
+message movement_totals_response {
+    // Used to create a graph showing table movement for the
+    // given time period.
+    repeated uint32 v4_values = 1;
+    repeated uint32 v6_values = 2;
+    repeated uint64 time = 3;
+}
 
 message result {
     // Bool stating whether the update was a success or not.
@@ -70,7 +78,19 @@ message as_count {
     uint32 as6_only = 5;
     // Unique AS originating both IPv4 and IPv6
     uint32 as_both = 6;
+}
 
+message movement_request {
+    // graph requests determined by what time period
+    // I am graphing for.
+    time_period period = 1;
+}
+
+enum time_period {
+    WEEK = 0;
+    MONTH = 1;
+    SIXMONTH = 2;
+    ANNUAL = 3;
 }
 
 message memory {
@@ -99,6 +119,7 @@ enum address_family {
     IPV6 = 0;
     IPV4 = 1;
 }
+
 
 message prefix_count {
     // prefix counts. Most used info

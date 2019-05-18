@@ -36,9 +36,12 @@ grpcserver = "%s:%s" % (server, port)
 channel = grpc.insecure_channel(grpcserver)
 stub = bgpinfo_pb2_grpc.bgp_infoStub(channel)
 
-# Various other valiables
+# Time based variables
 today = datetime.date.today()
+yesterday = today - datetime.timedelta(days=1)
 today = today.strftime("%d-%b-%Y")
+yesterday = yesterday.strftime("%d-%b-%Y")
+
 
 def getCurrent():
     """Grabs current v4 and v6 table count.
@@ -49,7 +52,6 @@ def getCurrent():
      - current count
      - count from 6 hours ago
      - count from a week ago
-     - How many /24 or /48
     """
     result = stub.get_prefix_count(pb.empty())
     
@@ -81,6 +83,10 @@ def getWeek():
     This function will grab the v4 and v6 
     counts over the last week.
     """
+    req = pb.movement_request()
+    req.period = pb.time_period.Value('WEEK')
+    result = stub.get_movement_totals(req)
+    print(result)
 
 def getMonth():
     """Grabs monthly data for tweet.
@@ -109,14 +115,9 @@ def getPrefixPie():
      - current spread of all subnet sizes.
     """
     result = stub.get_pie_subnets(pb.empty())
-    print(result)
     v4, v6 = createPieGraph(result)
-    # TODO - This will get sent to tweet. Here
-    # for testing
-    with open("444.png", "wb") as f:
-        f.write(v4.read())
-    with open("666.png", "wb") as f:
-        f.write(v6.read())
+    tweet(4, "Current Prefix Distribution", v4)
+    tweet(6, "current Prefix Distribution", v6)
 
 def setTweetBit(time: str):
     """Set tweet bit.
@@ -240,6 +241,10 @@ def tweet(
     """
     if args.test:
         print("account: {}, message: {}".format(account, message))
+        if image:
+            name = message + ".png"
+            with open(name, "wb") as f:
+                f.write(image.read())
         return
 
 
@@ -247,3 +252,4 @@ def tweet(
 if __name__ == "__main__":
   getCurrent()
   getPrefixPie()
+  getWeek()

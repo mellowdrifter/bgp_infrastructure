@@ -106,7 +106,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	}, nil
 }
 
-func (s *server) GetPrefixCount(ctx context.Context, v *pb.Empty) (*pb.PrefixCountResponse, error) {
+func (s *server) GetPrefixCount(ctx context.Context, e *pb.Empty) (*pb.PrefixCountResponse, error) {
 	// Pull prefix counts for tweeting. Latest, 6 hours ago, and a week ago.
 	log.Println("Running GetPrefixCount")
 
@@ -119,7 +119,7 @@ func (s *server) GetPrefixCount(ctx context.Context, v *pb.Empty) (*pb.PrefixCou
 	return res, nil
 }
 
-func (s *server) GetPieSubnets(ctx context.Context, v *pb.Empty) (*pb.PieSubnetsResponse, error) {
+func (s *server) GetPieSubnets(ctx context.Context, e *pb.Empty) (*pb.PieSubnetsResponse, error) {
 	// Pull subnets counts to create Pie graph.
 	log.Println("Running GetPieSubnets")
 
@@ -127,6 +127,19 @@ func (s *server) GetPieSubnets(ctx context.Context, v *pb.Empty) (*pb.PieSubnets
 	if err != nil {
 		log.Printf("Got error in GetPieSubnets: %s\n", err)
 		return &pb.PieSubnetsResponse{}, err
+	}
+
+	return res, nil
+}
+
+func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (*pb.MovementTotalsResponse, error) {
+	// Pull subnets counts to create Pie graph.
+	log.Println("Running GetMovementTotals")
+
+	res, err := getMovementTotalsHelper(t)
+	if err != nil {
+		log.Printf("Got error in GetMovementTotals: %s\n", err)
+		return &pb.MovementTotalsResponse{}, err
 	}
 
 	return res, nil
