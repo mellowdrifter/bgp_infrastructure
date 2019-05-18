@@ -3,15 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
-
-type v4v6time struct {
-	v4, v6, unixtime int
-}
 
 func query() {
 
@@ -169,7 +166,6 @@ func getPieSubnetsHelper() (*pb.PieSubnetsResponse, error) {
 		&pie.Time,
 	)
 	if err != nil {
-		log.Printf("ERROR: %s\n", err)
 		return nil, err
 	}
 	// Add masks to the pie response.
@@ -185,40 +181,53 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 	secondsInMonth := 2628000
 	secondsIn6Months := secondsInMonth * 6
 	secondsInYear := secondsIn6Months * 2
-	now := time.Now().Unix()
-	end := int(now - 66600)
+	end := int(time.Now().Unix() - 66600)
 
 	var start string
 	var denomiator int
 	switch m.GetPeriod() {
 	case pb.TimePeriod_WEEK:
-		start = string(end - secondsInWeek)
+		start = strconv.Itoa(end - secondsInWeek)
 		denomiator = 2
 	case pb.TimePeriod_MONTH:
-		start = string(end - secondsInMonth)
+		start = strconv.Itoa(end - secondsInMonth)
 		denomiator = 7
 	case pb.TimePeriod_SIXMONTH:
-		start = string(end - secondsIn6Months)
+		start = strconv.Itoa(end - secondsIn6Months)
 		denomiator = 30
 	case pb.TimePeriod_ANNUAL:
-		start = string(end - secondsInYear)
+		start = strconv.Itoa(end - secondsInYear)
 		denomiator = 60
 	}
 	sql := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >=
-						'%d' AND TIME <= '%d'`, start, end)
+						'%s' AND TIME <= '%d'`, start, end)
 
-	var v4v6counts []v4v6time
+	var tv []*pb.V4V6Time
 	rows, err := db.Query(sql)
+	if err != nil {
+		return &pb.MovementTotalsResponse{}, err
+	}
 	defer rows.Close()
 
+	i := 0
 	for rows.Next() {
-		var s v4v6time
-		err := rows.Scan(&s.unixtime, &s.v4, &s.v6)
+		// We don't need all values. Only each 1/denomiator value
+		i++
+		if i%denomiator != 0 {
+			continue
+		}
+
+		var v pb.V4V6Time
+		err := rows.Scan(&v.Time, &v.V4Values, &v.V6Values)
 		if err != nil {
 			return &pb.MovementTotalsResponse{}, err
 		}
-		v4v6counts = append(v4v6counts, s)
+		tv = append(tv, &v)
 	}
+
+	return &pb.MovementTotalsResponse{
+		Values: tv,
+	}, nil
 
 }
 

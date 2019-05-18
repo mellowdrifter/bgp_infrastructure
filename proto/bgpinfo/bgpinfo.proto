@@ -52,9 +52,13 @@ message pie_subnets_response {
 message movement_totals_response {
     // Used to create a graph showing table movement for the
     // given time period.
-    repeated uint32 v4_values = 1;
-    repeated uint32 v6_values = 2;
-    repeated uint64 time = 3;
+    repeated v4v6time values = 1;
+}
+
+message v4v6time {
+    uint32 v4_values = 1;
+    uint32 v6_values = 2;
+    uint64 time = 3;
 }
 
 message result {

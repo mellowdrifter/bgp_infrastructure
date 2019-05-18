@@ -11,6 +11,7 @@ import logging
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib import dates as mdates
 import os
 from typing import Tuple
 
@@ -78,33 +79,24 @@ def getCurrent():
     setTweetBit(result.time)
 
 
-def getWeek():
+def getMovement(time_period: pb.time_period):
     """Grabs weekly data for tweet.
     This function will grab the v4 and v6 
     counts over the last week.
     """
+    # TODO fix descripions
+    message = {
+        pb.time_period.Value('WEEK'): "Weekly BGP table movement",
+        pb.time_period.Value('MONTH'): "Monthly BGP table movement",
+        pb.time_period.Value('SIXMONTH'): "BGP table movement for the last 6 months",
+        pb.time_period.Value('ANNUAL'): "Annual BGP table movement",
+    }
     req = pb.movement_request()
-    req.period = pb.time_period.Value('WEEK')
+    req.period = time_period
     result = stub.get_movement_totals(req)
-    print(result)
-
-def getMonth():
-    """Grabs monthly data for tweet.
-    This function will grab the v4 and v6 
-    counts over the last month.
-    """
-
-def get6Month():
-    """Grabs semi-annual data for tweet.
-    This function will grab the v4 and v6 
-    counts over the last six months.
-    """
-
-def getAnnual():
-    """Grabs annual data for tweet.
-    This function will grab the v4 and v6 
-    counts over the last six year.
-    """
+    v4, v6 = createPlotGraph(result, time_period)
+    tweet(4, message[time_period], v4)
+    tweet(6, message[time_period], v6)
 
 def getPrefixPie():
     """Create Pie graph.
@@ -116,8 +108,8 @@ def getPrefixPie():
     """
     result = stub.get_pie_subnets(pb.empty())
     v4, v6 = createPieGraph(result)
-    tweet(4, "Current Prefix Distribution", v4)
-    tweet(6, "current Prefix Distribution", v6)
+    tweet(4, "Current Prefix Distribution v4", v4)
+    tweet(6, "Current Prefix Distribution v6", v6)
 
 def setTweetBit(time: str):
     """Set tweet bit.
@@ -129,15 +121,89 @@ def setTweetBit(time: str):
         return
 
 def createPlotGraph(
-    entries: list(),
-    family: int,
-    time_period: str,
-    ) -> bytes():
+    entries: pb.movement_totals_response,
+    time_period: pb.time_period,
+    ) -> Tuple[io.BytesIO, io.BytesIO]:
     """Creates a plotted graph.
     Uses entries and time_period to create a
-    matplotlib-based graphf for the respective
+    matplotlib-based graph for the respective
     address family.
     """
+    updates = {
+        pb.time_period.Value('WEEK'): "week",
+        pb.time_period.Value('MONTH'): "month",
+        pb.time_period.Value('SIXMONTH'): "6 months",
+        pb.time_period.Value('ANNUAL'): "year",
+    }
+
+    dates = []
+    v4_counts = []
+    v6_counts = []
+    for values in entries.values:
+        v4_counts.append(values.v4_values)
+        v6_counts.append(values.v6_values)
+        dates.append(datetime.datetime.fromtimestamp(values.time))
+    
+    # Start with the IPv4 graph
+    plt.figure(figsize=(12, 10))
+    ax = plt.subplot(111)
+    xfmt = mdates.DateFormatter('%Y-%m-%d')
+    ax.xaxis.set_major_formatter(xfmt)
+    title = 'IPv4 table movement for {} ending {}'.format(
+        updates[time_period], yesterday)
+    plt.suptitle(title, fontsize=17)
+    ax.grid(True)
+    ax.spines["top"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+    plt.xticks(fontsize=12, rotation=12)
+    plt.yticks(fontsize=12)
+    plt.ticklabel_format(axis='y', style='plain', useOffset=False)
+    plt.tick_params(axis="both", which="both", bottom=False, top=False,
+                    labelbottom=True, left=False, right=False, labelleft=True)
+    plt.plot(dates, v4_counts, 'o-', lw=1, alpha=0.4, color="#238341")
+    plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
+                fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+
+    v4graph = io.BytesIO()
+    plt.savefig(v4graph, format='png')
+    plt.close()
+
+    # Now the IPv6 graph
+    plt.figure(figsize=(12, 10))
+    ax = plt.subplot(111)
+    xfmt = mdates.DateFormatter('%Y-%m-%d')
+    ax.xaxis.set_major_formatter(xfmt)
+    title = 'IPv6 table movement for {} ending {}'.format(
+        updates[time_period], yesterday)
+    plt.suptitle(title, fontsize=17)
+    ax.grid(True)
+    ax.spines["top"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+    plt.xticks(fontsize=12, rotation=12)
+    plt.yticks(fontsize=12)
+    plt.ticklabel_format(axis='y', style='plain', useOffset=False)
+    plt.tick_params(axis="both", which="both", bottom=False, top=False,
+                    labelbottom=True, left=False, right=False, labelleft=True)
+    plt.plot(dates, v6_counts, 'o-', lw=1, alpha=0.4, color="#0041A0")
+    plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
+                fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+
+    v6graph = io.BytesIO()
+    plt.savefig(v6graph, format='png')
+    plt.close()
+
+    # Need to seek to zero then return the images in memory.
+    v4graph.seek(0)
+    v6graph.seek(0)
+    return v4graph, v6graph
 
 def createPieGraph(
     entries: pb.pie_subnets_response,
@@ -252,4 +318,7 @@ def tweet(
 if __name__ == "__main__":
   getCurrent()
   getPrefixPie()
-  getWeek()
+  getMovement(pb.time_period.Value('WEEK'))
+  getMovement(pb.time_period.Value('MONTH'))
+  getMovement(pb.time_period.Value('SIXMONTH'))
+  getMovement(pb.time_period.Value('ANNUAL'))
