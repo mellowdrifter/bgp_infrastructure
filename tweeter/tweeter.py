@@ -13,6 +13,7 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
 import os
+from twython import Twython
 from typing import Tuple
 
 # Load config
@@ -42,6 +43,8 @@ today = datetime.date.today()
 yesterday = today - datetime.timedelta(days=1)
 today = today.strftime("%d-%b-%Y")
 yesterday = yesterday.strftime("%d-%b-%Y")
+
+copyright = "data by: @mellowdrifter | www.mellowd.dev"
 
 
 def getCurrent():
@@ -116,6 +119,7 @@ def setTweetBit(time: str):
     Updates database to show the latest tweeted
     values. Useful when comparing historically.
     """
+    # TODO: STILL NEED TO DO THIS!!!
     if args.test:
         print("Will set tweet bit with time {}".format(time))
         return
@@ -165,7 +169,7 @@ def createPlotGraph(
     plt.tick_params(axis="both", which="both", bottom=False, top=False,
                     labelbottom=True, left=False, right=False, labelleft=True)
     plt.plot(dates, v4_counts, 'o-', lw=1, alpha=0.4, color="#238341")
-    plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
+    plt.figtext(0.5, 0.93, copyright,
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
     v4graph = io.BytesIO()
@@ -193,7 +197,7 @@ def createPlotGraph(
     plt.tick_params(axis="both", which="both", bottom=False, top=False,
                     labelbottom=True, left=False, right=False, labelleft=True)
     plt.plot(dates, v6_counts, 'o-', lw=1, alpha=0.4, color="#0041A0")
-    plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
+    plt.figtext(0.5, 0.93, copyright,
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
     v6graph = io.BytesIO()
@@ -242,7 +246,7 @@ def createPieGraph(
     plt.suptitle('Current prefix range distribution for IPv4 (' + today + ')', fontsize = 17)
     plt.pie(v4_subnets, labels=v4_labels, colors=v4_colours, explode=v4_explode,
             autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
-    plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
+    plt.figtext(0.5, 0.93, copyright,
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
     v4pie = io.BytesIO()
     plt.savefig(v4pie, format='png')
@@ -254,7 +258,7 @@ def createPieGraph(
     plt.suptitle('Current prefix range distribution for IPv6 (' + today + ')', fontsize = 17)
     plt.pie(v6_subnets, labels=v6_labels, colors=v6_colours, explode=v6_explode,
             autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
-    plt.figtext(0.5, 0.93, "data by: @mellowdrifter | www.mellowd.dev",
+    plt.figtext(0.5, 0.93, copyright,
                 fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
     v6pie = io.BytesIO()
     plt.savefig(v6pie, format='png')
@@ -297,21 +301,36 @@ def create_message(deltaH: str, deltaW: str) -> str:
   return update
 
 def tweet(
-    account: str,
+    account: int,
     message: str,
-    image: bytes(),
+    image: io.BytesIO,
     ):
     """Tweets to the world.
     Tweets the message, and image if it exists.
     Account used to determine which account to use.
     """
+    if account == 4:
+        section = 'bgp4_account'
+    if account == 6:
+        section = 'bgp6_account'
+    
+    key = config.get(section, 'consumer_key')
+    secret_key = config.get(section, 'consumer_secret')
+    token = config.get(section, 'access_token')
+    secret_token = config.get(section, 'access_token_secret')
+
+    twitter = Twython(key, secret_key, token, secret_token)
+
     if args.test:
+        c = twitter.verify_credentials()
+        print("{} account with {} followers verified.".format(c['name'], c['followers_count']))
         print("account: {}, message: {}".format(account, message))
         if image:
             name = message + ".png"
             with open(name, "wb") as f:
                 f.write(image.read())
         return
+    
 
 
 
