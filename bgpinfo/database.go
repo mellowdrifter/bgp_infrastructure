@@ -231,12 +231,13 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 
 }
 
-//func setTweetBit(t *pb.TimeV4V6) error {
-//	u := fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t.GetTime())
-//	log.Printf(u)
-//_, err := db.Exec(u)
-//if err != nil {
-//return err
-//}
-//return nil
-//}
+func updateTweetBitHelper(t uint64) (*pb.Result, error) {
+	_, err := db.Exec(fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t))
+	if err != nil {
+		return &pb.Result{}, err
+	}
+	return &pb.Result{
+		Success: true,
+	}, nil
+
+}

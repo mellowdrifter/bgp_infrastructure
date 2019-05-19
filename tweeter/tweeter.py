@@ -57,6 +57,7 @@ def getCurrent():
      - count from 6 hours ago
      - count from a week ago
     """
+    logging.info('running getCurrent')
     result = stub.get_prefix_count(pb.empty())
     
     # Calculate deltas
@@ -72,8 +73,8 @@ def getCurrent():
     # Formulate update
     delta4 = "I see " + str(result.active_4) + " IPv4 prefixes" + ". "
     delta6 = "I see " + str(result.active_6) + " IPv6 prefixes" + ". "
-    delta4 += create_message(ipv4_deltaH, ipv4_deltaW)
-    delta6 += create_message(ipv6_deltaH, ipv6_deltaW)
+    delta4 += createMessage(ipv4_deltaH, ipv4_deltaW)
+    delta6 += createMessage(ipv6_deltaH, ipv6_deltaW)
     delta4 += '. ' + str(percent_v4) + '% of prefixes are /24.'
     delta6 += '. ' + str(percent_v6) + '% of prefixes are /48.'
 
@@ -82,17 +83,20 @@ def getCurrent():
     setTweetBit(result.time)
 
 
-def getMovement(time_period: pb.time_period):
+def getMovement(
+    time_period: int,
+    ):
     """Grabs weekly data for tweet.
     This function will grab the v4 and v6 
     counts over the last week.
     """
     # TODO fix descripions
+    logging.info('running getMovement')
     message = {
-        pb.time_period.Value('WEEK'): "Weekly BGP table movement",
-        pb.time_period.Value('MONTH'): "Monthly BGP table movement",
-        pb.time_period.Value('SIXMONTH'): "BGP table movement for the last 6 months",
-        pb.time_period.Value('ANNUAL'): "Annual BGP table movement",
+        0: "Weekly BGP table movement",
+        1: "Monthly BGP table movement",
+        2: "BGP table movement for the last 6 months",
+        3: "Annual BGP table movement",
     }
     req = pb.movement_request()
     req.period = time_period
@@ -109,35 +113,42 @@ def getPrefixPie():
     requires:
      - current spread of all subnet sizes.
     """
+    logging.info('running getPrefixPie')
     result = stub.get_pie_subnets(pb.empty())
     v4, v6 = createPieGraph(result)
     tweet(4, "Current Prefix Distribution v4", v4)
     tweet(6, "Current Prefix Distribution v6", v6)
 
-def setTweetBit(time: str):
+def setTweetBit(time: int):
     """Set tweet bit.
     Updates database to show the latest tweeted
     values. Useful when comparing historically.
     """
-    # TODO: STILL NEED TO DO THIS!!!
+    logging.info('running setTweetBit')
     if args.test:
         print("Will set tweet bit with time {}".format(time))
         return
+    else:
+        result = stub.update_tweet_bit(time)
+        print("Tweet bit updated: {}".format(result.success))
+    
+
 
 def createPlotGraph(
     entries: pb.movement_totals_response,
-    time_period: pb.time_period,
+    time_period: int,
     ) -> Tuple[io.BytesIO, io.BytesIO]:
     """Creates a plotted graph.
     Uses entries and time_period to create a
     matplotlib-based graph for the respective
     address family.
     """
+    logging.info('running createPlotGraph')
     updates = {
-        pb.time_period.Value('WEEK'): "week",
-        pb.time_period.Value('MONTH'): "month",
-        pb.time_period.Value('SIXMONTH'): "6 months",
-        pb.time_period.Value('ANNUAL'): "year",
+        pb.movement_request.WEEK: "week",
+        pb.movement_request.MONTH: "month",
+        pb.movement_request.SIXMONTH: "6 months",
+        pb.movement_request.ANNUAL: "year",
     }
 
     dates = []
@@ -153,6 +164,7 @@ def createPlotGraph(
     ax = plt.subplot(111)
     xfmt = mdates.DateFormatter('%Y-%m-%d')
     ax.xaxis.set_major_formatter(xfmt)
+    print("time period is of type %s", type(time_period))
     title = 'IPv4 table movement for {} ending {}'.format(
         updates[time_period], yesterday)
     plt.suptitle(title, fontsize=17)
@@ -213,6 +225,8 @@ def createPieGraph(
     entries: pb.pie_subnets_response,
     ) -> Tuple[io.BytesIO, io.BytesIO]:
 
+    logging.info('running createPieGraph')
+
     # Extract the values and all the smaller prefix lengths
     v4_subnets = []
     v6_subnets = []
@@ -271,11 +285,12 @@ def createPieGraph(
 
 
 
-def create_message(deltaH: str, deltaW: str) -> str:
+def createMessage(deltaH: str, deltaW: str) -> str:
   """Creates update message.
   Uses the deltas to formualte a message to be tweeted. Message
   depends on current values, six hour old values, and last weeks values
   """
+  logging.info('running createMessage')
   if deltaH == 1:
       update = "This is 1 more prefix than 6 hours ago "
   elif deltaH == -1:
@@ -309,6 +324,8 @@ def tweet(
     Tweets the message, and image if it exists.
     Account used to determine which account to use.
     """
+    logging.info('running tweet')
+
     if account == 4:
         section = 'bgp4_account'
     if account == 6:
@@ -335,9 +352,9 @@ def tweet(
 
 
 if __name__ == "__main__":
-  getCurrent()
-  getPrefixPie()
-  getMovement(pb.time_period.Value('WEEK'))
-  getMovement(pb.time_period.Value('MONTH'))
-  getMovement(pb.time_period.Value('SIXMONTH'))
-  getMovement(pb.time_period.Value('ANNUAL'))
+  #getCurrent()
+  #getPrefixPie()
+  getMovement(pb.movement_request.WEEK)
+  getMovement(pb.movement_request.MONTH)
+  getMovement(pb.movement_request.SIXMONTH)
+  getMovement(pb.movement_request.ANNUAL)

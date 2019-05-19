@@ -16,5 +16,6 @@ twitter_glass/config.ini
 tweeter/config.ini
 bgpinfo/bgpinfo
 tweeter/__pycache__/*
+tweeter/.mypy_cache/*
 tweeter/bgpinfo_pb2.py
 tweeter/bgpinfo_pb2_grpc.py

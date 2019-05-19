@@ -5,6 +5,7 @@ package bgpinfo;
 service bgp_info {
     rpc add_latest(values) returns (result);
     rpc get_prefix_count(empty) returns (prefix_count_response);
+    rpc update_tweet_bit(timestamp) returns (result);
     rpc get_pie_subnets(empty) returns (pie_subnets_response);
     rpc get_movement_totals(movement_request) returns (movement_totals_response);
 }
@@ -61,6 +62,10 @@ message v4v6time {
     uint64 time = 3;
 }
 
+message timestamp {
+    uint64 time = 1;
+}
+
 message result {
     // Bool stating whether the update was a success or not.
     // Ragerdless of result, we can check that via the returned result.
@@ -87,15 +92,15 @@ message as_count {
 message movement_request {
     // graph requests determined by what time period
     // I am graphing for.
-    time_period period = 1;
+    enum TimePeriod {
+        WEEK = 0;
+        MONTH = 1;
+        SIXMONTH = 2;
+        ANNUAL = 3;
+    }
+    TimePeriod period = 1;
 }
 
-enum time_period {
-    WEEK = 0;
-    MONTH = 1;
-    SIXMONTH = 2;
-    ANNUAL = 3;
-}
 
 message memory {
     // total memory used by the daemon

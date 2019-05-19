@@ -144,3 +144,16 @@ func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (
 
 	return res, nil
 }
+
+func (s *server) UpdateTweetBit(ctx context.Context, t *pb.Timestamp) (*pb.Result, error) {
+	// Set the tweet bit to the provided time.
+	log.Println("Running UpdateTweetBit")
+	res, err := updateTweetBitHelper(t.GetTime())
+	if err != nil {
+		log.Printf("Got error in updateTweetBitHelper: %s\n", err)
+		return &pb.Result{}, err
+	}
+
+	return res, nil
+
+}
