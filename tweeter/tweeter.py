@@ -13,6 +13,7 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
 import os
+import sys
 from twython import Twython
 from typing import Tuple
 
@@ -26,7 +27,9 @@ log = config.get('grpc', 'logfile')
 
 # Check arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("-test", help="test mode will read, but not tweet", default=True)
+parser.add_argument("-dryrun", help="dryrun will read, but not tweet", default="True")
+parser.add_argument("-call", help="getcurrent, getmovement, getpie", default = "")
+parser.add_argument("-time", help="week, month, month6, year", default="")
 args = parser.parse_args()
 
 # Set up logging
@@ -93,10 +96,10 @@ def getMovement(
     # TODO fix descripions
     logging.info('running getMovement')
     message = {
-        0: "Weekly BGP table movement",
-        1: "Monthly BGP table movement",
-        2: "BGP table movement for the last 6 months",
-        3: "Annual BGP table movement",
+        pb.movement_request.WEEK: "Weekly BGP table movement",
+        pb.movement_request.MONTH: "Monthly BGP table movement",
+        pb.movement_request.SIXMONTH: "BGP table movement for the last 6 months",
+        pb.movement_request.ANNUAL: "Annual BGP table movement",
     }
     req = pb.movement_request()
     req.period = time_period
@@ -125,15 +128,13 @@ def setTweetBit(time: int):
     values. Useful when comparing historically.
     """
     logging.info('running setTweetBit')
-    if args.test:
-        print("Will set tweet bit with time {}".format(time))
+    if args.dryrun == "True":
+        logging.info("Will set tweet bit with time {}".format(time))
         return
     else:
         result = stub.update_tweet_bit(time)
-        print("Tweet bit updated: {}".format(result.success))
+        logging.info("Tweet bit updated: {}".format(result.success))
     
-
-
 def createPlotGraph(
     entries: pb.movement_totals_response,
     time_period: int,
@@ -164,7 +165,6 @@ def createPlotGraph(
     ax = plt.subplot(111)
     xfmt = mdates.DateFormatter('%Y-%m-%d')
     ax.xaxis.set_major_formatter(xfmt)
-    print("time period is of type %s", type(time_period))
     title = 'IPv4 table movement for {} ending {}'.format(
         updates[time_period], yesterday)
     plt.suptitle(title, fontsize=17)
@@ -328,7 +328,7 @@ def tweet(
 
     if account == 4:
         section = 'bgp4_account'
-    if account == 6:
+    elif account == 6:
         section = 'bgp6_account'
     
     key = config.get(section, 'consumer_key')
@@ -337,24 +337,59 @@ def tweet(
     secret_token = config.get(section, 'access_token_secret')
 
     twitter = Twython(key, secret_key, token, secret_token)
+    c = twitter.verify_credentials()
+    logging.info("{} account with {} followers verified.".format(c['name'], c['followers_count']))
 
-    if args.test:
-        c = twitter.verify_credentials()
-        print("{} account with {} followers verified.".format(c['name'], c['followers_count']))
+    # If running a test run, handy to see exactly what will be tweeted.
+    if args.dryrun == "True":
         print("account: {}, message: {}".format(account, message))
         if image:
             name = message + ".png"
             with open(name, "wb") as f:
                 f.write(image.read())
         return
+    # This is where we really send tweets out
+    else:
+        if image:
+            logging.info("Sending the following tweet with an image {}".format(message))
+            response = twitter.upload_media(media=image)
+            twitter.update_status(status=message, media_ids=[response['media_id']])
+        else:
+            logging.info("Sending the following tweet without an image {}".format(message))
+            twitter.update_status(status=message)
+
+
     
 
 
 
 if __name__ == "__main__":
-  #getCurrent()
-  #getPrefixPie()
-  getMovement(pb.movement_request.WEEK)
-  getMovement(pb.movement_request.MONTH)
-  getMovement(pb.movement_request.SIXMONTH)
-  getMovement(pb.movement_request.ANNUAL)
+  if args.dryrun == "True":
+    getCurrent()
+    getPrefixPie()
+    getMovement(pb.movement_request.WEEK)
+    getMovement(pb.movement_request.MONTH)
+    getMovement(pb.movement_request.SIXMONTH)
+    getMovement(pb.movement_request.ANNUAL)
+    sys.exit("Test finished")
+  
+  if args.call == "getcurrent":
+    getCurrent()
+
+  elif args.call == "getpie":
+    getPrefixPie()
+
+  elif args.call == "getmovement":
+    if args.time == "week":
+      getMovement(pb.movement_request.WEEK)
+    elif args.time == "month":
+      getMovement(pb.movement_request.MONTH)
+    elif args.time == "month6":
+      getMovement(pb.movement_request.SIXMONTH)
+    elif args.time == "year":
+      getMovement(pb.movement_request.ANNUAL)
+    else:
+      sys.exit("getmovement requires supported time to be set")
+  
+  else:
+      sys.exit("No option chosen. Use --help to view")

@@ -186,16 +186,16 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 	var start string
 	var denomiator int
 	switch m.GetPeriod() {
-	case pb.TimePeriod_WEEK:
+	case pb.MovementRequest_WEEK:
 		start = strconv.Itoa(end - secondsInWeek)
 		denomiator = 2
-	case pb.TimePeriod_MONTH:
+	case pb.MovementRequest_MONTH:
 		start = strconv.Itoa(end - secondsInMonth)
 		denomiator = 7
-	case pb.TimePeriod_SIXMONTH:
+	case pb.MovementRequest_SIXMONTH:
 		start = strconv.Itoa(end - secondsIn6Months)
 		denomiator = 30
-	case pb.TimePeriod_ANNUAL:
+	case pb.MovementRequest_ANNUAL:
 		start = strconv.Itoa(end - secondsInYear)
 		denomiator = 60
 	}
