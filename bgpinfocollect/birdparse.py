@@ -93,6 +93,18 @@ def getMem(family: int) -> (int, int):
 
     return values
 
+def getROAs(family:int) -> (int, int, int):
+    if family == 4:
+        valid = int(subprocess.check_output("birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l", shell=True).decode("utf-8"))
+        invalid = int(subprocess.check_output("birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l", shell=True).decode("utf-8"))
+        unknown = int(subprocess.check_output("birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l", shell=True).decode("utf-8"))
+    elif family == 6:
+        valid = int(subprocess.check_output("birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l", shell=True).decode("utf-8"))
+        invalid = int(subprocess.check_output("birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l", shell=True).decode("utf-8"))
+        unknown = int(subprocess.check_output("birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l", shell=True).decode("utf-8"))
+    
+    return valid, invalid, unknown
+
 def getPrivateASLeak():
     # How many private AS numbers are in use
     # How many are source and 'transit'
@@ -113,3 +125,5 @@ if __name__ == "__main__":
     print('Large Comm\n', getLargeCommunitys())
     print('Peers\n', getMem(4))
     print('Peers\n', getMem(6))
+    print('ROA IPv4\n', getROAs(4))
+    print('ROA IPv6\n', getROAs(6))

@@ -163,7 +163,9 @@ func writeROAs(roas *[]roa, filename string) error {
 		update := fmt.Sprintf("roa %s max %d as %s;\n", roa.Prefix, int(roa.Mask), roa.Asn[2:])
 		fmt.Fprintf(file, update)
 	}
-	os.Rename(tmpfile, filename)
+	if err = os.Rename(tmpfile, filename); err != nil {
+		return err
+	}
 
 	return nil
 }
