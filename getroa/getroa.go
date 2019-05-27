@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -88,27 +89,33 @@ func main() {
 	log.Printf("There are %d IPv4 roas and %d IPv6 roas\n", len(*v4), len(*v6))
 
 	// write updated roas to file and refresh bird
-	err = writeROAs(v4, v4File)
-	if err != nil {
+	if err = writeROAs(v4, v4File); err != nil {
 		log.Printf("unable to write IPv4 ROAs: %v", err)
 	}
-	log.Printf("file written")
-	cmd := exec.Command("birdc", "'configure'")
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("unable to reconfigure bird: %v", err)
+	if err = reloadBird("birdc"); err != nil {
+		log.Printf("Unable to refresh bird: %v", err)
 	}
-	log.Printf("bird reconfigured")
 
-	err = writeROAs(v6, v6File)
-	if err != nil {
+	if err = writeROAs(v6, v6File); err != nil {
 		log.Printf("unable to write IPv6 ROAs: %v", err)
 	}
-	cmd = exec.Command("birdc6", "'configure'")
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("unable to reconfigure bird6: %v", err)
+	if err = reloadBird("birdc6"); err != nil {
+		log.Printf("Unable to refresh bird: %v", err)
 	}
+}
+
+func reloadBird(d string) error {
+	cmd := fmt.Sprintf("/usr/sbin/%s", d)
+	cmdArg := []string{"configure"}
+	cmdOut, err := exec.Command(cmd, cmdArg...).Output()
+	if err != nil {
+		return err
+	}
+	if !bytes.Contains(cmdOut, []byte("Reconfigured")) {
+		return fmt.Errorf("%s not refreshed", d)
+	}
+	log.Printf("%s reconfigured", d)
+	return nil
 }
 
 func getROAs() *rpkiResponse {
