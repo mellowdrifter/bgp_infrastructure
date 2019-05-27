@@ -132,7 +132,9 @@ def setTweetBit(time: int):
         logging.info("Will set tweet bit with time {}".format(time))
         return
     else:
-        result = stub.update_tweet_bit(time)
+        timestamp = pb.timestamp()
+        timestamp.time = time
+        result = stub.update_tweet_bit(timestamp)
         logging.info("Tweet bit updated: {}".format(result.success))
     
 def createPlotGraph(
