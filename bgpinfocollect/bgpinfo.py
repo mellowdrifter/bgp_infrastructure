@@ -40,6 +40,7 @@ def get_data() -> pb.values:
 
     # Prefix counts.
     logging.info('prefix count')
+    start = time.time()
     bgp4, bgp6 = birdparse.getTotals()
     prefix_count = pb.prefix_count(
         active_4 = int(bgp4[1]),
@@ -47,9 +48,11 @@ def get_data() -> pb.values:
         active_6 = int(bgp6[1]),
         total_6 = int(bgp6[0]),
     )
+    logging.info(time.time() - start)
 
     # Peer Count.
     logging.info('peer count')
+    start = time.time()
     peers4, state4 = birdparse.getPeers(4)
     peers6, state6 = birdparse.getPeers(6)
 
@@ -60,9 +63,11 @@ def get_data() -> pb.values:
         peer_up_6 = state6,
 
     )
+    logging.info(time.time() - start)
 
     # AS number count.
     logging.info('AS numbers')
+    start = time.time()
     as4, as6, as10, as4_only, as6_only, as_both = birdparse.getSrcAS()
     as_count = pb.as_count(
         as4 = as4,
@@ -72,10 +77,12 @@ def get_data() -> pb.values:
         as6_only = as6_only,
         as_both = as_both,
     )
+    logging.info(time.time() - start)
 
 
     # Memory use
     logging.info('memory')
+    start = time.time()
     bgp4Mem = birdparse.getMem(4)
     bgp6Mem = birdparse.getMem(6)
 
@@ -100,17 +107,38 @@ def get_data() -> pb.values:
     )
     memory.append(mem4)
     memory.append(mem6)
+    logging.info(time.time() - start)
 
+    # Subnet distribution
     logging.info('subnets')
+    start = time.time()
     mask4, mask6 = birdparse.getSubnets()
     masks = masker(mask4, mask6)
+    logging.info(time.time() - start)
 
+    # Large communities
     logging.info('large communities')
-    large4, large6 = birdparse.getLargeCommunitys()
+    start = time.time()
+    large4, large6 = birdparse.getLargeCommunities()
     large = pb.large_community(
         c4 = large4,
         c6 = large6,
     )
+    logging.info(time.time() - start)
+
+    # Route Origin Authorization
+    logging.info('ROAs')
+    start = time.time()
+    current_roas = birdparse.getROAs()
+    roas = pb.roas(
+        v4_valid = current_roas[0],
+        v4_invalid = current_roas[1],
+        v4_unknown = current_roas[2],
+        v6_valid = current_roas[3],
+        v6_invalid = current_roas[4],
+        v6_unknown = current_roas[5],
+    )
+    logging.info(time.time() - start)
 
     current_values = pb.values(
         time = int(time.time()),
@@ -120,6 +148,7 @@ def get_data() -> pb.values:
         mem_use = memory,
         masks = masks,
         large_community = large,
+        roas = roas,
     )
 
     return current_values

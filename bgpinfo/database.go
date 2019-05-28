@@ -51,13 +51,14 @@ func add(b *bgpUpdate) error {
 		MEMPROTOCOLS, MEMATTR, MEMTABLES6,
 		MEMTOTAL6, MEMPROTOCOLS6, MEMATTR6, AS4_LEN,
 		AS6_LEN, AS10_LEN, AS4_ONLY, AS6_ONLY, AS_BOTH,
-		LARGEC4, LARGEC6)
+		LARGEC4, LARGEC6, ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
+	    ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6)
 
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-				?,?,?)`,
+				?,?,?,?,?,?,?,?,?)`,
 		b.time, b.v4Count, b.v6Count, b.v4Total, b.v6Total, b.peersConfigured,
 		b.peersUp, b.peers6Configured, b.peers6Up, b.v4_24,
 		b.v4_23, b.v4_22, b.v4_21, b.v4_20, b.v4_19, b.v4_18, b.v4_17, b.v4_16,
@@ -69,7 +70,8 @@ func add(b *bgpUpdate) error {
 		b.v6_16, b.v6_15, b.v6_14, b.v6_13, b.v6_12, b.v6_11, b.v6_10, b.v6_09,
 		b.v6_08, b.memTable, b.memTotal, b.memProto, b.memAttr, b.memTable6,
 		b.memTotal6, b.memProto6, b.memAttr6, b.as4, b.as6, b.as10, b.as4Only,
-		b.as6Only, b.asBoth, b.largeC4, b.largeC6)
+		b.as6Only, b.asBoth, b.largeC4, b.largeC6, b.roavalid4, b.roainvalid4,
+		b.roaunknown4, b.roavalid6, b.roainvalid6, b.roaunknown6)
 
 	log.Printf("updated database: %v", result)
 

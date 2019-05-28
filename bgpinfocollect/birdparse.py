@@ -7,6 +7,7 @@ and sent back to bgpinfo.py
 
 import subprocess
 import re
+from typing import Tuple
 
 
 def getSubnets() -> (list, list):
@@ -65,7 +66,7 @@ def getPeers(family: int) -> (int, int):
 
     return peers, state
 
-def getLargeCommunitys() -> (int, int):
+def getLargeCommunities() -> (int, int):
     large4 = int(subprocess.check_output("/usr/sbin/birdc 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
     large6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route primary where bgp_large_community ~ [(*,*,*)]'| sed -n '1!p' | wc -l", shell=True).decode("utf-8"))
 
@@ -93,17 +94,15 @@ def getMem(family: int) -> (int, int):
 
     return values
 
-def getROAs(family:int) -> (int, int, int):
-    if family == 4:
-        valid = int(subprocess.check_output("birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l", shell=True).decode("utf-8"))
-        invalid = int(subprocess.check_output("birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l", shell=True).decode("utf-8"))
-        unknown = int(subprocess.check_output("birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l", shell=True).decode("utf-8"))
-    elif family == 6:
-        valid = int(subprocess.check_output("birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l", shell=True).decode("utf-8"))
-        invalid = int(subprocess.check_output("birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l", shell=True).decode("utf-8"))
-        unknown = int(subprocess.check_output("birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l", shell=True).decode("utf-8"))
+def getROAs() -> Tuple[int, int, int, int, int, int]:
+    valid4 = int(subprocess.check_output("/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l", shell=True).decode("utf-8"))
+    invalid4 = int(subprocess.check_output("/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l", shell=True).decode("utf-8"))
+    unknown4 = int(subprocess.check_output("/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l", shell=True).decode("utf-8"))
+    valid6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l", shell=True).decode("utf-8"))
+    invalid6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l", shell=True).decode("utf-8"))
+    unknown6 = int(subprocess.check_output("/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l", shell=True).decode("utf-8"))
     
-    return valid, invalid, unknown
+    return valid4, invalid4, unknown4, valid6, invalid6, unknown6
 
 def getPrivateASLeak():
     # How many private AS numbers are in use
@@ -122,8 +121,7 @@ if __name__ == "__main__":
     print('Source AS\n', getSrcAS())
     print('Peers\n', getPeers(4))
     print('Peers\n', getPeers(6))
-    print('Large Comm\n', getLargeCommunitys())
+    print('Large Comm\n', getLargeCommunities())
     print('Peers\n', getMem(4))
     print('Peers\n', getMem(6))
-    print('ROA IPv4\n', getROAs(4))
-    print('ROA IPv6\n', getROAs(6))
+    print('ROAs\n', getROAs())

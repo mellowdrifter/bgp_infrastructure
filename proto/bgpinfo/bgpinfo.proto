@@ -19,6 +19,7 @@ message values {
     as_count as_count = 5;
     masks masks = 6;
     large_community large_community = 7;
+    roas roas = 8;
 }
 
 
@@ -210,4 +211,14 @@ message large_community {
     // Large Community count (RFC 8092)
     uint32 c4 = 1;
     uint32 c6 = 2;
+}
+
+message roas {
+    // RPKI Route Origin Authorization
+    uint32 v4_valid = 1;
+    uint32 v4_invalid = 2;
+    uint32 v4_unknown = 3;
+    uint32 v6_valid = 4;
+    uint32 v6_invalid = 5;
+    uint32 v6_unknown = 6;
 }

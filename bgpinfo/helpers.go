@@ -16,33 +16,35 @@ type bgpStat struct {
 
 // bgpUpdate holds all the information required for an update
 type bgpUpdate struct {
-	time                              uint64
-	v4Count, v6Count                  uint32
-	v4Total, v6Total                  uint32
-	peersConfigured                   uint32
-	peers6Configured                  uint32
-	peersUp, peers6Up                 uint32
-	tweet                             bool
-	as4, as6, as10                    uint32
-	as4Only, as6Only                  uint32
-	asBoth                            uint32
-	largeC4, largeC6                  uint32
-	memTable, memTotal                string
-	memProto, memAttr                 string
-	memTable6, memTotal6              string
-	memProto6, memAttr6               string
-	v4_23, v4_22, v4_21, v4_20, v4_19 uint32
-	v4_18, v4_17, v4_16, v4_15, v4_14 uint32
-	v4_13, v4_12, v4_11, v4_10, v4_09 uint32
-	v4_08, v6_48, v6_47, v6_46, v6_45 uint32
-	v6_44, v6_43, v6_42, v6_41, v6_40 uint32
-	v6_39, v6_38, v6_37, v6_36, v6_35 uint32
-	v6_34, v6_33, v6_32, v6_31, v6_30 uint32
-	v6_29, v6_28, v6_27, v6_26, v6_25 uint32
-	v6_24, v6_23, v6_22, v6_21, v6_20 uint32
-	v6_19, v6_18, v6_17, v6_16, v6_15 uint32
-	v6_14, v6_13, v6_12, v6_11, v6_10 uint32
-	v6_09, v6_08, v4_24               uint32
+	time                                uint64
+	v4Count, v6Count                    uint32
+	v4Total, v6Total                    uint32
+	peersConfigured                     uint32
+	peers6Configured                    uint32
+	peersUp, peers6Up                   uint32
+	tweet                               bool
+	as4, as6, as10                      uint32
+	as4Only, as6Only                    uint32
+	asBoth                              uint32
+	largeC4, largeC6                    uint32
+	memTable, memTotal                  string
+	memProto, memAttr                   string
+	memTable6, memTotal6                string
+	memProto6, memAttr6                 string
+	roavalid4, roainvalid4, roaunknown4 uint32
+	roavalid6, roainvalid6, roaunknown6 uint32
+	v4_23, v4_22, v4_21, v4_20, v4_19   uint32
+	v4_18, v4_17, v4_16, v4_15, v4_14   uint32
+	v4_13, v4_12, v4_11, v4_10, v4_09   uint32
+	v4_08, v6_48, v6_47, v6_46, v6_45   uint32
+	v6_44, v6_43, v6_42, v6_41, v6_40   uint32
+	v6_39, v6_38, v6_37, v6_36, v6_35   uint32
+	v6_34, v6_33, v6_32, v6_31, v6_30   uint32
+	v6_29, v6_28, v6_27, v6_26, v6_25   uint32
+	v6_24, v6_23, v6_22, v6_21, v6_20   uint32
+	v6_19, v6_18, v6_17, v6_16, v6_15   uint32
+	v6_14, v6_13, v6_12, v6_11, v6_10   uint32
+	v6_09, v6_08, v4_24                 uint32
 }
 
 func repack(v *pb.Values) *bgpUpdate {
@@ -53,6 +55,7 @@ func repack(v *pb.Values) *bgpUpdate {
 	mem := v.GetMemUse()
 	mask := v.GetMasks()
 	p := v.GetPrefixCount()
+	roa := v.GetRoas()
 	update := &bgpUpdate{
 		time:             v.GetTime(),
 		v4Count:          p.GetActive_4(),
@@ -71,6 +74,12 @@ func repack(v *pb.Values) *bgpUpdate {
 		peersUp:          v.GetPeers().GetPeerUp_4(),
 		peers6Configured: v.GetPeers().GetPeerCount_6(),
 		peers6Up:         v.GetPeers().GetPeerUp_6(),
+		roavalid4:        roa.GetV4Valid(),
+		roainvalid4:      roa.GetV4Invalid(),
+		roaunknown4:      roa.GetV4Unknown(),
+		roavalid6:        roa.GetV6Valid(),
+		roainvalid6:      roa.GetV6Invalid(),
+		roaunknown6:      roa.GetV6Unknown(),
 		v4_08:            mask.GetV4_08(),
 		v4_09:            mask.GetV4_09(),
 		v4_10:            mask.GetV4_10(),
