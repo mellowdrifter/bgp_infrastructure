@@ -14,8 +14,8 @@ def getSubnets() -> (list, list):
     regex = r'(?<=\/)\d{1,3}'
     subnets4 = {}
     subnets6 = {}
-    routes4 = subprocess.check_output("/usr/sbin/birdc 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
-    routes6 = subprocess.check_output("/usr/sbin/birdc6 'show route' | awk {'print $1'} | grep -v unreachable", shell=True).decode("utf-8")
+    routes4 = subprocess.check_output("/usr/sbin/birdc 'show route primary' | awk {'print $1'}", shell=True).decode("utf-8")
+    routes6 = subprocess.check_output("/usr/sbin/birdc6 'show route primary' | awk {'print $1'}", shell=True).decode("utf-8")
     for i in range(8, 25):
         subnets4[str(i)] = 0
     for i in range(8, 49):

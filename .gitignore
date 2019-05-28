@@ -19,3 +19,5 @@ tweeter/__pycache__/*
 tweeter/.mypy_cache/*
 tweeter/bgpinfo_pb2.py
 tweeter/bgpinfo_pb2_grpc.py
+bgpinfocollect/bgpinfo_pb2.py
+bgpinfocollect/bgpinfo_pb2_grpc.py
