@@ -28,7 +28,7 @@ log = config.get('grpc', 'logfile')
 # Check arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-dryrun", help="dryrun will read, but not tweet", default="True")
-parser.add_argument("-call", help="getcurrent, getmovement, getpie", default = "")
+parser.add_argument("-call", help="getcurrent, getmovement, getpie, getrpki", default = "")
 parser.add_argument("-time", help="week, month, month6, year", default="")
 args = parser.parse_args()
 
@@ -56,9 +56,9 @@ def getCurrent():
     v4 and v6 count to tweet.
 
     requires:
-     - current count
-     - count from 6 hours ago
-     - count from a week ago
+    - current count
+    - count from 6 hours ago
+    - count from a week ago
     """
     logging.info('running getCurrent')
     result = stub.get_prefix_count(pb.empty())
@@ -114,13 +114,26 @@ def getPrefixPie():
     create pie graphs with those counts
     for each address family
     requires:
-     - current spread of all subnet sizes.
+    - current spread of all subnet sizes.
     """
     logging.info('running getPrefixPie')
     result = stub.get_pie_subnets(pb.empty())
     v4, v6 = createPieGraph(result)
-    tweet(4, "Current Prefix Distribution v4", v4)
-    tweet(6, "Current Prefix Distribution v6", v6)
+    tweet(4, "Current Prefix Distribution IPv4", v4)
+    tweet(6, "Current Prefix Distribution IPv6", v6)
+
+def getRPKIPie():
+    """Create RPKI Pie graph.
+    Grab the latest RPKI values and create
+    pie graphs for each address family.
+    requires:
+    - current counts for all RPKI values.
+    """
+    logging.info('running getRPKIPie')
+    result = stub.get_pie_rpki(pb.empty())
+    v4, v6 = createRPKIPie(result)
+    tweet(4, "Current RPKI status IPv4 #RPKI", v4)
+    tweet(6, "Current RPKI status IPv6 #RPKI", v6)
 
 def setTweetBit(time: int):
     """Set tweet bit.
@@ -248,9 +261,9 @@ def createPieGraph(
     v6_subnets.append(entries.masks.v6_36)
     v6_subnets.append(entries.masks.v6_29)
     v6_subnets.append(entries.v6_total - entries.masks.v6_32 -
-                      entries.masks.v6_44 - entries.masks.v6_40 -
-                      entries.masks.v6_36 - entries.masks.v6_29 -
-                      entries.masks.v6_48)
+                entries.masks.v6_44 - entries.masks.v6_40 -
+                entries.masks.v6_36 - entries.masks.v6_29 -
+                entries.masks.v6_48)
     v6_subnets.append(entries.masks.v6_48)
     v6_labels = ['/32', '/44', '/40', '/36', '/29', 'The Rest', '/48']
     v6_explode = (0, 0, 0, 0, 0, 0, 0.1)
@@ -285,37 +298,85 @@ def createPieGraph(
     v6pie.seek(0)
     return v4pie, v6pie
 
+def createRPKIPie(
+    entries: pb.roas,
+    ) -> Tuple[io.BytesIO, io.BytesIO]:
+    logging.info('running createRPKIPie')
+
+    # Extract the values and all the smaller prefix lengths
+    v4_rpki = []
+    v6_rpki = []
+
+    v4_rpki.append(entries.v4_valid)
+    v4_rpki.append(entries.v4_invalid)
+    v4_rpki.append(entries.v4_unknown)
+    v6_rpki.append(entries.v6_valid)
+    v6_rpki.append(entries.v6_invalid)
+    v6_rpki.append(entries.v6_unknown)
+
+    labels = ['VALID', 'INVALID', 'UNKNOWN']
+    colours = ['lightskyblue', 'lightcoral', 'gold']
+
+
+    # Start with the IPv4 pie
+    plt.figure(figsize=(12, 10))
+    plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
+    plt.suptitle('Current RPKI status for IPv4 (' + today + ')', fontsize = 17)
+    plt.pie(v4_rpki, labels=labels, colors=colours,
+            autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
+    plt.figtext(0.5, 0.93, copyright,
+                fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+    v4pie = io.BytesIO()
+    plt.savefig(v4pie, format='png')
+    plt.close()
+
+    # Now the IPv6 pie
+    plt.figure(figsize=(12, 10))
+    plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
+    plt.suptitle('Current RPKI status for IPv6 (' + today + ')', fontsize = 17)
+    plt.pie(v6_rpki, labels=labels, colors=colours,
+            autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
+    plt.figtext(0.5, 0.93, copyright,
+                fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+    v6pie = io.BytesIO()
+    plt.savefig(v6pie, format='png')
+    plt.close()
+
+    # Need to seek to zero then return the images in memory.
+    v4pie.seek(0)
+    v6pie.seek(0)
+    return v4pie, v6pie
 
 
 def createMessage(deltaH: str, deltaW: str) -> str:
-  """Creates update message.
-  Uses the deltas to formualte a message to be tweeted. Message
-  depends on current values, six hour old values, and last weeks values
-  """
-  logging.info('running createMessage')
-  if deltaH == 1:
-      update = "This is 1 more prefix than 6 hours ago "
-  elif deltaH == -1:
-      update = "This is 1 less prefix than 6 hours ago "
-  elif deltaH < 0:
-      update = "This is " + str(-deltaH) + " fewer prefixes than 6 hours ago "
-  elif deltaH > 0:
-      update = "This is " + str(deltaH) + " more prefixes than 6 hours ago "
-  else:
-      update = "No change in the amount of prefixes from 6 hours ago "
+    """Creates update message.
+    Uses the deltas to formualte a message to be tweeted. Message
+    depends on current values, six hour old values, and last weeks values
+    """
+    logging.info('running createMessage')
+    if deltaH == 1:
+        update = "This is 1 more prefix than 6 hours ago "
+    elif deltaH == -1:
+        update = "This is 1 less prefix than 6 hours ago "
+    elif deltaH < 0:
+        update = "This is " + str(-deltaH) + " fewer prefixes than 6 hours ago "
+    elif deltaH > 0:
+        update = "This is " + str(deltaH) + " more prefixes than 6 hours ago "
+    else:
+        update = "No change in the amount of prefixes from 6 hours ago "
 
-  if deltaW == 1:
-      update += "and 1 more than a week ago"
-  elif deltaW == -1:
-      update += "and 1 less than a week ago"
-  elif deltaW < 0:
-      update += "and " + str(-deltaW) + " fewer than a week ago"
-  elif deltaW > 0:
-      update += "and " + str(deltaW) + " more than a week ago"
-  else:
-      update += "and no change in the amount from a week ago"
+    if deltaW == 1:
+        update += "and 1 more than a week ago"
+    elif deltaW == -1:
+        update += "and 1 less than a week ago"
+    elif deltaW < 0:
+        update += "and " + str(-deltaW) + " fewer than a week ago"
+    elif deltaW > 0:
+        update += "and " + str(deltaW) + " more than a week ago"
+    else:
+        update += "and no change in the amount from a week ago"
 
-  return update
+    return update
 
 def tweet(
     account: int,
@@ -366,32 +427,35 @@ def tweet(
 
 
 if __name__ == "__main__":
-  if args.dryrun == "True":
-    getCurrent()
-    getPrefixPie()
-    getMovement(pb.movement_request.WEEK)
-    getMovement(pb.movement_request.MONTH)
-    getMovement(pb.movement_request.SIXMONTH)
-    getMovement(pb.movement_request.ANNUAL)
-    sys.exit("Test finished")
-  
-  if args.call == "getcurrent":
-    getCurrent()
+    if args.dryrun == "True":
+        getCurrent()
+        getPrefixPie()
+        getRPKIPie()
+        getMovement(pb.movement_request.WEEK)
+        getMovement(pb.movement_request.MONTH)
+        getMovement(pb.movement_request.SIXMONTH)
+        getMovement(pb.movement_request.ANNUAL)
+        sys.exit("Test finished")
 
-  elif args.call == "getpie":
-    getPrefixPie()
+    if args.call == "getcurrent":
+        getCurrent()
 
-  elif args.call == "getmovement":
-    if args.time == "week":
-      getMovement(pb.movement_request.WEEK)
-    elif args.time == "month":
-      getMovement(pb.movement_request.MONTH)
-    elif args.time == "month6":
-      getMovement(pb.movement_request.SIXMONTH)
-    elif args.time == "year":
-      getMovement(pb.movement_request.ANNUAL)
+    elif args.call == "getpie":
+        getPrefixPie()
+    
+    elif args.call == "getrpki":
+        getRPKIPie()
+
+    elif args.call == "getmovement":
+        if args.time == "week":
+            getMovement(pb.movement_request.WEEK)
+        elif args.time == "month":
+            getMovement(pb.movement_request.MONTH)
+        elif args.time == "month6":
+            getMovement(pb.movement_request.SIXMONTH)
+        elif args.time == "year":
+            getMovement(pb.movement_request.ANNUAL)
+        else:
+            sys.exit("getmovement requires supported time to be set")
     else:
-      sys.exit("getmovement requires supported time to be set")
-  
-  else:
-      sys.exit("No option chosen. Use --help to view")
+        sys.exit("No option chosen. Use --help to view")

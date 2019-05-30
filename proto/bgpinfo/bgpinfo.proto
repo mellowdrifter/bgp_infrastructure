@@ -8,6 +8,7 @@ service bgp_info {
     rpc update_tweet_bit(timestamp) returns (result);
     rpc get_pie_subnets(empty) returns (pie_subnets_response);
     rpc get_movement_totals(movement_request) returns (movement_totals_response);
+    rpc get_pie_rpki(empty) returns (roas);
 }
 
 message values {
@@ -21,7 +22,6 @@ message values {
     large_community large_community = 7;
     roas roas = 8;
 }
-
 
 message empty {
     // Sometimes we just need to request data. No inputs required.

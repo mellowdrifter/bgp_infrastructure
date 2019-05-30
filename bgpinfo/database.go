@@ -52,7 +52,7 @@ func add(b *bgpUpdate) error {
 		MEMTOTAL6, MEMPROTOCOLS6, MEMATTR6, AS4_LEN,
 		AS6_LEN, AS10_LEN, AS4_ONLY, AS6_ONLY, AS_BOTH,
 		LARGEC4, LARGEC6, ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
-	    ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6)
+		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6)
 
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
@@ -231,6 +231,24 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 		Values: tv,
 	}, nil
 
+}
+
+func getPieRPKIHelper() (*pb.Roas, error) {
+	var r pb.Roas
+	sql := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
+	from INFO ORDER by TIME DESC LIMIT 1`
+	err := db.QueryRow(sql).Scan(
+		&r.V4Valid,
+		&r.V4Invalid,
+		&r.V4Unknown,
+		&r.V6Valid,
+		&r.V6Invalid,
+		&r.V6Unknown,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 func updateTweetBitHelper(t uint64) (*pb.Result, error) {
