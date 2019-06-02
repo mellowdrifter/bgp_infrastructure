@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path"
 	"strconv"
 	"strings"
@@ -37,46 +36,19 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	prefixes := getTableTotal()
-	as := getAS()
-	peers := getPeers()
-	masks := getMasks()
-	lc := getLargeCommunities()
-	roas := getROAs()
-
 	//getPrivateASLeak(as)
 
 	current := &pb.Values{
-		PrefixCount:    prefixes,
-		Peers:          peers,
-		AsCount:        as,
-		Masks:          masks,
-		LargeCommunity: lc,
-		Roas:           roas,
+		PrefixCount:    getTableTotal(),
+		Peers:          getPeers(),
+		AsCount:        getAS(),
+		Masks:          getMasks(),
+		LargeCommunity: getLargeCommunities(),
+		Roas:           getROAs(),
 	}
 
 	log.Printf("%v\n", current)
 
-}
-
-// getOutput is a helper function to run commands and return outputs to other functions.
-func getOutput(cmd string) (string, error) {
-	log.Printf("Running getOutput with cmd %s\n", cmd)
-	cmdOut, err := exec.Command("bash", "-c", cmd).Output()
-	if err != nil {
-		return string(cmdOut), err
-	}
-
-	return strings.TrimSuffix(string(cmdOut), "\n"), err
-}
-
-// stringToUint32 is a helper function as many times I need to do this conversion.
-func stringToUint32(s string) uint32 {
-	val, err := strconv.Atoi(s)
-	if err != nil {
-		log.Fatalf("Can't convert to integer: %s", err)
-	}
-	return uint32(val)
 }
 
 // getTableTotal returns the complete RIB and FIB counts.
@@ -88,14 +60,14 @@ func getTableTotal() *pb.PrefixCount {
 	}
 
 	for _, cmd := range cmds {
-		out, err := getOutput(cmd)
+		out, err := c.getOutput(cmd)
 		if err != nil {
 			log.Fatal(err)
 		}
 		totals = append(totals, strings.Fields(out))
 	}
 	return &pb.PrefixCount{
-		Total_4:  stringToUint32(totals[0][0]),
+		Total_4:  common.stringToUint32(totals[0][0]),
 		Active_4: stringToUint32(totals[0][1]),
 		Total_6:  stringToUint32(totals[1][0]),
 		Active_6: stringToUint32(totals[1][1]),
@@ -301,20 +273,5 @@ func getPrivateASLeak(ASNs []string) {
 			fmt.Println("32bit private ASN in use")
 		}
 	}
-
-}
-
-// setListOfStrings returns a slice of strings with no duplicates.
-// Go has no built-in set function, so doing it here
-func setListOfStrings(input []string) []string {
-	u := make([]string, 0, len(input))
-	m := make(map[string]bool)
-	for _, val := range input {
-		if _, ok := m[val]; !ok {
-			m[val] = true
-			u = append(u, val)
-		}
-	}
-	return u
 
 }
