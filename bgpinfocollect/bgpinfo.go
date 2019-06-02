@@ -16,17 +16,13 @@ func main() {
 
 	AS := getSrcAS()
 	fmt.Printf("There are %d unique source ASs\n", len(AS))
-	fmt.Printf("%q\n", AS)
-
-	TAS := getTransitAS()
-	fmt.Printf("There are %d unique transit ASs\n", len(TAS))
-	fmt.Printf("%q\n", TAS)
 
 	peers := getPeers()
 	fmt.Printf("Peers: %v\n", peers)
 
 	subnets := getSubnets()
-	fmt.Printf("There are %d subnets\n", len(subnets))
+	fmt.Printf("There are %d different IPv4 subnets\n", len(subnets.GetIpv4()))
+	fmt.Printf("There are %d different IPv6 subnets\n", len(subnets.GetIpv6()))
 
 	largeCommunities := getLargeCommunities()
 	fmt.Printf("There are %d large communities\n", largeCommunities)
@@ -35,7 +31,15 @@ func main() {
 	fmt.Printf("Roas: %v\n", roas)
 
 	getPrivateASLeak(AS)
-	getPrivateASLeak(TAS)
+
+	var current pb.Values
+
+	current.PrefixCount = &pb.PrefixCount{
+		Total_4:  stringToUint32(tot[0][0]),
+		Active_4: stringToUint32(tot[0][1]),
+		Total_6:  stringToUint32(tot[1][0]),
+		Active_6: stringToUint32(tot[1][1]),
+	}
 
 }
 
@@ -50,14 +54,31 @@ func getOutput(cmd string) (string, error) {
 	return strings.TrimSuffix(string(cmdOut), "\n"), err
 }
 
-// getTableTotal returns the complete RIB and FIB counts.
-func getTableTotal() []string {
-	cmd := "/usr/sbin/birdc6 show route count | grep routes | awk {'print $3, $6'}"
-	v4, err := getOutput(cmd)
+// stringToUint32 is a helper function as many times I need to do this conversion.
+func stringToUint32(s string) uint32 {
+	val, err := strconv.Atoi(s)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Can't convert to integer: %s", err)
 	}
-	return strings.Fields(v4)
+	return uint32(val)
+}
+
+// getTableTotal returns the complete RIB and FIB counts.
+func getTableTotal() [][]string {
+	var totals [][]string
+	cmds := []string{
+		"/usr/sbin/birdc show route count | grep routes | awk {'print $3, $6'}",
+		"/usr/sbin/birdc6 show route count | grep routes | awk {'print $3, $6'}",
+	}
+
+	for _, cmd := range cmds {
+		out, err := getOutput(cmd)
+		if err != nil {
+			log.Fatal(err)
+		}
+		totals = append(totals, strings.Fields(out))
+	}
+	return totals
 }
 
 // getPeers returns how many peers are configured, and how many are established.
@@ -75,8 +96,7 @@ func getPeers() *pb.PeerCount {
 		if err != nil {
 			log.Fatal(err)
 		}
-		p, _ := strconv.Atoi(out)
-		peers = append(peers, uint32(p))
+		peers = append(peers, stringToUint32(out))
 	}
 
 	return &pb.PeerCount{
@@ -101,6 +121,7 @@ func getSrcAS() []string {
 }
 
 // getTransitAS returns a unique slice of all ASNs providing transit.
+// TODO: Do something with this!
 func getTransitAS() []string {
 	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
 	v4, err := getOutput(cmd)
@@ -111,8 +132,8 @@ func getTransitAS() []string {
 }
 
 // getSubnets returns the total amount of each subnet mask.
-func getSubnets() []string {
-	v6 := make(map[string]int)
+func getSubnets() *pb.Mask {
+	v6 := make(map[string]uint32)
 	cmd := "/usr/sbin/birdc6 show route primary | awk {'print $1'}"
 	subnets, err := getOutput(cmd)
 	if err != nil {
@@ -124,7 +145,7 @@ func getSubnets() []string {
 	}
 	fmt.Printf("%v\n", v6)
 
-	v4 := make(map[string]int)
+	v4 := make(map[string]uint32)
 	cmd2 := "/usr/sbin/birdc show route primary | awk {'print $1'}"
 	subnets2, err := getOutput(cmd2)
 	if err != nil {
@@ -136,7 +157,36 @@ func getSubnets() []string {
 	}
 	fmt.Printf("%v\n", v4)
 
-	return strings.Fields(subnets)[1:]
+	// Pack map into proto
+	var v4Masks []*pb.Maskcount
+	var v6Masks []*pb.Maskcount
+
+	var i uint32
+	for i = 8; i < 25; i++ {
+		mc := &pb.Maskcount{
+			Mask:  i,
+			Count: v4[strconv.Itoa(int(i))],
+		}
+		v4Masks = append(v4Masks, mc)
+		fmt.Printf("%+v\n", mc)
+
+	}
+
+	for i = 8; i < 49; i++ {
+		mc := &pb.Maskcount{
+			Mask:  i,
+			Count: v6[strconv.Itoa(int(i))],
+		}
+		v6Masks = append(v6Masks, mc)
+		fmt.Printf("%+v\n", mc)
+
+	}
+
+	return &pb.Mask{
+		Ipv4: v4Masks,
+		Ipv6: v6Masks,
+	}
+
 }
 
 // getLargeCommunities finds the amount of prefixes that have large communities (RFC8092)
@@ -153,8 +203,7 @@ func getLargeCommunities() *pb.LargeCommunity {
 		if err != nil {
 			log.Fatal(err)
 		}
-		c, _ := strconv.Atoi(out)
-		comm = append(comm, uint32(c))
+		comm = append(comm, stringToUint32(out))
 	}
 
 	return &pb.LargeCommunity{
@@ -180,8 +229,7 @@ func getROAs() *pb.Roas {
 		if err != nil {
 			log.Fatal(err)
 		}
-		r, _ := strconv.Atoi(out)
-		roas = append(roas, uint32(r))
+		roas = append(roas, stringToUint32(out))
 	}
 	return &pb.Roas{
 		V4Valid:   roas[0],

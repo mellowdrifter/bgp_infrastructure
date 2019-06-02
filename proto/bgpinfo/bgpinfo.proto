@@ -18,7 +18,7 @@ message values {
     peer_count peers = 3;
     repeated memory mem_use = 4;
     as_count as_count = 5;
-    masks masks = 6;
+    mask masks = 6;
     large_community large_community = 7;
     roas roas = 8;
 }
@@ -47,7 +47,7 @@ message pie_subnets_response {
     // that each subnet is using from the complete total.
     uint32 v4_total = 1;
     uint32 v6_total = 2;
-    masks masks = 3;
+    mask masks = 3;
     uint64 time = 4;
 }
 
@@ -102,7 +102,6 @@ message movement_request {
     TimePeriod period = 1;
 }
 
-
 message memory {
     // total memory used by the daemon
     address_family family = 1;
@@ -130,7 +129,6 @@ enum address_family {
     IPV4 = 1;
 }
 
-
 message prefix_count {
     // prefix counts. Most used info
     uint32 total_4 = 1;
@@ -140,66 +138,14 @@ message prefix_count {
     uint64 time = 5;
 }
 
-message masks {
-    // how many subnets of each mask is active
-    uint32 v4_08 = 1;
-    uint32 v4_09 = 2;
-    uint32 v4_10 = 3;
-    uint32 v4_11 = 4;
-    uint32 v4_12 = 5;
-    uint32 v4_13 = 6;
-    uint32 v4_14 = 7;
-    uint32 v4_15 = 8;
-    uint32 v4_16 = 9;
-    uint32 v4_17 = 10;
-    uint32 v4_18 = 11;
-    uint32 v4_19 = 12;
-    uint32 v4_20 = 13;
-    uint32 v4_21 = 14;
-    uint32 v4_22 = 15;
-    uint32 v4_23 = 16;
-    uint32 v4_24 = 17;
-    uint32 v6_08 = 18;
-    uint32 v6_09 = 19;
-    uint32 v6_10 = 20;
-    uint32 v6_11 = 21;
-    uint32 v6_12 = 22;
-    uint32 v6_13 = 23;
-    uint32 v6_14 = 24;
-    uint32 v6_15 = 25;
-    uint32 v6_16 = 26;
-    uint32 v6_17 = 27;
-    uint32 v6_18 = 28;
-    uint32 v6_19 = 29;
-    uint32 v6_20 = 30;
-    uint32 v6_21 = 31;
-    uint32 v6_22 = 32;
-    uint32 v6_23 = 33;
-    uint32 v6_24 = 34;
-    uint32 v6_25 = 35;
-    uint32 v6_26 = 36;
-    uint32 v6_27 = 37;
-    uint32 v6_28 = 38;
-    uint32 v6_29 = 39;
-    uint32 v6_30 = 40;
-    uint32 v6_31 = 41;
-    uint32 v6_32 = 42;
-    uint32 v6_33 = 43;
-    uint32 v6_34 = 44;
-    uint32 v6_35 = 45;
-    uint32 v6_36 = 46;
-    uint32 v6_37 = 47;
-    uint32 v6_38 = 48;
-    uint32 v6_39 = 49;
-    uint32 v6_40 = 50;
-    uint32 v6_41 = 51;
-    uint32 v6_42 = 52;
-    uint32 v6_43 = 53;
-    uint32 v6_44 = 54;
-    uint32 v6_45 = 55;
-    uint32 v6_46 = 56;
-    uint32 v6_47 = 57;
-    uint32 v6_48 = 58;
+message mask {
+    repeated maskcount ipv4 = 1;
+    repeated maskcount ipv6 = 2;
+}
+
+message maskcount {
+    uint32 mask = 1;
+    uint32 count = 2;
 }
 
 message response {
