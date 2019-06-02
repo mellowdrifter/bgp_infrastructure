@@ -13,7 +13,12 @@ func main() {
 	fmt.Printf("RIB: %s, FIB: %s\n", tot[0], tot[1])
 
 	AS := getSrcAS()
-	fmt.Printf("There are %d unique ASs\n", len(AS))
+	fmt.Printf("There are %d unique source ASs\n", len(AS))
+	fmt.Printf("%q\n", AS)
+
+	TAS := getTransitAS()
+	fmt.Printf("There are %d unique transit ASs\n", len(TAS))
+	fmt.Printf("%q\n", TAS)
 
 	peers, state := getPeers()
 	fmt.Printf("I have %d peers and %d of them are Established\n", peers, state)
@@ -24,9 +29,15 @@ func main() {
 	largeCommunities := getLargeCommunities()
 	fmt.Printf("There are %d large communities\n", largeCommunities)
 
+	roas := getROAs()
+	fmt.Printf("Roas: %v\n", roas)
+
+	getPrivateASLeak(AS)
+	getPrivateASLeak(TAS)
+
 }
 
-// getOutput is a helper functino to run commands and return outputs to other functions.
+// getOutput is a helper function to run commands and return outputs to other functions.
 func getOutput(cmd string) (string, error) {
 	fmt.Printf("Running getOutput with cmd %s\n", cmd)
 	cmdOut, err := exec.Command("bash", "-c", cmd).Output()
@@ -79,6 +90,16 @@ func getSrcAS() []string {
 
 }
 
+// getTransitAS returns a unique slice of all ASNs providing transit.
+func getTransitAS() []string {
+	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
+	v4, err := getOutput(cmd)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return setListOfStrings(strings.Fields(v4))
+}
+
 // getSubnets returns the total amount of each subnet mask.
 func getSubnets() []string {
 	v6 := make(map[string]int)
@@ -119,6 +140,50 @@ func getLargeCommunities() int {
 
 	c, _ := strconv.Atoi(v4)
 	return c
+}
+
+// getROAs returns the amount of RPKI ROAs ni VALID, INVALID, and UNKNOWN status.
+func getROAs() []int {
+	var roas []int
+	cmds := []string{
+		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l",
+		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l",
+		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l",
+		"/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l",
+		"/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l",
+		"/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l",
+	}
+
+	for _, cmd := range cmds {
+		out, err := getOutput(cmd)
+		if err != nil {
+			log.Fatal(err)
+		}
+		r, _ := strconv.Atoi(out)
+		roas = append(roas, r)
+	}
+	return roas
+
+}
+
+// getPrivateASLeak returns how many private ASNs are in the AS-Path
+func getPrivateASLeak(ASNs []string) {
+	for _, ASN := range ASNs {
+		num, _ := strconv.Atoi(ASN)
+		switch {
+		case num == 0:
+			fmt.Println("AS is zero")
+		case num == 65535:
+			fmt.Println("AS is 65535")
+		case num == 4294967295:
+			fmt.Println("AS is 4294967295")
+		case num > 64511 && num < 65535:
+			fmt.Printf("16bit private ASN in use: %d\n", num)
+		case num > 4199999999 && num < 4294967295:
+			fmt.Println("32bit private ASN in use")
+		}
+	}
+
 }
 
 // setListOfStrings returns a slice of strings with no duplicates.
