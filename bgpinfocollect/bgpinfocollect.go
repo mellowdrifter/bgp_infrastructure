@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	c "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
-	c  "github.com/mellowdrifter/bgp_infrastructure/common"
 	"gopkg.in/ini.v1"
 )
 
@@ -61,17 +61,17 @@ func getTableTotal() *pb.PrefixCount {
 	}
 
 	for _, cmd := range cmds {
-		out, err := c.getOutput(cmd)
+		out, err := c.GetOutput(cmd)
 		if err != nil {
 			log.Fatal(err)
 		}
 		totals = append(totals, strings.Fields(out))
 	}
 	return &pb.PrefixCount{
-		Total_4:  common.stringToUint32(totals[0][0]),
-		Active_4: stringToUint32(totals[0][1]),
-		Total_6:  stringToUint32(totals[1][0]),
-		Active_6: stringToUint32(totals[1][1]),
+		Total_4:  c.StringToUint32(totals[0][0]),
+		Active_4: c.StringToUint32(totals[0][1]),
+		Total_6:  c.StringToUint32(totals[1][0]),
+		Active_6: c.StringToUint32(totals[1][1]),
 	}
 }
 
@@ -86,11 +86,11 @@ func getPeers() *pb.PeerCount {
 	}
 
 	for _, cmd := range cmds {
-		out, err := getOutput(cmd)
+		out, err := c.GetOutput(cmd)
 		if err != nil {
 			log.Fatal(err)
 		}
-		peers = append(peers, stringToUint32(out))
+		peers = append(peers, c.StringToUint32(out))
 	}
 
 	return &pb.PeerCount{
@@ -108,24 +108,24 @@ func getAS() *pb.AsCount {
 	cmd1 := "/usr/sbin/birdc show route primary | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'"
 	cmd2 := "/usr/sbin/birdc6 show route primary | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'"
 
-	as4, err := getOutput(cmd1)
+	as4, err := c.GetOutput(cmd1)
 	if err != nil {
 		log.Fatal(err)
 	}
-	as6, err := getOutput(cmd2)
+	as6, err := c.GetOutput(cmd2)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// asNSet is the list of unique source AS numbers in each address family
-	as4Set := setListOfStrings(strings.Fields(as4))
-	as6Set := setListOfStrings(strings.Fields(as6))
+	as4Set := c.SetListOfStrings(strings.Fields(as4))
+	as6Set := c.SetListOfStrings(strings.Fields(as6))
 
 	// as10Set is the total number of unique source AS numbers.
 	var as10 []string
 	as10 = append(as10, as4Set...)
 	as10 = append(as10, as6Set...)
-	as10Set := setListOfStrings(as10)
+	as10Set := c.SetListOfStrings(as10)
 
 	//TODO: as4_only, as6_only, as_both
 
@@ -141,18 +141,18 @@ func getAS() *pb.AsCount {
 // TODO: Do something with this!
 func getTransitAS() []string {
 	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
-	v4, err := getOutput(cmd)
+	v4, err := c.GetOutput(cmd)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return setListOfStrings(strings.Fields(v4))
+	return c.SetListOfStrings(strings.Fields(v4))
 }
 
 // getMasks returns the total amount of each subnet mask.
 func getMasks() *pb.Mask {
 	v6 := make(map[string]uint32)
 	cmd := "/usr/sbin/birdc6 show route primary | awk {'print $1'}"
-	subnets, err := getOutput(cmd)
+	subnets, err := c.GetOutput(cmd)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func getMasks() *pb.Mask {
 
 	v4 := make(map[string]uint32)
 	cmd2 := "/usr/sbin/birdc show route primary | awk {'print $1'}"
-	subnets2, err := getOutput(cmd2)
+	subnets2, err := c.GetOutput(cmd2)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -214,11 +214,11 @@ func getLargeCommunities() *pb.LargeCommunity {
 	}
 
 	for _, cmd := range cmds {
-		out, err := getOutput(cmd)
+		out, err := c.GetOutput(cmd)
 		if err != nil {
 			log.Fatal(err)
 		}
-		comm = append(comm, stringToUint32(out))
+		comm = append(comm, c.StringToUint32(out))
 	}
 
 	return &pb.LargeCommunity{
@@ -240,11 +240,11 @@ func getROAs() *pb.Roas {
 	}
 
 	for _, cmd := range cmds {
-		out, err := getOutput(cmd)
+		out, err := c.GetOutput(cmd)
 		if err != nil {
 			log.Fatal(err)
 		}
-		roas = append(roas, stringToUint32(out))
+		roas = append(roas, c.StringToUint32(out))
 	}
 	return &pb.Roas{
 		V4Valid:   roas[0],
