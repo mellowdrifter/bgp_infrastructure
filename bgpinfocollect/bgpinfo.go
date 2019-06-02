@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
 func main() {
@@ -20,8 +22,8 @@ func main() {
 	fmt.Printf("There are %d unique transit ASs\n", len(TAS))
 	fmt.Printf("%q\n", TAS)
 
-	peers, state := getPeers()
-	fmt.Printf("I have %d peers and %d of them are Established\n", peers, state)
+	peers := getPeers()
+	fmt.Printf("Peers: %v\n", peers)
 
 	subnets := getSubnets()
 	fmt.Printf("There are %d subnets\n", len(subnets))
@@ -59,22 +61,30 @@ func getTableTotal() []string {
 }
 
 // getPeers returns how many peers are configured, and how many are established.
-func getPeers() (int, int) {
-	cmd1 := "/usr/sbin/birdc show protocols | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l"
-	peers, err := getOutput(cmd1)
-	if err != nil {
-		log.Fatal(err)
+func getPeers() *pb.PeerCount {
+	var peers []uint32
+	cmds := []string{
+		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
+		"/usr/sbin/birdc show protocols | awk {'print $6'} | grep Established | wc -l",
+		"/usr/sbin/birdc6 show protocols | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
+		"/usr/sbin/birdc6 show protocols | awk {'print $6'} | grep Established | wc -l",
 	}
-	p, _ := strconv.Atoi(peers)
 
-	cmd2 := "/usr/sbin/birdc show protocols | awk {'print $6'} | grep Established | wc -l"
-	state, err := getOutput(cmd2)
-	if err != nil {
-		log.Fatal(err)
+	for _, cmd := range cmds {
+		out, err := getOutput(cmd)
+		if err != nil {
+			log.Fatal(err)
+		}
+		p, _ := strconv.Atoi(out)
+		peers = append(peers, uint32(p))
 	}
-	s, _ := strconv.Atoi(state)
 
-	return p, s
+	return &pb.PeerCount{
+		PeerCount_4: peers[0],
+		PeerUp_4:    peers[1],
+		PeerCount_6: peers[2],
+		PeerUp_6:    peers[3],
+	}
 
 }
 
@@ -131,20 +141,31 @@ func getSubnets() []string {
 
 // getLargeCommunities finds the amount of prefixes that have large communities (RFC8092)
 // TODO: I'm not sure this command is right
-func getLargeCommunities() int {
-	cmd := "/usr/sbin/birdc 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l"
-	v4, err := getOutput(cmd)
-	if err != nil {
-		log.Fatal(err)
+func getLargeCommunities() *pb.LargeCommunity {
+	var comm []uint32
+	cmds := []string{
+		"/usr/sbin/birdc 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l",
+		"/usr/sbin/birdc6 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l",
 	}
 
-	c, _ := strconv.Atoi(v4)
-	return c
+	for _, cmd := range cmds {
+		out, err := getOutput(cmd)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c, _ := strconv.Atoi(out)
+		comm = append(comm, uint32(c))
+	}
+
+	return &pb.LargeCommunity{
+		C4: comm[0],
+		C6: comm[1],
+	}
 }
 
-// getROAs returns the amount of RPKI ROAs ni VALID, INVALID, and UNKNOWN status.
-func getROAs() []int {
-	var roas []int
+// getROAs returns the amount of RPKI ROAs in VALID, INVALID, and UNKNOWN status.
+func getROAs() *pb.Roas {
+	var roas []uint32
 	cmds := []string{
 		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l",
 		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l",
@@ -160,9 +181,16 @@ func getROAs() []int {
 			log.Fatal(err)
 		}
 		r, _ := strconv.Atoi(out)
-		roas = append(roas, r)
+		roas = append(roas, uint32(r))
 	}
-	return roas
+	return &pb.Roas{
+		V4Valid:   roas[0],
+		V4Invalid: roas[1],
+		V4Unknown: roas[2],
+		V6Valid:   roas[0],
+		V6Invalid: roas[1],
+		V6Unknown: roas[2],
+	}
 
 }
 
