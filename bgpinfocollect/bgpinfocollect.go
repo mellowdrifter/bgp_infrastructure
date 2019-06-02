@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	c  "github.com/mellowdrifter/bgp_infrastructure/common"
 	"gopkg.in/ini.v1"
 )
 
