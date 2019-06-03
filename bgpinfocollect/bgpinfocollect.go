@@ -7,6 +7,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
@@ -50,10 +51,13 @@ func main() {
 
 	log.Printf("%v\n", current)
 
+	getMem()
+
 }
 
 // getTableTotal returns the complete RIB and FIB counts.
 func getTableTotal() *pb.PrefixCount {
+	defer c.TimeFunction(time.Now(), "getTableTotal")
 	var totals [][]string
 	cmds := []string{
 		"/usr/sbin/birdc show route count | grep routes | awk {'print $3, $6'}",
@@ -77,6 +81,7 @@ func getTableTotal() *pb.PrefixCount {
 
 // getPeers returns how many peers are configured, and how many are established.
 func getPeers() *pb.PeerCount {
+	defer c.TimeFunction(time.Now(), "getPeers")
 	var peers []uint32
 	cmds := []string{
 		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
@@ -105,6 +110,7 @@ func getPeers() *pb.PeerCount {
 // getAS returns a unique slice of all source ASs seen.
 // TODO: add transit ASs as well and pack into same struct.
 func getAS() *pb.AsCount {
+	defer c.TimeFunction(time.Now(), "getAS")
 	cmd1 := "/usr/sbin/birdc show route primary | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'"
 	cmd2 := "/usr/sbin/birdc6 show route primary | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'"
 
@@ -140,6 +146,7 @@ func getAS() *pb.AsCount {
 // getTransitAS returns a unique slice of all ASNs providing transit.
 // TODO: Do something with this!
 func getTransitAS() []string {
+	defer c.TimeFunction(time.Now(), "getTransitAS")
 	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
 	v4, err := c.GetOutput(cmd)
 	if err != nil {
@@ -150,6 +157,7 @@ func getTransitAS() []string {
 
 // getMasks returns the total amount of each subnet mask.
 func getMasks() *pb.Mask {
+	defer c.TimeFunction(time.Now(), "getMasks")
 	v6 := make(map[string]uint32)
 	cmd := "/usr/sbin/birdc6 show route primary | awk {'print $1'}"
 	subnets, err := c.GetOutput(cmd)
@@ -207,6 +215,7 @@ func getMasks() *pb.Mask {
 // getLargeCommunities finds the amount of prefixes that have large communities (RFC8092)
 // TODO: I'm not sure this command is right
 func getLargeCommunities() *pb.LargeCommunity {
+	defer c.TimeFunction(time.Now(), "getLargeCommunities")
 	var comm []uint32
 	cmds := []string{
 		"/usr/sbin/birdc 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l",
@@ -229,6 +238,7 @@ func getLargeCommunities() *pb.LargeCommunity {
 
 // getROAs returns the amount of RPKI ROAs in VALID, INVALID, and UNKNOWN status.
 func getROAs() *pb.Roas {
+	defer c.TimeFunction(time.Now(), "getROAs")
 	var roas []uint32
 	cmds := []string{
 		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l",
@@ -259,6 +269,7 @@ func getROAs() *pb.Roas {
 
 // getPrivateASLeak returns how many private ASNs are in the AS-Path
 func getPrivateASLeak(ASNs []string) {
+	defer c.TimeFunction(time.Now(), "getPrivateASLeak")
 	for _, ASN := range ASNs {
 		num, _ := strconv.Atoi(ASN)
 		switch {
@@ -275,4 +286,25 @@ func getPrivateASLeak(ASNs []string) {
 		}
 	}
 
+}
+
+// getMem
+func getMem() {
+	//mem := make(map[string]string)
+	cmds := []string{
+		"/usr/sbin/birdc 'show mem'",
+		"/usr/sbin/birdc6 'show mem'",
+	}
+
+	for _, cmd := range cmds {
+		out, err := c.GetOutput(cmd)
+		if err != nil {
+			log.Fatal(err)
+		}
+		splitOut := strings.Split(out, "\n")
+		for _, o := range splitOut[2:] {
+			log.Printf("%q\n", strings.Split(o, ":"))
+
+		}
+	}
 }

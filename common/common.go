@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // GetOutput is a helper function to run commands and return outputs to other functions.
@@ -40,4 +41,9 @@ func SetListOfStrings(input []string) []string {
 	}
 	return u
 
+}
+
+// TimeFunction logs total time to execute a function.
+func TimeFunction(start time.Time, name string) {
+	log.Printf("%s took %s\n", name, time.Since(start))
 }
