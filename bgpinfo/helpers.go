@@ -52,7 +52,6 @@ func repack(v *pb.Values) *bgpUpdate {
 	// format needs to be adjusted a bit to insert into the
 	// database later.
 	as := v.GetAsCount()
-	mem := v.GetMemUse()
 	mask := v.GetMasks()
 	p := v.GetPrefixCount()
 	roa := v.GetRoas()
@@ -138,21 +137,6 @@ func repack(v *pb.Values) *bgpUpdate {
 		v6_46:            mask.GetV6_46(),
 		v6_47:            mask.GetV6_47(),
 		v6_48:            mask.GetV6_48(),
-	}
-
-	for _, m := range mem {
-		if m.GetFamily() == pb.AddressFamily_IPV4 {
-			update.memTable = m.GetMemstats().GetTables()
-			update.memProto = m.GetMemstats().GetProtocols()
-			update.memAttr = m.GetMemstats().GetAttributes()
-			update.memTotal = m.GetMemstats().GetTotal()
-		}
-		if m.GetFamily() == pb.AddressFamily_IPV6 {
-			update.memTable6 = m.GetMemstats().GetTables()
-			update.memProto6 = m.GetMemstats().GetProtocols()
-			update.memAttr6 = m.GetMemstats().GetAttributes()
-			update.memTotal6 = m.GetMemstats().GetTotal()
-		}
 	}
 
 	return update

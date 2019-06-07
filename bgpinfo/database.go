@@ -47,18 +47,15 @@ func add(b *bgpUpdate) error {
 		V6_31, V6_30, V6_29, V6_28, V6_27, V6_26, V6_25,
 		V6_24, V6_23, V6_22, V6_21, V6_20, V6_19, V6_18,
 		V6_17, V6_16, V6_15, V6_14, V6_13, V6_12, V6_11,
-		V6_10, V6_09, V6_08, MEMTABLES, MEMTOTAL,
-		MEMPROTOCOLS, MEMATTR, MEMTABLES6,
-		MEMTOTAL6, MEMPROTOCOLS6, MEMATTR6, AS4_LEN,
-		AS6_LEN, AS10_LEN, AS4_ONLY, AS6_ONLY, AS_BOTH,
-		LARGEC4, LARGEC6, ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
+		V6_10, V6_09, V6_08, AS4_LEN, AS6_LEN, AS10_LEN,
+		AS4_ONLY, AS6_ONLY, AS_BOTH, LARGEC4, LARGEC6,
+		ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
 		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6)
 
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-				?,?,?,?,?,?,?,?,?)`,
+				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.time, b.v4Count, b.v6Count, b.v4Total, b.v6Total, b.peersConfigured,
 		b.peersUp, b.peers6Configured, b.peers6Up, b.v4_24,
 		b.v4_23, b.v4_22, b.v4_21, b.v4_20, b.v4_19, b.v4_18, b.v4_17, b.v4_16,
@@ -68,10 +65,9 @@ func add(b *bgpUpdate) error {
 		b.v6_32, b.v6_31, b.v6_30, b.v6_29, b.v6_28, b.v6_27, b.v6_26, b.v6_25,
 		b.v6_24, b.v6_23, b.v6_22, b.v6_21, b.v6_20, b.v6_19, b.v6_18, b.v6_17,
 		b.v6_16, b.v6_15, b.v6_14, b.v6_13, b.v6_12, b.v6_11, b.v6_10, b.v6_09,
-		b.v6_08, b.memTable, b.memTotal, b.memProto, b.memAttr, b.memTable6,
-		b.memTotal6, b.memProto6, b.memAttr6, b.as4, b.as6, b.as10, b.as4Only,
-		b.as6Only, b.asBoth, b.largeC4, b.largeC6, b.roavalid4, b.roainvalid4,
-		b.roaunknown4, b.roavalid6, b.roainvalid6, b.roaunknown6)
+		b.v6_08, b.as4, b.as6, b.as10, b.as4Only, b.as6Only, b.asBoth, b.largeC4,
+		b.largeC6, b.roavalid4, b.roainvalid4, b.roaunknown4, b.roavalid6,
+		b.roainvalid6, b.roaunknown6)
 
 	log.Printf("updated database: %v", result)
 
@@ -132,9 +128,9 @@ func getPrefixCountHelper() (*pb.PrefixCountResponse, error) {
 }
 
 func getPieSubnetsHelper() (*pb.PieSubnetsResponse, error) {
-	var pie pb.PieSubnetsResponse
-	// Need to separate this field and add later.
+
 	var masks pb.Masks
+	var pie pb.PieSubnetsResponse
 
 	err := db.QueryRow(`SELECT V4_08,V4_09,V4_10,V4_11,V4_12,V4_13,V4_14,
         V4_15,V4_16,V4_17,V4_18,V4_19,V4_20,V4_21,V4_22,
@@ -170,6 +166,7 @@ func getPieSubnetsHelper() (*pb.PieSubnetsResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	// Add masks to the pie response.
 	pie.Masks = &masks
 

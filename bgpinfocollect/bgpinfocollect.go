@@ -51,8 +51,6 @@ func main() {
 
 	log.Printf("%v\n", current)
 
-	getMem()
-
 }
 
 // getTableTotal returns the complete RIB and FIB counts.
@@ -181,8 +179,7 @@ func getMasks() *pb.Mask {
 	}
 
 	// Pack map into proto
-	var v4Masks []*pb.Maskcount
-	var v6Masks []*pb.Maskcount
+	var v4Masks, v6Masks []*pb.Maskcount
 
 	var i uint32
 	for i = 8; i < 25; i++ {
@@ -286,25 +283,4 @@ func getPrivateASLeak(ASNs []string) {
 		}
 	}
 
-}
-
-// getMem
-func getMem() {
-	//mem := make(map[string]string)
-	cmds := []string{
-		"/usr/sbin/birdc 'show mem'",
-		"/usr/sbin/birdc6 'show mem'",
-	}
-
-	for _, cmd := range cmds {
-		out, err := c.GetOutput(cmd)
-		if err != nil {
-			log.Fatal(err)
-		}
-		splitOut := strings.Split(out, "\n")
-		for _, o := range splitOut[2:] {
-			log.Printf("%q\n", strings.Split(o, ":"))
-
-		}
-	}
 }
