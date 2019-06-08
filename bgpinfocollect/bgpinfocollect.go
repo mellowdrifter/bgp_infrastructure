@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/mellowdrifter/bgp_infrastructure/common"
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	"google.golang.org/grpc"
@@ -56,8 +57,7 @@ func main() {
 	log.Printf("%v\n", current)
 	fmt.Println(proto.MarshalTextString(current))
 
-	// gRPC dial
-	// TODO: Must specify this, else will just print to screen
+	// gRPC dial and send data
 	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", server, port), grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
@@ -152,12 +152,22 @@ func getAS() *pb.AsCount {
 	as10 = append(as10, as6Set...)
 	as10Set := c.SetListOfStrings(as10)
 
-	//TODO: as4_only, as6_only, as_both
+	// as4Only is the set of ASs that only source IPv4
+	as4Only := common.InFirstButNotSecond(as4Set, as6Set)
+
+	// as6Only is the set of ASs that only source IPv6
+	as6Only := common.InFirstButNotSecond(as6Set, as4Set)
+
+	// asBoth is the set of ASs that source both IPv4 and IPv6
+	asBoth := common.Intersection(as4Set, as6Set)
 
 	return &pb.AsCount{
-		As4:  uint32(len(as4Set)),
-		As6:  uint32(len(as6Set)),
-		As10: uint32(len(as10Set)),
+		As4:     uint32(len(as4Set)),
+		As6:     uint32(len(as6Set)),
+		As10:    uint32(len(as10Set)),
+		As4Only: uint32(len(as4Only)),
+		As6Only: uint32(len(as6Only)),
+		AsBoth:  uint32(len(asBoth)),
 	}
 
 }

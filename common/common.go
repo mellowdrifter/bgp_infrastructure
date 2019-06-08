@@ -43,6 +43,38 @@ func SetListOfStrings(input []string) []string {
 
 }
 
+// InFirstButNotSecond returns the second slice subtracted from the first.
+// Go has no built-in function to do this.
+func InFirstButNotSecond(first, second []string) []string {
+	var third []string
+	iterMap := make(map[string]bool)
+	for _, element := range second {
+		iterMap[element] = true
+	}
+	for _, element := range first {
+		if _, ok := iterMap[element]; !ok {
+			third = append(third, element)
+		}
+	}
+	return third
+}
+
+// Intersection returns a slice that is an intersection of two slices.
+// Go has no built-in function to do this.
+func Intersection(first, second []string) []string {
+	var third []string
+	iterMap := make(map[string]bool)
+	for _, element := range second {
+		iterMap[element] = true
+	}
+	for _, element := range first {
+		if _, ok := iterMap[element]; ok {
+			third = append(third, element)
+		}
+	}
+	return third
+}
+
 // TimeFunction logs total time to execute a function.
 func TimeFunction(start time.Time, name string) {
 	log.Printf("%s took %s\n", name, time.Since(start))
