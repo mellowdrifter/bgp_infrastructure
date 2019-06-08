@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	"google.golang.org/grpc"
 	"gopkg.in/ini.v1"
 )
 
@@ -27,8 +30,8 @@ func main() {
 	}
 
 	logfile := cf.Section("grpc").Key("logfile").String()
-	//server := cf.Section("grpc").Key("server").String()
-	//port := cf.Section("grpc").Key("port").String()
+	server := cf.Section("grpc").Key("server").String()
+	port := cf.Section("grpc").Key("port").String()
 
 	// Set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -41,6 +44,7 @@ func main() {
 	//getPrivateASLeak(as)
 
 	current := &pb.Values{
+		Time:           uint64(time.Now().Unix()),
 		PrefixCount:    getTableTotal(),
 		Peers:          getPeers(),
 		AsCount:        getAS(),
@@ -50,6 +54,23 @@ func main() {
 	}
 
 	log.Printf("%v\n", current)
+	fmt.Println(proto.MarshalTextString(current))
+
+	// gRPC dial
+	// TODO: Must specify this, else will just print to screen
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", server, port), grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("Unable to dial gRPC server: %s", err)
+	}
+	defer conn.Close()
+	c := pb.NewBgpInfoClient(conn)
+
+	resp, err := c.AddLatest(context.Background(), current)
+	if err != nil {
+		log.Fatalf("Unable to send proto: %s", err)
+	}
+
+	fmt.Println(proto.MarshalTextString(resp))
 
 }
 
@@ -154,7 +175,7 @@ func getTransitAS() []string {
 }
 
 // getMasks returns the total amount of each subnet mask.
-func getMasks() *pb.Mask {
+func getMasks() *pb.Masks {
 	defer c.TimeFunction(time.Now(), "getMasks")
 	v6 := make(map[string]uint32)
 	cmd := "/usr/sbin/birdc6 show route primary | awk {'print $1'}"
@@ -179,33 +200,69 @@ func getMasks() *pb.Mask {
 	}
 
 	// Pack map into proto
-	var v4Masks, v6Masks []*pb.Maskcount
+	var masks pb.Masks
+	masks.V4_08 = v4["8"]
+	masks.V4_09 = v4["9"]
+	masks.V4_10 = v4["10"]
+	masks.V4_10 = v4["10"]
+	masks.V4_11 = v4["11"]
+	masks.V4_12 = v4["12"]
+	masks.V4_13 = v4["13"]
+	masks.V4_14 = v4["14"]
+	masks.V4_15 = v4["15"]
+	masks.V4_16 = v4["16"]
+	masks.V4_17 = v4["17"]
+	masks.V4_18 = v4["18"]
+	masks.V4_19 = v4["19"]
+	masks.V4_20 = v4["20"]
+	masks.V4_21 = v4["21"]
+	masks.V4_22 = v4["22"]
+	masks.V4_23 = v4["23"]
+	masks.V4_24 = v4["24"]
+	masks.V6_08 = v6["8"]
+	masks.V6_09 = v6["9"]
+	masks.V6_10 = v6["10"]
+	masks.V6_10 = v6["10"]
+	masks.V6_11 = v6["11"]
+	masks.V6_12 = v6["12"]
+	masks.V6_13 = v6["13"]
+	masks.V6_14 = v6["14"]
+	masks.V6_15 = v6["15"]
+	masks.V6_16 = v6["16"]
+	masks.V6_17 = v6["17"]
+	masks.V6_18 = v6["18"]
+	masks.V6_19 = v6["19"]
+	masks.V6_20 = v6["20"]
+	masks.V6_21 = v6["21"]
+	masks.V6_22 = v6["22"]
+	masks.V6_23 = v6["23"]
+	masks.V6_24 = v6["24"]
+	masks.V6_25 = v6["25"]
+	masks.V6_26 = v6["26"]
+	masks.V6_27 = v6["27"]
+	masks.V6_28 = v6["28"]
+	masks.V6_29 = v6["29"]
+	masks.V6_30 = v6["30"]
+	masks.V6_31 = v6["31"]
+	masks.V6_32 = v6["32"]
+	masks.V6_33 = v6["33"]
+	masks.V6_34 = v6["34"]
+	masks.V6_35 = v6["35"]
+	masks.V6_36 = v6["36"]
+	masks.V6_37 = v6["37"]
+	masks.V6_38 = v6["38"]
+	masks.V6_39 = v6["39"]
+	masks.V6_40 = v6["40"]
+	masks.V6_41 = v6["41"]
+	masks.V6_42 = v6["42"]
+	masks.V6_43 = v6["43"]
+	masks.V6_44 = v6["44"]
+	masks.V6_45 = v6["45"]
+	masks.V6_46 = v6["46"]
+	masks.V6_47 = v6["47"]
+	masks.V6_48 = v6["48"]
 
-	var i uint32
-	for i = 8; i < 25; i++ {
-		mc := &pb.Maskcount{
-			Mask:  i,
-			Count: v4[strconv.Itoa(int(i))],
-		}
-		v4Masks = append(v4Masks, mc)
-		log.Printf("%+v\n", mc)
-
-	}
-
-	for i = 8; i < 49; i++ {
-		mc := &pb.Maskcount{
-			Mask:  i,
-			Count: v6[strconv.Itoa(int(i))],
-		}
-		v6Masks = append(v6Masks, mc)
-		log.Printf("%+v\n", mc)
-
-	}
-
-	return &pb.Mask{
-		Ipv4: v4Masks,
-		Ipv6: v6Masks,
-	}
+	return &masks
 
 }
 
@@ -257,9 +314,9 @@ func getROAs() *pb.Roas {
 		V4Valid:   roas[0],
 		V4Invalid: roas[1],
 		V4Unknown: roas[2],
-		V6Valid:   roas[0],
-		V6Invalid: roas[1],
-		V6Unknown: roas[2],
+		V6Valid:   roas[3],
+		V6Invalid: roas[4],
+		V6Unknown: roas[5],
 	}
 
 }
