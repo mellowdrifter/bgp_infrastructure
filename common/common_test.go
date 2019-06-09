@@ -55,6 +55,17 @@ func TestInFirstButNotSecond(t *testing.T) {
 			second: []string{"15169", "3357", "1"},
 			out:    []string{"29435", "2257"},
 		},
+		{
+			name:   "Third test",
+			first:  []string{"1"},
+			second: []string{},
+			out:    []string{"1"},
+		},
+		{
+			name:   "Fourth test",
+			first:  []string{},
+			second: []string{"1"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -84,6 +95,11 @@ func TestIntersection(t *testing.T) {
 			first:  []string{"29435", "15169", "2257"},
 			second: []string{"15169", "3357", "1"},
 			out:    []string{"15169"},
+		},
+		{
+			name:   "Third test",
+			first:  []string{},
+			second: []string{"1"},
 		},
 	}
 

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package grapher;
+
+service Grapher {
+    rpc GetLineGraph(LineGraphRequest) returns (GrapherResponse);
+    rpc GetPieChart(PieChartRequest) returns (GrapherResponse);
+}
+
+message LineGraphRequest {
+    // Requests a line graph for FIB totals in each address family.
+    repeated Metadatas metadata = 1;
+    repeated TotalTimes totals_time = 2;
+    string copyright = 3;
+}
+
+message PieChartRequest {
+    // Requests a pie chart showing subnet distribution from the total.
+    repeated Metadatas metadata = 1;
+    repeated uint32 subnets = 2;
+    repeated string labels = 3;
+    repeated string colours = 4;
+}
+
+message TotalTimes {
+    // v4 FIB, v6 FIB, and the time it was at those values.
+    uint32 v4_values = 1;
+    uint32 v6_values = 2;
+    uint64 time = 3;
+}
+
+message Metadatas {
+    // Used to create the image.
+    string title = 1;
+    uint32 x_axis = 2;
+    uint32 y_axis = 3;
+    uint32 colour = 4;
+}
+
+message GrapherResponse {
+    // There should always be two images sent back, once for each address family.
+    repeated Images image = 1;
+}
+
+message Images {
+    // The image itself. Also the title of each if required.
+    bytes image = 1;
+    string title = 2;
+}

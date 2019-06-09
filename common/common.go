@@ -10,7 +10,7 @@ import (
 
 // GetOutput is a helper function to run commands and return outputs to other functions.
 func GetOutput(cmd string) (string, error) {
-	log.Printf("Running getOutput with cmd %s\n", cmd)
+	//log.Printf("Running getOutput with cmd %s\n", cmd)
 	cmdOut, err := exec.Command("bash", "-c", cmd).Output()
 	if err != nil {
 		return string(cmdOut), err
