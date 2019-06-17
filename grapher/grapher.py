@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import configparser
 import grapher_pb2 as pb
 import grapher_pb2_grpc
 import datetime
@@ -19,6 +20,19 @@ from typing import List
 
 _ONE_DAY_IN_SECONDS = 60 * 60 * 24
 
+# Load config
+config = configparser.ConfigParser()
+path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
+config.read(path)
+server = str(config.get('grpc', 'server'))
+port = str(config.get('grpc', 'port'))
+log = config.get('grpc', 'logfile')
+
+# Set up logging
+format_string = '%(levelname)s: %(asctime)s: %(message)s'
+logging.basicConfig(filename=log, level=logging.INFO, format=format_string)
+
+
 class GrapherServicer(grapher_pb2_grpc.GrapherServicer):
     """Provides methods that implement functionality of the grapher server."""
 
@@ -35,7 +49,6 @@ def get_line_graph(
     ) -> pb.GrapherResponse():
 
     logging.info('running get_line_graph')
-    print('running get_line_graph')
 
     totals = []
     dates = []
@@ -43,11 +56,10 @@ def get_line_graph(
     v6totals = []
     graphs = pb.GrapherResponse()
 
-    print(request.totals_time)
     for i in range(len(request.totals_time)):
         dates.append(datetime.datetime.fromtimestamp(request.totals_time[i].time))
-        v4totals.append(request.totals_time[i].v4totals)
-        v6totals.append(request.totals_time[i].v6totals)
+        v4totals.append(request.totals_time[i].v4_values)
+        v6totals.append(request.totals_time[i].v6_values)
     totals.append(v4totals)
     totals.append(v6totals)
 
@@ -79,7 +91,7 @@ def get_line_graph(
         plt.tick_params(axis="both", which="both", bottom=False, top=False,
                         labelbottom=True, left=False, right=False, labelleft=True)
         plt.plot(dates, totals[j], 'o-', lw=1, alpha=0.4, color=colour)
-        plt.figtext(0.5, 0.93, copyright,
+        plt.figtext(0.5, 0.93, request.copyright,
                     fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
         plt.savefig(image, format='png')
@@ -90,6 +102,10 @@ def get_line_graph(
         )
         graphs.images.append(graph)
         plt.close()
+        j+=1
+
+    logging.info("Returning line graphs")
+    return graphs
 
 
 def get_pie_chart(
@@ -97,17 +113,11 @@ def get_pie_chart(
     ) -> pb.GrapherResponse():
 
     logging.info('running get_line_graph')
-    print('running get_line_graph')
 
     subnets = []
     pieCharts = pb.GrapherResponse()
-    print(request.subnets.v4_values)
-    print(request.subnets.v6_values)
-
     subnets.append(list(request.subnets.v4_values))
     subnets.append(list(request.subnets.v6_values))
-
-    #print(request.metadatas)
 
     j = 0
     for metadata in request.metadatas:
@@ -143,26 +153,27 @@ def get_pie_chart(
         plt.close()
         j+=1
     
+    logging.info("Returning pie charts")
     return pieCharts
 
 
 
 
 if __name__ == "__main__":
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    grpcserver = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     grapher_pb2_grpc.add_GrapherServicer_to_server(
-        GrapherServicer(), server
+        GrapherServicer(), grpcserver
     )
 
-    print('Listening on port 7180.')
-    server.add_insecure_port('127.0.0.1:7180')
-    server.start()
+    logging.info('Listening on port {}.'.format(port))
+    grpcserver.add_insecure_port("{}:{}".format(server, port))
+    grpcserver.start()
 
-    # since server.start() will not block,
+    # since grpcserver.start() will not block,
     # a sleep-loop is added to keep alive
     try:
         while True:
             time.sleep(_ONE_DAY_IN_SECONDS)
     except KeyboardInterrupt:
         print('Keyboard interrupted. Stopping server.')
-        server.stop(0)
+        grpcserver.stop(0)

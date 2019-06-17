@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"image"
 	"image/png"
@@ -20,8 +21,9 @@ import (
 )
 
 type tweet struct {
+	account string
 	message string
-	image   image.Image
+	media   image.Image
 }
 
 func main() {
@@ -49,22 +51,103 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	//getPrivateASLeak(as)
+	// What action are we going to do.
+	action := flag.String("action", "", "an action to perform")
+	flag.Parse()
 
 	// gRPC dial and send data
 	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", server, port), grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
 	}
-	defer conn.Close()
-	c := bpb.NewBgpInfoClient(conn)
+	defer conn.Close(){
+	c := bpb.NewBgpInfoClient(conn){
+{
+	// Function called will depend on the {action required. We only do one action at a time.
+	var function func(c bgpinfo.BgpInfoClient) ([]tweet, error)
+	switch *action {
+	case "current":
+		function = current
+	case "movement":
+		function = graph
+	case "subnets":
+		function = graph
+	case "rpki":
+		function = pie
+	default:
+		log.Fatalf("At least one action must be specified")
+	}
 
-	//pie(c)
-	graph(c)
+	tweets, err := function(c)
 
 }
 
-func pie(c bgpinfo.BgpInfoClient) {
+// current grabs the current v4 and v6 table count for tweeting.
+func current(c bgpinfo.BgpInfoClient) ([]tweet, error) {
+	log.Println("Running current()")
+	counts, err := c.GetPrefixCount(context.Background(), &bpb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate deltas.
+	v4DeltaH := counts.GetActive_4 - counts.GetSixhoursv4
+	v6DeltaH := counts.GetActive_6 - counts.GetSixhoursv6
+	v4DeltaW := counts.GetActive_4 - counts.Weekagov4
+	v6DeltaW := counts.GetActive_6 - counts.Weekagov6
+
+	// Calculate large subnets percentages
+	percentV4 := counts.GetSlash24 / counts.GetActive_4 * 100
+	percentV6 := counts.GetSlash48 / counts.GetActive_6 * 100
+
+	// Formulate updates
+	var v4Update, v6Update strings.Builder 
+	v4Update.WriteString(fmt.Sprintf("I see %d IPv4 prefixes."))
+	v4Update.WriteString(deltaMessage(v4DeltaH, v4DeltaW))
+	v4Update.WriteString(fmt.Sprintf(". %.2f% of prefixes are /24.", percentV4))
+
+	v6Update.WriteString(fmt.Sprintf("I see %d IPv6 prefixes."))
+	v6Update.WriteString(deltaMessage(v6DeltaH, v6DeltaW))
+	v6Update.WriteString(fmt.Sprintf(". %.2f% of prefixes are /48.", percentV6))
+}
+
+// deltaMessage creates the update message itself. Uses the deltas to formulate the exact message.
+func deltaMessage(h, w uint32) string {
+	var update strings.Builder
+	switch {
+	case h == 1:
+		update.WriteString("This is 1 more prefix than 6 hours ago ")
+	case h == -1:
+		update.WriteString("This is 1 less prefix than 6 hours ago ")
+	case h < 0:
+		update.WriteString(fmt.Sprintf("This is %d fewer prefixes than 6 hours ago ", -h))
+	case h > 0:
+		update.WriteString(fmt.Sprintf("This is %d more prefixes than 6 hours ago ", h))
+	default:
+		update.WriteString("No change in the amount of prefixes from 6 hours ago ")
+
+	}
+
+	switch {
+	case w == 1:
+		update.WriteString("and 1 more than a week ago")
+	case w == -1:
+		update.WriteString("and 1 less than a week ago")
+	case w < 0:
+		update.WriteString(fmt.Sprintf("and %d fewer than a week ago", -w))
+	case w > 0:
+		update.WriteString(fmt.Sprintf("and %d more prefixes than 6 hours ago", w))
+	default:
+		update.WriteString("and no change in the amount from a week ago")
+
+	}
+
+	return update
+
+}
+
+func pie(c bgpinfo.BgpInfoClient) []tweet {
+	var tweets []tweet
 	pieData, err := c.GetPieSubnets(context.Background(), &bpb.Empty{})
 	if err != nil {
 		log.Fatalf("Unable to send proto: %s", err)
@@ -120,7 +203,7 @@ func pie(c bgpinfo.BgpInfoClient) {
 		Copyright: "data by @mellowdrifter | www.mellowd.dev",
 	}
 
-	fmt.Println(proto.MarshalTextString(req))
+	//fmt.Println(proto.MarshalTextString(req))
 
 	// gRPC dial and send data
 	conn, err := grpc.Dial("127.0.0.1:7180", grpc.WithInsecure())
@@ -153,30 +236,67 @@ func pie(c bgpinfo.BgpInfoClient) {
 
 }
 
-func graph(c bgpinfo.BgpInfoClient) {
+func graph(c bgpinfo.BgpInfoClient) []tweet {
 	// Gets yesterday's date
 	y := time.Now().AddDate(0, 0, -1)
-	graphData, err := c.GetMovementTotals(context.Background(), &bpb.MovementRequest{Period: bpb.MovementRequest_MONTH})
+	graphData, err := c.GetMovementTotals(context.Background(), &bpb.MovementRequest{Period: bpb.MovementRequest_WEEK})
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 	v4Meta := &gpb.Metadata{
-		Title:  fmt.Sprintf("Ipv4 table movement for week ending %s", y.Format("02-Jan-2006")),
+		Title:  fmt.Sprintf("IPv4 table movement for week ending %s", y.Format("02-Jan-2006")),
 		XAxis:  uint32(12),
 		YAxis:  uint32(10),
-		Colour: uint32(100),
+		Colour: "#238341",
 	}
 	v6Meta := &gpb.Metadata{
-		Title:  fmt.Sprintf("Ipv6 table movement for week ending %s", y.Format("02-Jan-2006")),
+		Title:  fmt.Sprintf("IPv6 table movement for week ending %s", y.Format("02-Jan-2006")),
 		XAxis:  uint32(12),
 		YAxis:  uint32(10),
-		Colour: uint32(200),
+		Colour: "#0041A0",
 	}
-	tt := gpb.TotalTime{}
-	req := *gpb.LineGraphRequest{
-		Metadatas: []*gpb.Metadata{v4Meta, v6Meta},
-		Copyright: "data by @mellowdrifter | www.mellowd.dev",
+	tt := []*gpb.TotalTime{}
+	for _, i := range graphData.GetValues() {
+		tt = append(tt, &gpb.TotalTime{
+			V4Values: i.GetV4Values(),
+			V6Values: i.GetV6Values(),
+			Time:     i.GetTime(),
+		})
 	}
-	fmt.Println(proto.MarshalTextString(graphData))
+	req := &gpb.LineGraphRequest{
+		Metadatas:  []*gpb.Metadata{v4Meta, v6Meta},
+		TotalsTime: tt,
+		Copyright:  "data by @mellowdrifter | www.mellowd.dev",
+	}
+	//fmt.Println(proto.MarshalTextString(graphData))
+
+	// gRPC dial and send data
+	conn, err := grpc.Dial("127.0.0.1:7180", grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("Unable to dial gRPC server: %s", err)
+	}
+	defer conn.Close()
+	g := gpb.NewGrapherClient(conn)
+
+	images, err := g.GetLineGraph(context.Background(), req)
+	if err != nil {
+		log.Fatalf("Error: %v", err)
+	}
+
+	for _, graph := range images.GetImages() {
+		fmt.Printf("Title is %s\n", graph.GetTitle())
+		img, err := png.Decode(bytes.NewReader(graph.GetImage()))
+		if err != nil {
+			log.Fatalf("Error: %v", err)
+		}
+		out, _ := os.Create(fmt.Sprintf("%s.png", graph.GetTitle()))
+		defer out.Close()
+
+		err = png.Encode(out, img)
+		if err != nil {
+			log.Fatalf("Err: %v", err)
+		}
+
+	}
 
 }
