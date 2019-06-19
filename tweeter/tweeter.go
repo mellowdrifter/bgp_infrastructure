@@ -24,10 +24,6 @@ type tweet struct {
 	media   []byte
 }
 
-type srvPort struct {
-	server, port string
-}
-
 func main() {
 
 	// load in config
@@ -41,13 +37,9 @@ func main() {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
 
-	var grapher srvPort
-
 	logfile := cf.Section("log").Key("logfile").String()
-	server := cf.Section("bgpinfo").Key("server").String()
-	port := cf.Section("bgpinfo").Key("port").String()
-	grapher.server = cf.Section("grapher").Key("server").String()
-	grapher.port = cf.Section("grapher").Key("port").String()
+	bgpinfo := cf.Section("bgpinfo").Key("server").String()
+	grapher := cf.Section("grapher").Key("server").String()
 
 	// Set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -59,10 +51,11 @@ func main() {
 
 	// What action are we going to do.
 	action := flag.String("action", "", "an action to perform")
+	time := flag.String("time", "", "a time period")
 	flag.Parse()
 
 	// gRPC dial to the bgpinfo server.
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", server, port), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s", bgpinfo), grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
 	}
@@ -70,21 +63,32 @@ func main() {
 	c := bpb.NewBgpInfoClient(conn)
 
 	// Function called will depend on the action required. We only do one action at a time.
-	var function func(bpb.BgpInfoClient, srvPort) ([]tweet, error)
+	var tweets []tweet
 	switch *action {
 	case "current":
-		function = current
-	case "movement":
-		function = movement
+		tweets, err = current(c)
 	case "subnets":
-		function = subnets
+		tweets, err = subnets(c, grapher)
 	case "rpki":
-		function = rpki
+		tweets, err = rpki(c, grapher)
+	case "movement":
+		var period bpb.MovementRequest_TimePeriod
+		switch *time {
+		case "week":
+			period = bpb.MovementRequest_WEEK
+		case "month":
+			period = bpb.MovementRequest_MONTH
+		case "month6":
+			period = bpb.MovementRequest_SIXMONTH
+		case "annual":
+			period = bpb.MovementRequest_ANNUAL
+		default:
+			log.Fatalf("Movement request requires a time period")
+		}
+		tweets, err = movement(c, grapher, period)
 	default:
 		log.Fatalf("At least one action must be specified")
 	}
-
-	tweets, err := function(c, grapher)
 	if err != nil {
 		log.Fatalf("Error: %s", err)
 	}
@@ -97,7 +101,7 @@ func main() {
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
-func current(c bpb.BgpInfoClient, s srvPort) ([]tweet, error) {
+func current(c bpb.BgpInfoClient) ([]tweet, error) {
 	log.Println("Running current()")
 	counts, err := c.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
@@ -172,7 +176,7 @@ func deltaMessage(h, w int) string {
 
 }
 
-func subnets(c bpb.BgpInfoClient, s srvPort) ([]tweet, error) {
+func subnets(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 	log.Println("Running subnets")
 	pieData, err := c.GetPieSubnets(context.Background(), &bpb.Empty{})
 	if err != nil {
@@ -232,7 +236,7 @@ func subnets(c bpb.BgpInfoClient, s srvPort) ([]tweet, error) {
 	//fmt.Println(proto.MarshalTextString(req))
 
 	// gRPC dial to the grapher
-	server := fmt.Sprintf("%s:%s", s.server, s.port)
+	server := fmt.Sprintf("%s", grapher)
 	conn, err := grpc.Dial(server, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
@@ -274,7 +278,7 @@ func subnets(c bpb.BgpInfoClient, s srvPort) ([]tweet, error) {
 
 }
 
-func movement(c bpb.BgpInfoClient, s srvPort, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
+func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	log.Println("Running movement")
 
 	// Get yesterday's date
@@ -335,7 +339,7 @@ func movement(c bpb.BgpInfoClient, s srvPort, p bpb.MovementRequest_TimePeriod) 
 	//fmt.Println(proto.MarshalTextString(graphData))
 
 	// gRPC dial to the grapher
-	server := fmt.Sprintf("%s:%s", s.server, s.port)
+	server := fmt.Sprintf("%s", grapher)
 	conn, err := grpc.Dial(server, grpc.WithInsecure())
 	if err != nil {
 		return nil, err
@@ -370,7 +374,7 @@ func movement(c bpb.BgpInfoClient, s srvPort, p bpb.MovementRequest_TimePeriod) 
 
 }
 
-func rpki(c bpb.BgpInfoClient, s srvPort) ([]tweet, error) {
+func rpki(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 
 	v4Tweet := tweet{
 		account: "bgp4table",
