@@ -39,9 +39,11 @@ class GrapherServicer(grapher_pb2_grpc.GrapherServicer):
     def GetLineGraph(self, request, context):
         return get_line_graph(request)
 
-
     def GetPieChart(self, request, context):
         return get_pie_chart(request)
+
+    def GetRPKI(self, request, context):
+        return get_rpki(request)
 
 
 def get_line_graph(
@@ -155,6 +157,58 @@ def get_pie_chart(
     
     logging.info("Returning pie charts")
     return pieCharts
+
+def get_rpki(
+    request: pb.RPKIRequest()
+    ) -> pb.GrapherResponse():
+
+    logging.info('running get_rpki')
+
+    v4_rpki = []
+    v6_rpki = []
+
+    v4_rpki.append(request.rpkis.v4_valid)
+    v4_rpki.append(request.rpkis.v4_invalid)
+    v4_rpki.append(request.rpkis.v4_unknown)
+    v6_rpki.append(request.rpkis.v6_valid)
+    v6_rpki.append(request.rpkis.v6_invalid)
+    v6_rpki.append(request.rpkis.v6_unknown)
+    rpkis = [v4_rpki, v6_rpki]
+    RPKICharts = pb.GrapherResponse()
+
+    print(rpkis)
+
+    labels = ['VALID', 'INVALID', 'UNKNOWN']
+    colours = ['lightskyblue', 'lightcoral', 'gold']
+
+    j = 0
+    for metadata in request.metadatas:
+        title = metadata.title
+        x = metadata.x_axis
+        y = metadata.y_axis
+
+        # Start with something
+        image = io.BytesIO()
+        plt.figure(figsize=(x, y))
+        plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
+        plt.suptitle(title, fontsize = 17)
+        plt.pie(rpkis[j], labels=labels, colors=colours,
+                autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
+        plt.figtext(0.5, 0.93, request.copyright,
+                    fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+
+        plt.savefig(image, format='png')
+        image.seek(0)
+        rpki = pb.Image(
+            image = image.read(),
+            title = title,
+        )
+        RPKICharts.images.append(rpki)
+        plt.close()
+        j+=1
+    
+    logging.info("Returning rpki charts")
+    return RPKICharts
 
 
 

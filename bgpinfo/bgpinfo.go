@@ -158,13 +158,13 @@ func (s *server) UpdateTweetBit(ctx context.Context, t *pb.Timestamp) (*pb.Resul
 
 }
 
-func (s *server) GetPieRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
+func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 	// Pull RPKI counts to create Pie graph.
-	log.Println("Running GetPieRPKI")
+	log.Println("Running GetRPKI")
 
-	res, err := getPieRPKIHelper()
+	res, err := getRPKIHelper()
 	if err != nil {
-		log.Printf("Got error in GetPieRPKI: %s\n", err)
+		log.Printf("Got error in GetRPKI: %s\n", err)
 		return &pb.Roas{}, err
 	}
 

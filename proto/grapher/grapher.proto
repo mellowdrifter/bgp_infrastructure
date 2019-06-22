@@ -5,6 +5,7 @@ package grapher;
 service Grapher {
     rpc GetLineGraph(LineGraphRequest) returns (GrapherResponse);
     rpc GetPieChart(PieChartRequest) returns (GrapherResponse);
+    rpc GetRPKI(RPKIRequest) returns (GrapherResponse);
 }
 
 message LineGraphRequest {
@@ -19,6 +20,22 @@ message PieChartRequest {
     repeated Metadata metadatas = 1;
     SubnetFamily subnets = 2;
     string copyright = 3;
+}
+
+message RPKIRequest {
+    // Requests an RPKI spread chart.
+    repeated Metadata metadatas = 1;
+    RPKI rpkis = 2;
+    string copyright = 3;
+}
+
+message RPKI {
+    uint32 v4_valid = 1;
+    uint32 v4_invalid = 2;
+    uint32 v4_unknown = 3;
+    uint32 v6_valid = 4;
+    uint32 v6_invalid = 5;
+    uint32 v6_unknown = 6;
 }
 
 message TotalTime {

@@ -8,7 +8,7 @@ service bgp_info {
     rpc update_tweet_bit(timestamp) returns (result);
     rpc get_pie_subnets(empty) returns (pie_subnets_response);
     rpc get_movement_totals(movement_request) returns (movement_totals_response);
-    rpc get_pie_rpki(empty) returns (roas);
+    rpc get_rpki(empty) returns (roas);
 }
 
 message values {

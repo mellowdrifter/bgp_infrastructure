@@ -93,16 +93,23 @@ func main() {
 		log.Fatalf("Error: %s", err)
 	}
 
+	// TODO: Just prints stuff out for now :/
 	for _, tweet := range tweets {
 		fmt.Printf("Account: %s\n", tweet.account)
 		fmt.Printf("Message: %s\n", tweet.message)
+		if tweet.media != nil {
+			img, _ := png.Decode(bytes.NewReader(tweet.media))
+			file, _ := os.Create(fmt.Sprintf("%s:%s.png", tweet.account, tweet.message))
+			png.Encode(file, img)
+			file.Close()
+		}
 	}
 
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
 func current(c bpb.BgpInfoClient) ([]tweet, error) {
-	log.Println("Running current()")
+	log.Println("Running current")
 	counts, err := c.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
 		return nil, err
@@ -142,7 +149,7 @@ func current(c bpb.BgpInfoClient) ([]tweet, error) {
 
 // deltaMessage creates the update message itself. Uses the deltas to formulate the exact message.
 func deltaMessage(h, w int) string {
-	log.Println("Running deltaMessage()")
+	log.Println("Running deltaMessage")
 	var update strings.Builder
 	switch {
 	case h == 1:
@@ -294,16 +301,16 @@ func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePer
 	switch p {
 	case bpb.MovementRequest_WEEK:
 		period = "week"
-		message = "Weekly BGP table movement"
+		message = "Weekly BGP table movement #BGP"
 	case bpb.MovementRequest_MONTH:
 		period = "month"
-		message = "Monthly BGP table movement"
+		message = "Monthly BGP table movement #BGP"
 	case bpb.MovementRequest_SIXMONTH:
 		period = "6 months"
-		message = "BGP table movement for the last 6 months"
+		message = "BGP table movement for the last 6 months #BGP"
 	case bpb.MovementRequest_ANNUAL:
 		period = "year"
-		message = "Annual BGP table movement"
+		message = "Annual BGP table movement #BGP"
 	default:
 		return nil, fmt.Errorf("Time Period not set")
 	}
@@ -338,7 +345,7 @@ func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePer
 	}
 	//fmt.Println(proto.MarshalTextString(graphData))
 
-	// gRPC dial to the grapher
+	// gRPC dial the grapher
 	server := fmt.Sprintf("%s", grapher)
 	conn, err := grpc.Dial(server, grpc.WithInsecure())
 	if err != nil {
@@ -375,15 +382,71 @@ func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePer
 }
 
 func rpki(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
+	log.Println("Running rpki")
+	rpkiData, err := c.GetRpki(context.Background(), &bpb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+
+	// metadata to create images
+	v4Meta := &gpb.Metadata{
+		Title: fmt.Sprintf("Current RPKI status for IPv4 (%s)", time.Now().Format("02-Jan-2006")),
+		XAxis: uint32(12),
+		YAxis: uint32(10),
+	}
+	v6Meta := &gpb.Metadata{
+		Title: fmt.Sprintf("Current RPKI status for IPv6 (%s)", time.Now().Format("02-Jan-2006")),
+		XAxis: uint32(12),
+		YAxis: uint32(10),
+	}
+
+	// repack
+	// TODO: Can I have messages defined in a common way?
+	rpkis := &gpb.RPKI{
+		V4Valid:   rpkiData.GetV4Valid(),
+		V4Invalid: rpkiData.GetV4Invalid(),
+		V4Unknown: rpkiData.GetV4Unknown(),
+		V6Valid:   rpkiData.GetV6Valid(),
+		V6Invalid: rpkiData.GetV6Invalid(),
+		V6Unknown: rpkiData.GetV6Unknown(),
+	}
+
+	req := &gpb.RPKIRequest{
+		Metadatas: []*gpb.Metadata{v4Meta, v6Meta},
+		Rpkis:     rpkis,
+		Copyright: "data by @mellowdrifter | www.mellowd.dev",
+	}
+
+	// gRPC dial the grapher
+	server := fmt.Sprintf("%s", grapher)
+	conn, err := grpc.Dial(server, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	g := gpb.NewGrapherClient(conn)
+
+	resp, err := g.GetRPKI(context.Background(), req)
+	if err != nil {
+		return nil, err
+	}
+
+	// There should be two images, if not something's gone wrong.
+	if len(resp.GetImages()) < 2 {
+		return nil, fmt.Errorf("Less than two images returned")
+	}
 
 	v4Tweet := tweet{
 		account: "bgp4table",
-		message: "temp",
+		message: "Current RPKI status IPv4 #RPKI",
+		media:   resp.GetImages()[0].GetImage(),
 	}
 	v6Tweet := tweet{
 		account: "bgp6table",
-		message: "temp",
+		message: "Current RPKI status IPv6 #RPKI",
+		media:   resp.GetImages()[1].GetImage(),
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
+
 }

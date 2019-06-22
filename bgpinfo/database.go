@@ -230,7 +230,7 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 
 }
 
-func getPieRPKIHelper() (*pb.Roas, error) {
+func getRPKIHelper() (*pb.Roas, error) {
 	var r pb.Roas
 	sql := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
 	from INFO ORDER by TIME DESC LIMIT 1`
