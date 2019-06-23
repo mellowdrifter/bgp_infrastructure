@@ -25,7 +25,6 @@ config = configparser.ConfigParser()
 path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
 config.read(path)
 server = str(config.get('grpc', 'server'))
-port = str(config.get('grpc', 'port'))
 log = config.get('grpc', 'logfile')
 
 # Set up logging
@@ -212,8 +211,8 @@ if __name__ == "__main__":
         GrapherServicer(), grpcserver
     )
 
-    logging.info('Listening on port {}.'.format(port))
-    grpcserver.add_insecure_port("{}:{}".format(server, port))
+    logging.info('Listening on port {}.'.format(server))
+    grpcserver.add_insecure_port("{}".format(server))
     grpcserver.start()
 
     # since grpcserver.start() will not block,

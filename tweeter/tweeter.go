@@ -3,15 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"image/png"
 	"log"
+	"net/url"
 	"os"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/ChimeraCoder/anaconda"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
 	"google.golang.org/grpc"
@@ -93,16 +96,18 @@ func main() {
 		log.Fatalf("Error: %s", err)
 	}
 
-	// TODO: Just prints stuff out for now :/
+	// Post tweets.
+	// TODO: Have a dry-run to print and save images locally
 	for _, tweet := range tweets {
-		fmt.Printf("Account: %s\n", tweet.account)
-		fmt.Printf("Message: %s\n", tweet.message)
-		if tweet.media != nil {
-			img, _ := png.Decode(bytes.NewReader(tweet.media))
-			file, _ := os.Create(fmt.Sprintf("%s:%s.png", tweet.account, tweet.message))
-			png.Encode(file, img)
-			file.Close()
+		if err := postTweet(tweet, cf); err != nil {
+			log.Fatal(err)
 		}
+		//if tweet.media != nil {
+		//	img, _ := png.Decode(bytes.NewReader(tweet.media))
+		//	file, _ := os.Create(fmt.Sprintf("%s:%s.png", tweet.account, tweet.message))
+		//	png.Encode(file, img)
+		//	file.Close()
+		//}
 	}
 
 }
@@ -448,5 +453,30 @@ func rpki(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
+
+}
+
+func postTweet(t tweet, cf *ini.File) error {
+	// read account credentials
+	consumerKey := cf.Section(t.account).Key("consumerKey").String()
+	consumerSecret := cf.Section(t.account).Key("consumerSecret").String()
+	accessToken := cf.Section(t.account).Key("accessToken").String()
+	accessSecret := cf.Section(t.account).Key("accessSecret").String()
+
+	// set up twitter client
+	api := anaconda.NewTwitterApiWithCredentials(accessToken, accessSecret, consumerKey, consumerSecret)
+
+	// Images need to be uploaded and referred to in an actual tweet
+	var media anaconda.Media
+	v := url.Values{}
+	if t.media != nil {
+		media, _ = api.UploadMedia(base64.StdEncoding.EncodeToString(t.media))
+		v.Set("media_ids", media.MediaIDString)
+	}
+
+	// post it!
+	api.PostTweet(t.message, v)
+
+	return nil
 
 }
