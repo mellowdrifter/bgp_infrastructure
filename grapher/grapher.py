@@ -98,11 +98,9 @@ def get_line_graph(
 
         plt.savefig(image, format='png')
         image.seek(0)
-        graph = pb.Image(
-            image = image.read(),
-            title = title,
-        )
-        graphs.images.append(graph)
+        graph = graphs.images.add()
+        graph.image = image.read()
+        graph.title = title
         plt.close()
         j+=1
 
@@ -116,10 +114,8 @@ def get_pie_chart(
 
     logging.info('running get_line_graph')
 
-    subnets = []
     pieCharts = pb.GrapherResponse()
-    subnets.append(list(request.subnets.v4_values))
-    subnets.append(list(request.subnets.v6_values))
+    subnets = [list(request.subnets.v4_values), list(request.subnets.v6_values)]
 
     j = 0
     for metadata in request.metadatas:
@@ -147,11 +143,9 @@ def get_pie_chart(
                     fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
         plt.savefig(image, format='png')
         image.seek(0)
-        pie = pb.Image(
-            image = image.read(),
-            title = title,
-        )
-        pieCharts.images.append(pie)
+        pie = pieCharts.images.add()
+        pie.image = image.read()
+        pie.title = title
         plt.close()
         j+=1
     
@@ -176,8 +170,6 @@ def get_rpki(
     rpkis = [v4_rpki, v6_rpki]
     RPKICharts = pb.GrapherResponse()
 
-    print(rpkis)
-
     labels = ['VALID', 'INVALID', 'UNKNOWN']
     colours = ['lightskyblue', 'lightcoral', 'gold']
 
@@ -199,11 +191,9 @@ def get_rpki(
 
         plt.savefig(image, format='png')
         image.seek(0)
-        rpki = pb.Image(
-            image = image.read(),
-            title = title,
-        )
-        RPKICharts.images.append(rpki)
+        rpki = RPKICharts.images.add()
+        rpki.image = image.read()
+        rpki.title = title
         plt.close()
         j+=1
     
@@ -214,7 +204,10 @@ def get_rpki(
 
 
 if __name__ == "__main__":
-    grpcserver = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    grpcserver = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=1),
+        maximum_concurrent_rpcs=3,
+    )
     grapher_pb2_grpc.add_GrapherServicer_to_server(
         GrapherServicer(), grpcserver
     )
