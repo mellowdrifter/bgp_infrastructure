@@ -149,6 +149,9 @@ func current(c bpb.BgpInfoClient) ([]tweet, error) {
 		message: v6Update.String(),
 	}
 
+	if err := setTweetBit(c, counts.GetTime()); err != nil {
+		log.Printf("Unable to set tweet bit, but continuing on: %v", err)
+	}
 	return []tweet{v4Tweet, v6Tweet}, nil
 }
 
@@ -185,6 +188,20 @@ func deltaMessage(h, w int) string {
 	}
 
 	return update.String()
+
+}
+
+func setTweetBit(c bpb.BgpInfoClient, time uint64) error {
+	log.Println("Running setTweetBit")
+
+	timestamp := &bpb.Timestamp{
+		Time: time,
+	}
+	_, err := c.UpdateTweetBit(context.Background(), timestamp)
+	if err != nil {
+		return fmt.Errorf("Error: received error when trying to set tweet bit.")
+	}
+	return nil
 
 }
 
