@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 
@@ -15,8 +16,8 @@ type server struct{}
 
 func main() {
 	// set up gRPC server
-	log.Printf("Listening on port %d\n", 2179)
-	lis, err := net.Listen("tcp", ":2179")
+	log.Printf("Listening on port %d\n", 7181)
+	lis, err := net.Listen("tcp", ":7181")
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
@@ -26,8 +27,52 @@ func main() {
 	grpcServer.Serve(lis)
 }
 
+// Origin will return the origin ASN for the active route.
 func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	log.Printf("Running Origin")
+
+	ip, err := validateOriginRequest(r)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	asn, err := getOriginFromDaemon(ip)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	return &pb.OriginResponse{OriginAsn: asn}, nil
+
+}
+
+// validateOriginRequest ensures the IP address is valid. We don't care about the mask.
+func validateOriginRequest(r *pb.OriginRequest) (net.IP, error) {
+
+	ip := net.ParseIP(r.GetIpAddress().GetAddress())
+	if ip == nil {
+		return nil, fmt.Errorf("Unable to parse IP")
+	}
+
+	if !isPublicIP(ip) {
+		return nil, fmt.Errorf("IP is not public")
+	}
+
+	return ip, nil
+
+}
+
+// getOriginFromDaemon will get the origin ASN for the passed in IP directly from the BGP daemon.
+func getOriginFromDaemon(net.IP) (uint32, error) {
+
+}
+
+func isPublicIP(ip net.IP) bool {
+	// TODO: Go 1.13 will add IsPrivate() or simiar.
+	// I might be able to get rid of ALL of this!
+	return ip.IsGlobalUnicast() && !(ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified())
+
 }
 
 func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathResponse, error) {

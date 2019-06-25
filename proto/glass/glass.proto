@@ -4,9 +4,6 @@ package glass;
 
 service looking_glass {
 
-    // check will return something.
-    //rpc check(check_request) returns (check_response);
-
     // origin will return the origin AS number
     rpc origin(origin_request) returns (origin_response);
 
@@ -18,6 +15,7 @@ service looking_glass {
 
     // asname will return the AS name.
     rpc asname(asname_request) returns (asname_response);
+
 }
 
 message ip_address {
