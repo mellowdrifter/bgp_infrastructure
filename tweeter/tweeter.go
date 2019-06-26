@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"image/png"
 	"log"
 	"net/url"
 	"os"
@@ -268,39 +266,30 @@ func subnets(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 	server := fmt.Sprintf("%s", grapher)
 	conn, err := grpc.Dial(server, grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("Unable to dial gRPC server: %s", err)
+		return nil, err
 	}
 	defer conn.Close()
 	g := gpb.NewGrapherClient(conn)
 
-	images, err := g.GetPieChart(context.Background(), req)
+	resp, err := g.GetPieChart(context.Background(), req)
 	if err != nil {
-		log.Fatalf("Error: %v", err)
+		return nil, err
 	}
 
-	for _, pie := range images.GetImages() {
-		fmt.Printf("Title is %s\n", pie.GetTitle())
-		img, err := png.Decode(bytes.NewReader(pie.GetImage()))
-		if err != nil {
-			log.Fatalf("Error: %v", err)
-		}
-		out, _ := os.Create(fmt.Sprintf("%s.png", pie.GetTitle()))
-		defer out.Close()
-
-		err = png.Encode(out, img)
-		if err != nil {
-			log.Fatalf("Err: %v", err)
-		}
-
+	// There should be two images, if not something's gone wrong.
+	if len(resp.GetImages()) < 2 {
+		return nil, fmt.Errorf("Less than two images returned")
 	}
 
 	v4Tweet := tweet{
 		account: "bgp4table",
-		message: "temp",
+		message: v4Meta.Title,
+		media:   resp.GetImages()[0].GetImage(),
 	}
 	v6Tweet := tweet{
 		account: "bgp6table",
-		message: "temp",
+		message: v6Meta.Title,
+		media:   resp.GetImages()[1].GetImage(),
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
