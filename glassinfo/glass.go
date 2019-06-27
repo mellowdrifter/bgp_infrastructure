@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 
 	"google.golang.org/grpc/codes"
 
+	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 	"google.golang.org/grpc"
 )
@@ -43,7 +45,7 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 		return nil, err
 	}
 
-	return &pb.OriginResponse{OriginAsn: asn}, nil
+	return &pb.OriginResponse{OriginAsn: uint32(asn)}, nil
 
 }
 
@@ -64,7 +66,28 @@ func validateOriginRequest(r *pb.OriginRequest) (net.IP, error) {
 }
 
 // getOriginFromDaemon will get the origin ASN for the passed in IP directly from the BGP daemon.
-func getOriginFromDaemon(net.IP) (uint32, error) {
+func getOriginFromDaemon(ip net.IP) (int, error) {
+
+	var daemon string
+
+	switch ip.To4() {
+	case nil:
+		daemon = "birdc"
+	default:
+		daemon = "birdc6"
+	}
+	cmd := fmt.Sprintf("/usr/sbin/%s show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $NF}' | tr -d '[]ASie?'", daemon, ip.String())
+	out, err := com.GetOutput(cmd)
+	if err != nil {
+		return 0, err
+	}
+
+	source, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, err
+	}
+
+	return source, nil
 
 }
 
