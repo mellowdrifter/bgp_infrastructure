@@ -119,10 +119,10 @@ func current(c bpb.BgpInfoClient) ([]tweet, error) {
 	}
 
 	// Calculate deltas.
-	v4DeltaH := int(counts.GetActive_4() - counts.GetSixhoursv4())
-	v6DeltaH := int(counts.GetActive_6() - counts.GetSixhoursv6())
-	v4DeltaW := int(counts.GetActive_4() - counts.GetWeekagov4())
-	v6DeltaW := int(counts.GetActive_6() - counts.GetWeekagov6())
+	v4DeltaH := int(counts.GetActive_4()) - int(counts.GetSixhoursv4())
+	v6DeltaH := int(counts.GetActive_6()) - int(counts.GetSixhoursv6())
+	v4DeltaW := int(counts.GetActive_4()) - int(counts.GetWeekagov4())
+	v6DeltaW := int(counts.GetActive_6()) - int(counts.GetWeekagov6())
 
 	// Calculate large subnets percentages
 	percentV4 := float32(counts.GetSlash24()) / float32(counts.GetActive_4()) * 100
