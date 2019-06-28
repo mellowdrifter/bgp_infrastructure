@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 
@@ -51,6 +52,7 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 
 // validateOriginRequest ensures the IP address is valid. We don't care about the mask.
 func validateOriginRequest(r *pb.OriginRequest) (net.IP, error) {
+	log.Printf("Running validateOriginRequest")
 
 	ip := net.ParseIP(r.GetIpAddress().GetAddress())
 	if ip == nil {
@@ -67,19 +69,27 @@ func validateOriginRequest(r *pb.OriginRequest) (net.IP, error) {
 
 // getOriginFromDaemon will get the origin ASN for the passed in IP directly from the BGP daemon.
 func getOriginFromDaemon(ip net.IP) (int, error) {
+	log.Printf("Running getOriginFromDaemon")
 
 	var daemon string
 
 	switch ip.To4() {
 	case nil:
-		daemon = "birdc"
-	default:
 		daemon = "birdc6"
+	default:
+		daemon = "birdc"
 	}
 	cmd := fmt.Sprintf("/usr/sbin/%s show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $NF}' | tr -d '[]ASie?'", daemon, ip.String())
+	//log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return 0, err
+	}
+
+	log.Printf(out)
+
+	if strings.Contains("not in table", out) {
+		return 0, fmt.Errorf("Network is not in table")
 	}
 
 	source, err := strconv.Atoi(out)
