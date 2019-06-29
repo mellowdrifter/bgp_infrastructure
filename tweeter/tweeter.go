@@ -179,7 +179,7 @@ func deltaMessage(h, w int) string {
 	case w < 0:
 		update.WriteString(fmt.Sprintf("and %d fewer than a week ago", -w))
 	case w > 0:
-		update.WriteString(fmt.Sprintf("and %d more prefixes than a week ago", w))
+		update.WriteString(fmt.Sprintf("and %d more than a week ago", w))
 	default:
 		update.WriteString("and no change in the amount from a week ago")
 
