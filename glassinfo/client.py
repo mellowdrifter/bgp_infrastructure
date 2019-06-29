@@ -19,11 +19,21 @@ a = pb.origin_request(
     ip_address = address,
 )
 
-try:
+'''try:
     response = stub.origin(a)
 except grpc.RpcError as e:
     #print("Error: {}".format(e))
     print("Error: {}".format(e.details()))
     sys.exit(1)
 
-print("The origin of {} is {}".format(sys.argv[1], response.origin_asn))
+print("The origin of {} is {}".format(sys.argv[1], response.origin_asn))'''
+
+try:
+    resp = stub.route(a)
+except grpc.RpcError as e:
+    #print("Error: {}".format(e))
+    print("Error: {}".format(e.details()))
+    sys.exit(1)
+
+#print(resp)
+print("The active route for {} is {}/{}".format(sys.argv[1], resp.ip_address.address, resp.ip_address.mask))
