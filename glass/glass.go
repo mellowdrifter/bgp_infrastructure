@@ -57,8 +57,23 @@ func isPublicIP(ip net.IP) bool {
 
 }
 
+// Aspath returns a list of ASNs for an IP address.
 func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	log.Printf("Running Aspath")
+
+	ip, err := validateIP(r.GetIpAddress())
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	asns, err := getASPathFromDaemon(ip)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	return &pb.AspathResponse{Asn: asns}, nil
 }
 
 func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteResponse, error) {
@@ -154,6 +169,44 @@ func getOriginFromDaemon(ip net.IP) (int, error) {
 	}
 
 	return source, nil
+
+}
+
+// getASPathFromDaemon will get the ASN list for the passed in IP directly from the BGP daemon.
+func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
+	log.Printf("Running getASPathFromDaemon")
+
+	var daemon string
+	var asns []uint32
+
+	switch ip.To4() {
+	case nil:
+		daemon = "birdc6"
+	default:
+		daemon = "birdc"
+	}
+	cmd := fmt.Sprintf("/usr/sbin/%s show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | grep as_path | awk '{$1=\"\"; print $0}'", daemon, ip.String())
+	log.Printf(cmd)
+	out, err := com.GetOutput(cmd)
+	if err != nil {
+		return asns, err
+	}
+
+	log.Printf(out)
+
+	if out == "" {
+		return asns, fmt.Errorf("Network is not in table")
+
+	}
+
+	aspath := strings.Fields(out)
+
+	// Need uint32 representation of the aspath
+	for _, asn := range aspath {
+		asns = append(asns, com.StringToUint32(asn))
+	}
+
+	return asns, nil
 
 }
 
