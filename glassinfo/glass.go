@@ -34,7 +34,7 @@ func main() {
 func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginResponse, error) {
 	log.Printf("Running Origin")
 
-	ip, err := validateOriginRequest(r)
+	ip, err := validateIP(r.GetIpAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
@@ -50,11 +50,50 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 
 }
 
-// validateOriginRequest ensures the IP address is valid. We don't care about the mask.
-func validateOriginRequest(r *pb.OriginRequest) (net.IP, error) {
-	log.Printf("Running validateOriginRequest")
+func isPublicIP(ip net.IP) bool {
+	// TODO: Go 1.13 will add IsPrivate() or simiar.
+	// I might be able to get rid of ALL of this!
+	return ip.IsGlobalUnicast() && !(ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified())
 
-	ip := net.ParseIP(r.GetIpAddress().GetAddress())
+}
+
+func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+}
+
+func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteResponse, error) {
+	log.Printf("Running Route")
+
+	ip, err := validateIP(r.GetIpAddress())
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	ipnet, err := getRouteFromDaemon(ip)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	mask, _ := ipnet.Mask.Size()
+	ipaddr := &pb.IpAddress{
+		Address: ipnet.IP.String(),
+		Mask:    uint32(mask),
+	}
+
+	return &pb.RouteResponse{IpAddress: ipaddr}, nil
+}
+
+func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+}
+
+// validateIP ensures the IP address is valid. We only care about public IPs.
+func validateIP(r *pb.IpAddress) (net.IP, error) {
+	log.Printf("Running validateIP")
+
+	ip := net.ParseIP(r.GetAddress())
 	if ip == nil {
 		return nil, fmt.Errorf("Unable to parse IP")
 	}
@@ -64,6 +103,23 @@ func validateOriginRequest(r *pb.OriginRequest) (net.IP, error) {
 	}
 
 	return ip, nil
+
+}
+
+// validateIPNet ensures the IP address and mask is valid. We only care about public IPs.
+func validateIPNet(r *pb.IpAddress) (*net.IPNet, error) {
+	log.Printf("Running validateIPNet")
+
+	ip, net, err := net.ParseCIDR(fmt.Sprintf("%s/%d", r.GetAddress(), r.GetMask()))
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse IP and subnet")
+	}
+
+	if !isPublicIP(ip) {
+		return nil, fmt.Errorf("IP is not public")
+	}
+
+	return net, nil
 
 }
 
@@ -101,21 +157,32 @@ func getOriginFromDaemon(ip net.IP) (int, error) {
 
 }
 
-func isPublicIP(ip net.IP) bool {
-	// TODO: Go 1.13 will add IsPrivate() or simiar.
-	// I might be able to get rid of ALL of this!
-	return ip.IsGlobalUnicast() && !(ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified())
+// getRouteFromDaemon will get the prefix for the passed in IP directly from the BGP daemon.
+func getRouteFromDaemon(ip net.IP) (*net.IPNet, error) {
+	log.Printf("Running getRouteFromDaemon")
 
-}
+	var daemon string
 
-func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
-}
+	switch ip.To4() {
+	case nil:
+		daemon = "birdc6"
+	default:
+		daemon = "birdc"
+	}
+	cmd := fmt.Sprintf("/usr/sbin/%s show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}' | tr -d '[]ASie?'", daemon, ip.String())
+	//log.Printf(cmd)
+	out, err := com.GetOutput(cmd)
+	if err != nil {
+		return nil, err
+	}
 
-func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
-}
+	log.Printf(out)
 
-func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	_, net, err := net.ParseCIDR(out)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse IP and subnet from output")
+	}
+
+	return net, nil
+
 }
