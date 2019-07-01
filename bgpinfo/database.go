@@ -248,6 +248,40 @@ func getRPKIHelper() (*pb.Roas, error) {
 	return &r, nil
 }
 
+func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
+
+	// I need to add and delete ASNs. The easiest way is to create a new table
+	// and copy over. Can't do this in a single transaction, but there is
+	// another way!
+	// TODO: https://stackoverflow.com/questions/40076596/raw-sql-transactions-with-golang-prepared-statements
+	//  https://stackoverflow.com/questions/37207955/truncate-followed-by-insert-in-one-transaction-mysql
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("Error on db.Begin: %v\n", err)
+		return &pb.Result{}, err
+	}
+
+	stmt, err := tx.Prepare(`INSERT INTO ASNUMNAME SET ASNUMBER=?, ASNAME=?`)
+	for _, as := range asn.GetAsnNames() {
+		_, err := stmt.Exec(as.GetAsNumber(), as.GetAsName())
+		if err != nil {
+			log.Printf("Error on statement: %v\n", err)
+			return &pb.Result{}, err
+		}
+	}
+	tx.Commit()
+	if err != nil {
+		log.Printf("Error on commit")
+		return &pb.Result{}, err
+	}
+
+	return &pb.Result{
+		Success: true,
+	}, nil
+
+}
+
 func updateTweetBitHelper(t uint64) (*pb.Result, error) {
 	_, err := db.Exec(fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t))
 	if err != nil {

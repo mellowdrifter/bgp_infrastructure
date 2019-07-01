@@ -76,6 +76,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	return &pb.AspathResponse{Asn: asns}, nil
 }
 
+// Route returns the primary active RIB entry for the IP passed.
 func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteResponse, error) {
 	log.Printf("Running Route")
 
@@ -100,6 +101,8 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 	return &pb.RouteResponse{IpAddress: ipaddr}, nil
 }
 
+// Asname will return the registered name of the ASN. As this isn't in bird directly, will need
+// to speak to bgpinfo to get information from the database.
 func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
 	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 }

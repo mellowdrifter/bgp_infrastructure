@@ -171,3 +171,18 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 	return res, nil
 
 }
+
+func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb.Result, error) {
+	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	log.Println("Running UpdateAsname")
+	fmt.Printf("There are a total of %d AS numbers\n", len(asn.GetAsnNames()))
+
+	res, err := updateASNHelper(asn)
+	if err != nil {
+		log.Printf("Got error in UpdateAsnnames: %s\n", err)
+		return &pb.Result{}, err
+	}
+
+	return res, nil
+
+}
