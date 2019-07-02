@@ -250,19 +250,19 @@ func getRPKIHelper() (*pb.Roas, error) {
 
 func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
 
-	// I need to add and delete ASNs. The easiest way is to create a new table
-	// and copy over. Can't do this in a single transaction, but there is
-	// another way!
-	// TODO: https://stackoverflow.com/questions/40076596/raw-sql-transactions-with-golang-prepared-statements
-	//  https://stackoverflow.com/questions/37207955/truncate-followed-by-insert-in-one-transaction-mysql
+	// Create a new temp table to hold new values.
+	_, err := db.Exec(`CREATE TABLE ASNUMNAME_NEW LIKE ASNUMNAME`)
+	if err != nil {
+		return &pb.Result{}, err
+	}
 
+	// Dump the new values into the new temp table.
 	tx, err := db.Begin()
 	if err != nil {
 		log.Printf("Error on db.Begin: %v\n", err)
 		return &pb.Result{}, err
 	}
-
-	stmt, err := tx.Prepare(`INSERT INTO ASNUMNAME SET ASNUMBER=?, ASNAME=?`)
+	stmt, err := tx.Prepare(`INSERT INTO ASNUMNAME_NEW SET ASNUMBER=?, ASNAME=?`)
 	for _, as := range asn.GetAsnNames() {
 		_, err := stmt.Exec(as.GetAsNumber(), as.GetAsName())
 		if err != nil {
@@ -270,9 +270,20 @@ func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
 			return &pb.Result{}, err
 		}
 	}
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return &pb.Result{}, err
+	}
+
+	// Now rename and shift in order to only have one table.
+	tx, err = db.Begin()
 	if err != nil {
-		log.Printf("Error on commit")
+		log.Printf("Error on db.Begin: %v\n", err)
+		return &pb.Result{}, err
+	}
+	tx.Exec(`RENAME TABLE ASNUMNAME TO ASNUMNAME_OLD`)
+	tx.Exec(`RENAME TABLE ASNUMNAME_NEW TO ASNUMNAME`)
+	tx.Exec(`DROP TABLES ASNUMNAME_OLD`)
+	if err := tx.Commit(); err != nil {
 		return &pb.Result{}, err
 	}
 

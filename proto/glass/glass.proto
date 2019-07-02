@@ -16,6 +16,16 @@ service looking_glass {
     // asname will return the AS name.
     rpc asname(asname_request) returns (asname_response);
 
+    // roa with return the roa status.
+    rpc roa(roa_request) returns (roa_response);
+
+    // full will return the full route output, plus the asname
+    rpc full(full_request) returns (full_response);
+
+    // myip will return full info for the requester IP.
+    rpc myip(myip_request) returns (myip_response);
+
+
 }
 
 message ip_address {
@@ -58,4 +68,19 @@ message asname_request {
 message asname_response {
     // asname_response returns the string name for the passed AS number.
     string as_name = 1;
+}
+
+message roa_request {
+    ip_address ip_address = 1;
+}
+
+message roa_response {
+    enum ROAStatus {
+        UNKNOWN = 0;
+        VALID = 1;
+        INVALID = 2;
+    }
+    ip_address ip_address = 1;
+    ROAStatus status = 2;
+
 }

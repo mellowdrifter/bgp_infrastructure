@@ -9,6 +9,7 @@ service bgp_info {
     rpc get_pie_subnets(empty) returns (pie_subnets_response);
     rpc get_movement_totals(movement_request) returns (movement_totals_response);
     rpc get_rpki(empty) returns (roas);
+    rpc update_asnames(asnames_request) returns (result);
 }
 
 message values {
@@ -39,6 +40,15 @@ message prefix_count_response {
     uint32 slash24 = 7;
     uint32 slash48 = 8;
     uint64 time = 9;
+}
+
+message asnames_request {
+    repeated asn_name asn_names = 1;
+}
+
+message asn_name {
+    uint32 as_number = 1;
+    string as_name = 2;
 }
 
 message pie_subnets_response { 
