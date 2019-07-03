@@ -7,7 +7,7 @@ service looking_glass {
     // origin will return the origin AS number
     rpc origin(origin_request) returns (origin_response);
 
-    // aspath will return the aspath, except for the first to hide my peers.
+    // aspath will return the aspath.
     rpc aspath(aspath_request) returns (aspath_response);
 
     // route will return the full ip route output.
