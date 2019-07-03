@@ -248,6 +248,17 @@ func getRPKIHelper() (*pb.Roas, error) {
 	return &r, nil
 }
 
+func getAsnameHelper(a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
+	var n pb.GetAsnameResponse
+	sql := fmt.Sprintf(`select ASNAME from ASNUMNAME WHERE ASNUMBER = '%d'`,
+		a.GetAsNumber())
+	err := db.QueryRow(sql).Scan(&n.AsName)
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
 func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
 
 	// Create a new temp table to hold new values.

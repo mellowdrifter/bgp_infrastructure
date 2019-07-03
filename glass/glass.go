@@ -2,17 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 
-	"google.golang.org/grpc/codes"
-
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
+	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 	"google.golang.org/grpc"
+	"gopkg.in/ini.v1"
 )
 
 type server struct{}
@@ -104,7 +107,40 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 // Asname will return the registered name of the ASN. As this isn't in bird directly, will need
 // to speak to bgpinfo to get information from the database.
 func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	log.Printf("Running Asname")
+
+	// load in config
+	exe, err := os.Executable()
+	if err != nil {
+		return &pb.AsnameResponse{}, errors.New("Unable to load config in Asname")
+	}
+	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
+	cf, err := ini.Load(path)
+	if err != nil {
+		return &pb.AsnameResponse{}, fmt.Errorf("failed to read config file: %v", err)
+	}
+
+	number := bpb.GetAsnameRequest{AsNumber: r.GetAsNumber()}
+
+	// gRPC dial the grapher
+	bgpinfo := cf.Section("bgpinfo").Key("server").String()
+	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	b := bpb.NewBgpInfoClient(conn)
+
+	name, err := b.GetAsname(ctx, &number)
+	if err != nil {
+		return &pb.AsnameResponse{}, err
+	}
+
+	return &pb.AsnameResponse{
+		AsName: name.GetAsName(),
+	}, nil
+
 }
 
 // validateIP ensures the IP address is valid. We only care about public IPs.

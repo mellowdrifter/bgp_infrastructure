@@ -10,6 +10,7 @@ service bgp_info {
     rpc get_movement_totals(movement_request) returns (movement_totals_response);
     rpc get_rpki(empty) returns (roas);
     rpc update_asnames(asnames_request) returns (result);
+    rpc get_asname(get_asname_request) returns (get_asname_response);
 }
 
 message values {
@@ -49,6 +50,14 @@ message asnames_request {
 message asn_name {
     uint32 as_number = 1;
     string as_name = 2;
+}
+
+message get_asname_request {
+    uint32 as_number = 1;
+}
+
+message get_asname_response {
+    string as_name = 1;
 }
 
 message pie_subnets_response { 

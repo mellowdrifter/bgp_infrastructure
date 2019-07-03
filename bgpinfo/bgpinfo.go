@@ -172,6 +172,19 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 
 }
 
+func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
+	log.Println("Running GetAsname")
+
+	res, err := getAsnameHelper(a)
+	if err != nil {
+		log.Printf("Got error in GetAsname: %s\n", err)
+		return &pb.GetAsnameResponse{}, err
+	}
+
+	return res, nil
+
+}
+
 func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb.Result, error) {
 	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Println("Running UpdateAsname")
