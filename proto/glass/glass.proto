@@ -17,7 +17,7 @@ service looking_glass {
     rpc asname(asname_request) returns (asname_response);
 
     // roa with return the roa status.
-    //rpc roa(roa_request) returns (roa_response);
+    rpc roa(roa_request) returns (roa_response);
 
     // full will return the full route output, plus the asname
     //rpc full(full_request) returns (full_response);
@@ -41,6 +41,7 @@ message origin_request {
 message origin_response {
     // origin_response shows the current origin ASN for active route.
     uint32 origin_asn = 1;
+    bool exists = 2;
 }
 
 message aspath_request {
@@ -50,6 +51,7 @@ message aspath_request {
 message aspath_response {
     // aspath_response shows the current aspath for the active route.
     repeated uint32 asn = 1;
+    bool exists = 2;
 }
 
 message route_request {
@@ -59,6 +61,7 @@ message route_request {
 message route_response {
     // route_response shows the current prefix/mask for the active route.
     ip_address ip_address = 1;
+    bool exists = 2;
 }
 
 message asname_request {
@@ -68,6 +71,7 @@ message asname_request {
 message asname_response {
     // asname_response returns the string name for the passed AS number.
     string as_name = 1;
+    bool exists = 2;
 }
 
 message roa_request {
@@ -75,12 +79,6 @@ message roa_request {
 }
 
 message roa_response {
-    enum ROAStatus {
-        UNKNOWN = 0;
-        VALID = 1;
-        INVALID = 2;
-    }
     ip_address ip_address = 1;
-    ROAStatus status = 2;
-
+    string status = 2;
 }

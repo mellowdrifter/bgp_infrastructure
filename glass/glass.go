@@ -85,14 +85,17 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 
 	ip, err := validateIP(r.GetIpAddress())
 	if err != nil {
+		return nil, errors.New("Unable to validate IP")
+	}
+
+	ipnet, exists, err := getRouteFromDaemon(ip)
+	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
 
-	ipnet, err := getRouteFromDaemon(ip)
-	if err != nil {
-		log.Printf("Error: %v", err)
-		return nil, err
+	if !exists {
+		return &pb.RouteResponse{}, nil
 	}
 
 	mask, _ := ipnet.Mask.Size()
@@ -140,6 +143,25 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	return &pb.AsnameResponse{
 		AsName: name.GetAsName(),
 	}, nil
+
+}
+
+func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, error) {
+	log.Printf("Running Roa")
+
+	ip, err := validateIP(r.GetIpAddress())
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	status, err := getRoaFromDaemon(ip)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	return status, nil
 
 }
 
@@ -250,7 +272,8 @@ func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
 }
 
 // getRouteFromDaemon will get the prefix for the passed in IP directly from the BGP daemon.
-func getRouteFromDaemon(ip net.IP) (*net.IPNet, error) {
+// If network not found, returns false but no error.
+func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
 	log.Printf("Running getRouteFromDaemon")
 
 	var daemon string
@@ -262,7 +285,44 @@ func getRouteFromDaemon(ip net.IP) (*net.IPNet, error) {
 		daemon = "birdc"
 	}
 	cmd := fmt.Sprintf("/usr/sbin/%s show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}' | tr -d '[]ASie?'", daemon, ip.String())
-	//log.Printf(cmd)
+	out, err := com.GetOutput(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+
+	_, net, err := net.ParseCIDR(out)
+	if err != nil {
+		return nil, false, nil
+	}
+
+	return net, true, nil
+
+}
+
+func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
+
+	// I need to get the correct things here!
+	statuses := map[string]string{
+		"(enum 35)0": "UNKNOWN",
+		"(enum 35)2": "INVALID",
+		"(enum 35)1": "VALID",
+	}
+
+	var daemon string
+
+	switch ip.To4() {
+	case nil:
+		daemon = "birdc6"
+	default:
+		daemon = "birdc"
+	}
+	// Handle errors here
+	prefix, _ := getRouteFromDaemon(ip)
+	origin, _ := getOriginFromDaemon(ip)
+
+	fmt.Println("SOMETHING")
+	cmd := fmt.Sprintf("/usr/sbin/%s 'eval roa_check(roa_table, %s, %d)' | grep -Ev 'BIRD|device1|name|info|kernel1'", daemon, prefix.String(), origin)
+	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return nil, err
@@ -270,11 +330,8 @@ func getRouteFromDaemon(ip net.IP) (*net.IPNet, error) {
 
 	log.Printf(out)
 
-	_, net, err := net.ParseCIDR(out)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to parse IP and subnet from output")
-	}
-
-	return net, nil
+	return &pb.RoaResponse{
+		Status: statuses[out],
+	}, nil
 
 }

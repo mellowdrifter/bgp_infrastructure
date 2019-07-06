@@ -15,6 +15,7 @@ stub = glass_pb2_grpc.looking_glassStub(channel)
 address = pb.ip_address(
     address = sys.argv[1],
 )
+
 a = pb.origin_request(
     ip_address = address,
 )
@@ -62,3 +63,16 @@ except grpc.RpcError as e:
     sys.exit(1)
 
 print("The ASNAME for AS{} is {}".format(response.origin_asn, resp.as_name))
+
+a = pb.roa_request(
+    ip_address = address,
+)
+
+try:
+    roarep = stub.roa(a)
+except grpc.RpcError as e:
+    #print("Error: {}".format(e))
+    print("Error: {}".format(e.details()))
+    sys.exit(1)
+
+print("The ROA status is {}".format(roarep.status))
