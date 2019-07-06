@@ -300,38 +300,40 @@ func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
 }
 
 func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
+	/*
+		// I need to get the correct things here!
+		statuses := map[string]string{
+			"(enum 35)0": "UNKNOWN",
+			"(enum 35)2": "INVALID",
+			"(enum 35)1": "VALID",
+		}
 
-	// I need to get the correct things here!
-	statuses := map[string]string{
-		"(enum 35)0": "UNKNOWN",
-		"(enum 35)2": "INVALID",
-		"(enum 35)1": "VALID",
-	}
+		var daemon string
 
-	var daemon string
+		switch ip.To4() {
+		case nil:
+			daemon = "birdc6"
+		default:
+			daemon = "birdc"
+		}
+		// Handle errors here
+		prefix, _, _ := getRouteFromDaemon(ip)
+		origin, _ := getOriginFromDaemon(ip)
 
-	switch ip.To4() {
-	case nil:
-		daemon = "birdc6"
-	default:
-		daemon = "birdc"
-	}
-	// Handle errors here
-	prefix, _ := getRouteFromDaemon(ip)
-	origin, _ := getOriginFromDaemon(ip)
+		fmt.Println("SOMETHING")
+		cmd := fmt.Sprintf("/usr/sbin/%s 'eval roa_check(roa_table, %s, %d)' | grep -Ev 'BIRD|device1|name|info|kernel1'", daemon, prefix.String(), origin)
+		log.Printf(cmd)
+		out, err := com.GetOutput(cmd)
+		if err != nil {
+			return nil, err
+		}
 
-	fmt.Println("SOMETHING")
-	cmd := fmt.Sprintf("/usr/sbin/%s 'eval roa_check(roa_table, %s, %d)' | grep -Ev 'BIRD|device1|name|info|kernel1'", daemon, prefix.String(), origin)
-	log.Printf(cmd)
-	out, err := com.GetOutput(cmd)
-	if err != nil {
-		return nil, err
-	}
+		log.Printf(out)
 
-	log.Printf(out)
-
-	return &pb.RoaResponse{
-		Status: statuses[out],
-	}, nil
+		return &pb.RoaResponse{
+			Status: statuses[out],
+		}, nil
+	*/
+	return &pb.RoaResponse{}, nil
 
 }
