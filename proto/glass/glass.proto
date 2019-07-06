@@ -7,7 +7,7 @@ service looking_glass {
     // origin will return the origin AS number
     rpc origin(origin_request) returns (origin_response);
 
-    // aspath will return the aspath, except for the first to hide my peers.
+    // aspath will return the aspath.
     rpc aspath(aspath_request) returns (aspath_response);
 
     // route will return the full ip route output.
@@ -79,6 +79,12 @@ message roa_request {
 }
 
 message roa_response {
+    enum ROAStatus {
+        UNKNOWN = 0;
+        VALID = 1;
+        INVALID = 2;
+    }
     ip_address ip_address = 1;
-    string status = 2;
+    ROAStatus status = 2;
+
 }
