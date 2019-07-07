@@ -124,3 +124,18 @@ func ValidateIPNet(ip string, mask uint32) (*net.IPNet, error) {
 	return net, nil
 
 }
+
+// ValidateASN ensures the AS number is a public, non-documentation, non-reserved AS.
+func ValidateASN(asn uint32) bool {
+	switch {
+	case asn == 0:
+		return false
+	case asn == 23456:
+		return false
+	case asn >= 64000 && asn <= 131071:
+		return false
+	case asn >= 4200000000 && asn <= 4294967295:
+		return false
+	}
+	return true
+}
