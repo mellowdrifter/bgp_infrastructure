@@ -134,7 +134,7 @@ func ValidateASN(asn uint32) bool {
 		return false
 	case asn >= 64000 && asn <= 131071:
 		return false
-	case asn >= 4200000000 && asn <= 4294967295:
+	case asn >= 4200000000:
 		return false
 	}
 	return true
