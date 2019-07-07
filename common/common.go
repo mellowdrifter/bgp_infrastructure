@@ -1,7 +1,9 @@
 package common
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -78,4 +80,47 @@ func Intersection(first, second []string) []string {
 // TimeFunction logs total time to execute a function.
 func TimeFunction(start time.Time, name string) {
 	log.Printf("%s took %s\n", name, time.Since(start))
+}
+
+// ValidateIP ensures the IP address is valid.
+// non Public IPs are not valid.
+func ValidateIP(ip string) (net.IP, error) {
+	log.Printf("Running validateIP")
+
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return nil, fmt.Errorf("Unable to parse IP")
+	}
+
+	if !IsPublicIP(parsed) {
+		return nil, fmt.Errorf("IP is not public")
+	}
+
+	return parsed, nil
+
+}
+
+// IsPublicIP determines if the IPv4 address is public.
+// TODO: IPv6 is not covered.
+// Go 1.13 might have a function that does all this for me.
+func IsPublicIP(ip net.IP) bool {
+	return ip.IsGlobalUnicast() && !(ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified())
+
+}
+
+// ValidateIPNet ensures the IP address and mask is valid. We only care about public IPs.
+func ValidateIPNet(ip string, mask uint32) (*net.IPNet, error) {
+	log.Printf("Running validateIPNet")
+
+	parsed, net, err := net.ParseCIDR(fmt.Sprintf("%s/%d", ip, mask))
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse IP and subnet")
+	}
+
+	if !IsPublicIP(parsed) {
+		return nil, fmt.Errorf("IP is not public")
+	}
+
+	return net, nil
+
 }

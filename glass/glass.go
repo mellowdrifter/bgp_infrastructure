@@ -37,7 +37,7 @@ func main() {
 func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginResponse, error) {
 	log.Printf("Running Origin")
 
-	ip, err := validateIP(r.GetIpAddress())
+	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
@@ -53,18 +53,11 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 
 }
 
-func isPublicIP(ip net.IP) bool {
-	// TODO: Go 1.13 will add IsPrivate() or simiar.
-	// I might be able to get rid of ALL of this!
-	return ip.IsGlobalUnicast() && !(ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified())
-
-}
-
 // Aspath returns a list of ASNs for an IP address.
 func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathResponse, error) {
 	log.Printf("Running Aspath")
 
-	ip, err := validateIP(r.GetIpAddress())
+	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
@@ -83,7 +76,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteResponse, error) {
 	log.Printf("Running Route")
 
-	ip, err := validateIP(r.GetIpAddress())
+	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		return nil, errors.New("Unable to validate IP")
 	}
@@ -104,7 +97,10 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 		Mask:    uint32(mask),
 	}
 
-	return &pb.RouteResponse{IpAddress: ipaddr}, nil
+	return &pb.RouteResponse{
+		IpAddress: ipaddr,
+		Exists:    true,
+	}, nil
 }
 
 // Asname will return the registered name of the ASN. As this isn't in bird directly, will need
@@ -149,7 +145,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, error) {
 	log.Printf("Running Roa")
 
-	ip, err := validateIP(r.GetIpAddress())
+	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
@@ -162,40 +158,6 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	}
 
 	return status, nil
-
-}
-
-// validateIP ensures the IP address is valid. We only care about public IPs.
-func validateIP(r *pb.IpAddress) (net.IP, error) {
-	log.Printf("Running validateIP")
-
-	ip := net.ParseIP(r.GetAddress())
-	if ip == nil {
-		return nil, fmt.Errorf("Unable to parse IP")
-	}
-
-	if !isPublicIP(ip) {
-		return nil, fmt.Errorf("IP is not public")
-	}
-
-	return ip, nil
-
-}
-
-// validateIPNet ensures the IP address and mask is valid. We only care about public IPs.
-func validateIPNet(r *pb.IpAddress) (*net.IPNet, error) {
-	log.Printf("Running validateIPNet")
-
-	ip, net, err := net.ParseCIDR(fmt.Sprintf("%s/%d", r.GetAddress(), r.GetMask()))
-	if err != nil {
-		return nil, fmt.Errorf("Unable to parse IP and subnet")
-	}
-
-	if !isPublicIP(ip) {
-		return nil, fmt.Errorf("IP is not public")
-	}
-
-	return net, nil
 
 }
 
