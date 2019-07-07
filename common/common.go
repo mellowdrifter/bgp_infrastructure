@@ -101,10 +101,59 @@ func ValidateIP(ip string) (net.IP, error) {
 }
 
 // IsPublicIP determines if the IPv4 address is public.
-// TODO: IPv6 is not covered.
 // Go 1.13 might have a function that does all this for me.
 func IsPublicIP(ip net.IP) bool {
-	return ip.IsGlobalUnicast() && !(ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() || ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified())
+	if ip4 := ip.To4(); ip4 != nil {
+		return IsPublicIPv4(ip4)
+	}
+	return IsPublicIPv6(ip)
+
+}
+
+// IsPublicIPv4 checks if the IPv4 address is a valid public address.
+func IsPublicIPv4(ip net.IP) bool {
+	if !ip.IsGlobalUnicast() {
+		return false
+	}
+
+	switch {
+	// rfc1918
+	case ip[0] == 10:
+		return false
+	// rfc1918
+	case ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31:
+		return false
+	// rfc1918
+	case ip[0] == 192 && ip[1] == 168:
+		return false
+	// rfc6598
+	case ip[0] == 100 && ip[1] >= 64 && ip[1] <= 127:
+		return false
+	// rfc3927
+	case ip[0] == 169 && ip[1] == 254:
+		return false
+	// rfc6980 && rfc5737
+	case ip[0] == 192 && ip[1] == 0 && (ip[2] == 0 || ip[2] == 2):
+		return false
+	// rfc5737
+	case ip[0] == 198 && ip[1] == 51 && ip[2] == 100:
+		return false
+	// rfc5737
+	case ip[0] == 203 && ip[1] == 0 && ip[2] == 113:
+		return false
+	}
+
+	return true
+
+}
+
+// IsPublicIPv6 checks if the IPv6 address is a valid public address.
+func IsPublicIPv6(ip net.IP) bool {
+	if !ip.IsGlobalUnicast() {
+		return false
+	}
+	// For now, just ensure the route belongs to 2000::/3
+	return ip[0] >= 32 && ip[0] <= 63
 
 }
 
