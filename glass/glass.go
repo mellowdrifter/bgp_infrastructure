@@ -201,6 +201,7 @@ func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
 
 	var daemon string
 	var asns []uint32
+	//var asSet []uint32
 
 	switch ip.To4() {
 	case nil:
@@ -218,15 +219,28 @@ func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
 	log.Printf(out)
 
 	if out == "" {
+		// TODO: All commands should just return a bool if not existing. This is not an error.
 		return asns, fmt.Errorf("Network is not in table")
 
 	}
 
 	aspath := strings.Fields(out)
 
-	// Need uint32 representation of the aspath
-	for _, asn := range aspath {
-		asns = append(asns, com.StringToUint32(asn))
+	// Need to separate as-set
+	var set bool
+	for _, as := range aspath {
+		if strings.ContainsAny(as, "{}") {
+			set = true
+			continue
+		}
+
+		switch {
+		case set == false:
+			asns = append(asns, com.StringToUint32(as))
+			// TODO: Fix this so we can return the ASSET itself
+			//case set == true:
+			//set = append(asSet, com.StringToUint32(as))
+		}
 	}
 
 	return asns, nil
