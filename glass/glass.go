@@ -21,6 +21,27 @@ import (
 type server struct{}
 
 func main() {
+	// load in config
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
+	cf, err := ini.Load(path)
+	if err != nil {
+		log.Fatalf("failed to read config file: %v\n", err)
+	}
+
+	logfile := cf.Section("log").Key("logfile").String()
+
+	// Set up log file
+	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("failed to open logfile: %v\n", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+
 	// set up gRPC server
 	log.Printf("Listening on port %d\n", 7181)
 	lis, err := net.Listen("tcp", ":7181")
@@ -43,13 +64,19 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 		return nil, err
 	}
 
-	asn, err := getOriginFromDaemon(ip)
+	asn, exists, err := getOriginFromDaemon(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
+	if !exists {
+		return &pb.OriginResponse{}, nil
+	}
 
-	return &pb.OriginResponse{OriginAsn: uint32(asn)}, nil
+	return &pb.OriginResponse{
+		OriginAsn: uint32(asn),
+		Exists:    exists,
+	}, nil
 
 }
 
@@ -63,13 +90,20 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 		return nil, err
 	}
 
-	asns, err := getASPathFromDaemon(ip)
+	asns, sets, exists, err := getASPathFromDaemon(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
+	if !exists {
+		return &pb.AspathResponse{}, nil
+	}
 
-	return &pb.AspathResponse{Asn: asns}, nil
+	return &pb.AspathResponse{
+		Asn:    asns,
+		Set:    sets,
+		Exists: exists,
+	}, nil
 }
 
 // Route returns the primary active RIB entry for the IP passed.
@@ -99,7 +133,7 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 
 	return &pb.RouteResponse{
 		IpAddress: ipaddr,
-		Exists:    true,
+		Exists:    exists,
 	}, nil
 }
 
@@ -162,7 +196,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 }
 
 // getOriginFromDaemon will get the origin ASN for the passed in IP directly from the BGP daemon.
-func getOriginFromDaemon(ip net.IP) (int, error) {
+func getOriginFromDaemon(ip net.IP) (int, bool, error) {
 	log.Printf("Running getOriginFromDaemon")
 
 	var daemon string
@@ -177,31 +211,31 @@ func getOriginFromDaemon(ip net.IP) (int, error) {
 	//log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
 	log.Printf(out)
 
 	if strings.Contains("not in table", out) {
-		return 0, fmt.Errorf("Network is not in table")
+		return 0, false, nil
 	}
 
 	source, err := strconv.Atoi(out)
 	if err != nil {
-		return 0, err
+		return 0, true, err
 	}
 
-	return source, nil
+	return source, true, nil
 
 }
 
 // getASPathFromDaemon will get the ASN list for the passed in IP directly from the BGP daemon.
-func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
+func getASPathFromDaemon(ip net.IP) ([]uint32, []uint32, bool, error) {
 	log.Printf("Running getASPathFromDaemon")
 
 	var daemon string
 	var asns []uint32
-	//var asSet []uint32
+	var asSet []uint32
 
 	switch ip.To4() {
 	case nil:
@@ -213,14 +247,13 @@ func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
 	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
-		return asns, err
+		return nil, nil, false, err
 	}
 
 	log.Printf(out)
 
 	if out == "" {
-		// TODO: All commands should just return a bool if not existing. This is not an error.
-		return asns, fmt.Errorf("Network is not in table")
+		return nil, nil, false, nil
 
 	}
 
@@ -237,13 +270,12 @@ func getASPathFromDaemon(ip net.IP) ([]uint32, error) {
 		switch {
 		case set == false:
 			asns = append(asns, com.StringToUint32(as))
-			// TODO: Fix this so we can return the ASSET itself
-			//case set == true:
-			//set = append(asSet, com.StringToUint32(as))
+		case set == true:
+			asSet = append(asSet, com.StringToUint32(as))
 		}
 	}
 
-	return asns, nil
+	return asns, asSet, true, nil
 
 }
 
@@ -276,40 +308,51 @@ func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
 }
 
 func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
-	/*
-		// I need to get the correct things here!
-		statuses := map[string]string{
-			"(enum 35)0": "UNKNOWN",
-			"(enum 35)2": "INVALID",
-			"(enum 35)1": "VALID",
-		}
+	// I need to get the correct things here!
+	statuses := map[string]pb.RoaResponse_ROAStatus{
+		"(enum 35)0": pb.RoaResponse_UNKNOWN,
+		"(enum 35)2": pb.RoaResponse_INVALID,
+		"(enum 35)1": pb.RoaResponse_VALID,
+	}
 
-		var daemon string
+	var daemon string
 
-		switch ip.To4() {
-		case nil:
-			daemon = "birdc6"
-		default:
-			daemon = "birdc"
-		}
-		// Handle errors here
-		prefix, _, _ := getRouteFromDaemon(ip)
-		origin, _ := getOriginFromDaemon(ip)
+	switch ip.To4() {
+	case nil:
+		daemon = "birdc6"
+	default:
+		daemon = "birdc"
+	}
 
-		fmt.Println("SOMETHING")
-		cmd := fmt.Sprintf("/usr/sbin/%s 'eval roa_check(roa_table, %s, %d)' | grep -Ev 'BIRD|device1|name|info|kernel1'", daemon, prefix.String(), origin)
-		log.Printf(cmd)
-		out, err := com.GetOutput(cmd)
-		if err != nil {
-			return nil, err
-		}
+	// In order to check the ROA, I need the current route and origin AS.
+	prefix, exists, err := getRouteFromDaemon(ip)
+	if err != nil || !exists {
+		return &pb.RoaResponse{}, err
+	}
 
-		log.Printf(out)
+	origin, exists, err := getOriginFromDaemon(ip)
+	if err != nil || !exists {
+		return &pb.RoaResponse{}, err
+	}
 
-		return &pb.RoaResponse{
-			Status: statuses[out],
-		}, nil
-	*/
-	return &pb.RoaResponse{}, nil
+	// Now check for an existing ROA
+	cmd := fmt.Sprintf("/usr/sbin/%s 'eval roa_check(roa_table, %s, %d)' | grep -Ev 'BIRD|device1|name|info|kernel1'", daemon, prefix.String(), origin)
+	log.Printf(cmd)
+	out, err := com.GetOutput(cmd)
+	if err != nil {
+		return &pb.RoaResponse{}, err
+	}
+
+	log.Printf(out)
+
+	mask, _ := prefix.Mask.Size()
+	return &pb.RoaResponse{
+		IpAddress: &pb.IpAddress{
+			Address: prefix.IP.String(),
+			Mask:    uint32(mask),
+		},
+		Status: statuses[out],
+		Exists: exists,
+	}, nil
 
 }
