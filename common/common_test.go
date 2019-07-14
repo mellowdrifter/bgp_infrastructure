@@ -170,3 +170,87 @@ func TestIsPublicIP(t *testing.T) {
 		}
 	}
 }
+
+func TestASPlainToASDot(t *testing.T) {
+	var asns = []struct {
+		test     int
+		asn      uint32
+		expected string
+	}{
+		{
+			test:     1,
+			asn:      uint32(131702),
+			expected: "2.630",
+		},
+		{
+			test:     2,
+			asn:      uint32(65536),
+			expected: "1.0",
+		},
+		{
+			test:     3,
+			asn:      uint32(500),
+			expected: "500",
+		},
+		{
+			test:     4,
+			asn:      uint32(65546),
+			expected: "1.10",
+		},
+		{
+			test:     5,
+			asn:      uint32(194534),
+			expected: "2.63462",
+		},
+	}
+
+	for _, tt := range asns {
+		actual := ASPlainToASDot(tt.asn)
+		if actual != tt.expected {
+			t.Errorf("Error on test #%d: Expected %s, but got %s", tt.test, tt.expected, actual)
+		}
+	}
+
+}
+
+func TestASDotToASPlain(t *testing.T) {
+	var asns = []struct {
+		test     int
+		asn      string
+		expected uint32
+	}{
+		{
+			test:     1,
+			expected: uint32(131702),
+			asn:      "2.630",
+		},
+		{
+			test:     2,
+			expected: uint32(65536),
+			asn:      "1.0",
+		},
+		{
+			test:     3,
+			expected: uint32(500),
+			asn:      "500",
+		},
+		{
+			test:     4,
+			expected: uint32(65546),
+			asn:      "1.10",
+		},
+		{
+			test:     5,
+			expected: uint32(194534),
+			asn:      "2.63462",
+		},
+	}
+
+	for _, tt := range asns {
+		actual := ASDotToASPlain(tt.asn)
+		if actual != tt.expected {
+			t.Errorf("Error on test #%d: Expected %d, but got %d", tt.test, tt.expected, actual)
+		}
+	}
+
+}

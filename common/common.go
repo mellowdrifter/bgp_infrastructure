@@ -188,3 +188,48 @@ func ValidateASN(asn uint32) bool {
 	}
 	return true
 }
+
+// ASPlainToASDot will convert an ASPLAIN AS number to a ASDOT representation.
+func ASPlainToASDot(asn uint32) string {
+	if asn < 1 || asn > 4294967295 {
+		return ""
+	}
+	dot1 := asn / 65536
+	dot2 := asn % 65536
+
+	if dot1 == 0 {
+		return fmt.Sprintf("%d", dot2)
+	}
+
+	return fmt.Sprintf("%d.%d", int(dot1), dot2)
+
+}
+
+// ASDotToASPlain will convert an ASDOT AS number to a ASPLAIN representation.
+func ASDotToASPlain(asn string) uint32 {
+	asStrings := strings.Split(asn, ".")
+	if len(asStrings) > 2 {
+		return 0
+	}
+
+	// Not using asdot+, so a single field is legitimate.
+	if len(asStrings) == 1 {
+		asPlain := StringToUint32(asStrings[0])
+		if asPlain < 1 || asPlain > 65535 {
+			return 0
+		}
+		return asPlain
+
+	}
+
+	// Else it's regular asdot notation
+	dot1 := StringToUint32(asStrings[0])
+	dot2 := StringToUint32(asStrings[1])
+
+	if dot1 < 0 || dot1 > 65535 || dot2 < 0 || dot2 > 65535 {
+		return 0
+	}
+
+	return dot1*65536 + dot2
+
+}
