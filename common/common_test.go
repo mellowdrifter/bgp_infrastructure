@@ -37,6 +37,33 @@ func TestStringToUint32(t *testing.T) {
 
 }
 
+func TestUint32ToString(t *testing.T) {
+	var tests = []struct {
+		name string
+		in   uint32
+		out  string
+	}{
+		{
+			name: "Regular number to uint32",
+			out:  "1",
+			in:   uint32(1),
+		},
+		{
+			name: "Largest uint32",
+			out:  "4294967295",
+			in:   uint32(4294967295),
+		},
+	}
+
+	for _, tt := range tests {
+		actual := Uint32ToString(tt.in)
+		if actual != tt.out {
+			t.Errorf("Error on %s. Expected %s, got %s", tt.name, tt.out, actual)
+		}
+	}
+
+}
+
 func TestInFirstButNotSecond(t *testing.T) {
 	var tests = []struct {
 		name   string

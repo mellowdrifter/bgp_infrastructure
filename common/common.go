@@ -30,6 +30,12 @@ func StringToUint32(s string) uint32 {
 	return uint32(val)
 }
 
+// Uint32ToString is a helper function as many times I need to do this conversion.
+func Uint32ToString(u uint32) string {
+	val := strconv.Itoa(int(u))
+	return val
+}
+
 // SetListOfStrings returns a slice of strings with no duplicates.
 // Go has no built-in set function, so doing it here
 func SetListOfStrings(input []string) []string {
