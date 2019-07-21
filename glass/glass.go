@@ -52,6 +52,7 @@ func main() {
 	pb.RegisterLookingGlassServer(grpcServer, &server{})
 
 	grpcServer.Serve(lis)
+
 }
 
 // Origin will return the origin ASN for the active route.
@@ -76,6 +77,42 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	return &pb.OriginResponse{
 		OriginAsn: uint32(asn),
 		Exists:    exists,
+	}, nil
+
+}
+
+func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, error) {
+	log.Printf("Running Totals")
+
+	// load in config
+	exe, err := os.Executable()
+	if err != nil {
+		return &pb.TotalResponse{}, errors.New("Unable to load config in Totals")
+	}
+	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
+	cf, err := ini.Load(path)
+	if err != nil {
+		return &pb.TotalResponse{}, fmt.Errorf("failed to read config file: %v", err)
+	}
+
+	// gRPC dial the grapher
+	bgpinfo := cf.Section("bgpinfo").Key("server").String()
+	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	b := bpb.NewBgpInfoClient(conn)
+
+	totals, err := b.GetPrefixCount(ctx, &bpb.Empty{})
+	if err != nil {
+		return &pb.TotalResponse{}, err
+	}
+
+	return &pb.TotalResponse{
+		Active_4: totals.GetActive_4(),
+		Active_6: totals.GetActive_6(),
+		Time:     totals.GetTime(),
 	}, nil
 
 }
@@ -172,6 +209,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 
 	return &pb.AsnameResponse{
 		AsName: name.GetAsName(),
+		Locale: name.GetAsLocale(),
 	}, nil
 
 }
@@ -192,6 +230,78 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	}
 
 	return status, nil
+
+}
+
+func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceResponse, error) {
+	log.Printf("Running Sourced")
+
+	if !com.ValidateASN(r.GetAsNumber()) {
+		return nil, errors.New("Invalid AS number")
+	}
+
+	subnets, err := getSourcedFromDaemon(r.GetAsNumber())
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	if !subnets.Exists {
+		return &pb.SourceResponse{}, nil
+	}
+
+	return subnets, nil
+}
+
+// getSourcedFromDaemon will get all the IPv4 and IPv6 routes sourced from an ASN.
+func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
+	log.Printf("Running getSourcedFromDaemon")
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc6 'show route primary where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}'", as)
+	log.Printf(cmd)
+	out, err := com.GetOutput(cmd)
+	if err != nil {
+		return &pb.SourceResponse{}, err
+	}
+	var prefixes []*pb.IpAddress
+	for _, address := range strings.Fields(out) {
+		addrMask := strings.Split(address, "/")
+		fmt.Printf("%s\n", addrMask)
+		prefixes = append(prefixes, &pb.IpAddress{
+			Address: addrMask[0],
+			Mask:    com.StringToUint32(addrMask[1]),
+		})
+	}
+
+	v6Count := len(prefixes)
+
+	cmd = fmt.Sprintf("/usr/sbin/birdc 'show route primary where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}'", as)
+	log.Printf(cmd)
+	out, err = com.GetOutput(cmd)
+	if err != nil {
+		return &pb.SourceResponse{}, err
+	}
+
+	for _, address := range strings.Fields(out) {
+		addrMask := strings.Split(address, "/")
+		prefixes = append(prefixes, &pb.IpAddress{
+			Address: addrMask[0],
+			Mask:    com.StringToUint32(addrMask[1]),
+		})
+	}
+
+	v4Count := len(prefixes) - v6Count
+
+	if out == "" {
+		return &pb.SourceResponse{}, err
+
+	}
+	return &pb.SourceResponse{
+		Exists:    true,
+		IpAddress: prefixes,
+		V4Count:   uint32(v4Count),
+		V6Count:   uint32(v6Count),
+	}, err
 
 }
 
@@ -230,12 +340,12 @@ func getOriginFromDaemon(ip net.IP) (int, bool, error) {
 }
 
 // getASPathFromDaemon will get the ASN list for the passed in IP directly from the BGP daemon.
-func getASPathFromDaemon(ip net.IP) ([]uint32, []uint32, bool, error) {
+func getASPathFromDaemon(ip net.IP) ([]*pb.Asn, []*pb.Asn, bool, error) {
 	log.Printf("Running getASPathFromDaemon")
 
 	var daemon string
-	var asns []uint32
-	var asSet []uint32
+
+	var asns, asSet []*pb.Asn
 
 	switch ip.To4() {
 	case nil:
@@ -269,9 +379,15 @@ func getASPathFromDaemon(ip net.IP) ([]uint32, []uint32, bool, error) {
 
 		switch {
 		case set == false:
-			asns = append(asns, com.StringToUint32(as))
+			asns = append(asns, &pb.Asn{
+				Asplain: com.StringToUint32(as),
+				Asdot:   com.ASPlainToASDot(com.StringToUint32(as)),
+			})
 		case set == true:
-			asSet = append(asSet, com.StringToUint32(as))
+			asns = append(asns, &pb.Asn{
+				Asplain: com.StringToUint32(as),
+				Asdot:   com.ASPlainToASDot(com.StringToUint32(as)),
+			})
 		}
 	}
 
