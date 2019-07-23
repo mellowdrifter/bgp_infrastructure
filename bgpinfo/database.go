@@ -250,9 +250,13 @@ func getRPKIHelper() (*pb.Roas, error) {
 
 func getAsnameHelper(a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
 	var n pb.GetAsnameResponse
-	sql := fmt.Sprintf(`select ASNAME from ASNUMNAME WHERE ASNUMBER = '%d'`,
+	sql := fmt.Sprintf(`select ASNAME, LOCALE from ASNUMNAME WHERE ASNUMBER = '%d'`,
 		a.GetAsNumber())
-	err := db.QueryRow(sql).Scan(&n.AsName)
+	err := db.QueryRow(sql).Scan(
+		&n.AsName,
+		&n.AsLocale,
+	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -273,9 +277,9 @@ func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
 		log.Printf("Error on db.Begin: %v\n", err)
 		return &pb.Result{}, err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO ASNUMNAME_NEW SET ASNUMBER=?, ASNAME=?`)
+	stmt, err := tx.Prepare(`INSERT INTO ASNUMNAME_NEW SET ASNUMBER=?, ASNAME=?, LOCALE=?`)
 	for _, as := range asn.GetAsnNames() {
-		_, err := stmt.Exec(as.GetAsNumber(), as.GetAsName())
+		_, err := stmt.Exec(as.GetAsNumber(), as.GetAsName(), as.GetAsLocale())
 		if err != nil {
 			log.Printf("Error on statement: %v\n", err)
 			return &pb.Result{}, err
