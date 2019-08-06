@@ -16,15 +16,17 @@ service looking_glass {
     // asname will return the AS name.
     rpc asname(asname_request) returns (asname_response);
 
-    // roa with return the roa status.
+    // roa will return the roa status.
     rpc roa(roa_request) returns (roa_response);
 
     // full will return the full route output, plus the asname
     //rpc full(full_request) returns (full_response);
 
-    // myip will return full info for the requester IP.
-    //rpc myip(myip_request) returns (myip_response);
+    // sourced will return all the IPv4 and IPv6 prefixes sources by an AS number
+    rpc sourced(source_request) returns (source_response);
 
+    // totals will return the current IPv4 and IPv6 BGP count.
+    rpc totals(empty) returns (total_response);
 
 }
 
@@ -44,15 +46,41 @@ message origin_response {
     bool exists = 2;
 }
 
+message source_request {
+    uint32 as_number = 1;
+}
+
+message source_response {
+    repeated ip_address ip_address = 1;
+    bool exists = 2;
+    uint32 v4count = 3;
+    uint32 v6count = 4;
+}
+
+message empty {
+    // empty struct
+}
+
+message total_response {
+    uint32 active_4 = 2;
+    uint32 active_6 = 4;
+    uint64 time = 5;
+}
+
 message aspath_request {
     ip_address ip_address = 1;
 }
 
 message aspath_response {
     // aspath_response shows the current aspath for the active route.
-    repeated uint32 asn = 1;
-    repeated uint32 set = 2;
+    repeated asn asn = 1;
+    repeated asn set = 2;
     bool exists = 3;
+}
+
+message asn {
+    uint32 asplain = 1;
+    string asdot = 2;
 }
 
 message route_request {
@@ -73,6 +101,7 @@ message asname_response {
     // asname_response returns the string name for the passed AS number.
     string as_name = 1;
     bool exists = 2;
+    string locale = 3;
 }
 
 message roa_request {

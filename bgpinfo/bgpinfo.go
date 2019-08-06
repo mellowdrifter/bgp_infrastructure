@@ -15,6 +15,7 @@ import (
 	ini "gopkg.in/ini.v1"
 )
 
+// TODO: Maybe put the config stuff in the server struct???
 type server struct{}
 
 type config struct {

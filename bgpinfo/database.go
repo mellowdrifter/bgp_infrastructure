@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"strconv"
@@ -198,11 +199,11 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 		start = strconv.Itoa(end - secondsInYear)
 		denomiator = 60
 	}
-	sql := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >=
+	query := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >=
 						'%s' AND TIME <= '%d'`, start, end)
 
 	var tv []*pb.V4V6Time
-	rows, err := db.Query(sql)
+	rows, err := db.Query(query)
 	if err != nil {
 		return &pb.MovementTotalsResponse{}, err
 	}
@@ -232,9 +233,9 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 
 func getRPKIHelper() (*pb.Roas, error) {
 	var r pb.Roas
-	sql := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
+	query := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
 	from INFO ORDER by TIME DESC LIMIT 1`
-	err := db.QueryRow(sql).Scan(
+	err := db.QueryRow(query).Scan(
 		&r.V4Valid,
 		&r.V4Invalid,
 		&r.V4Unknown,
@@ -250,17 +251,28 @@ func getRPKIHelper() (*pb.Roas, error) {
 
 func getAsnameHelper(a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
 	var n pb.GetAsnameResponse
-	sql := fmt.Sprintf(`select ASNAME, LOCALE from ASNUMNAME WHERE ASNUMBER = '%d'`,
+	query := fmt.Sprintf(`select ASNAME, LOCALE from ASNUMNAME WHERE ASNUMBER = '%d'`,
 		a.GetAsNumber())
-	err := db.QueryRow(sql).Scan(
+	err := db.QueryRow(query).Scan(
 		&n.AsName,
 		&n.AsLocale,
 	)
 
-	if err != nil {
+	switch {
+	// No result returned, so does not exist.
+	case err == sql.ErrNoRows:
+		log.Printf("NO ROWS")
+		n.Exists = false
+		return &n, nil
+	case err != nil:
 		return nil, err
+	default:
+		log.Printf("A ROW")
+		// Else it exists and we can return
+		n.Exists = true
+		return &n, nil
 	}
-	return &n, nil
+
 }
 
 func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {

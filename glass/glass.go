@@ -18,9 +18,6 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-// errNoRows is identical from const in sql package. But don't want to import just for that.
-var errNoRows = errors.New("sql: no rows in result set")
-
 type server struct{}
 
 func main() {
@@ -206,10 +203,6 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	b := bpb.NewBgpInfoClient(conn)
 
 	name, err := b.GetAsname(ctx, &number)
-	// If no rows, not a real error.
-	if err == errNoRows {
-		return &pb.AsnameResponse{}, nil
-	}
 	if err != nil {
 		return &pb.AsnameResponse{}, err
 	}
@@ -217,6 +210,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	return &pb.AsnameResponse{
 		AsName: name.GetAsName(),
 		Locale: name.GetAsLocale(),
+		Exists: name.Exists,
 	}, nil
 
 }

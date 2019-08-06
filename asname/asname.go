@@ -52,7 +52,6 @@ func main() {
 	}
 
 	// gRPC dial and send data
-	// TODO: This should go into config.ini
 	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
@@ -100,13 +99,24 @@ func getASNs() (*pb.AsnamesRequest, error) {
 		return &pb.AsnamesRequest{}, errors.New("Unable to download ASN names from all URLs")
 	}
 
+	asnNames := decoder(contents)
+
+	log.Println("Finished downloading and packing")
+
+	return &pb.AsnamesRequest{
+		AsnNames: asnNames,
+	}, nil
+
+}
+
+func decoder(contents []byte) []*pb.AsnName {
 	// Decode to valid UTF-8. For now these urls seem to use ISO8859_1
 	decoder := charmap.ISO8859_1.NewDecoder()
 	output, _ := decoder.Bytes(contents)
 	strcontents := string(output)
 
-	// I only want the AS number and name assigned
-	reg := regexp.MustCompile(`AS(\d+)\s*</a> (.*),`)
+	// I need the AS name, AS number, and the Locale.
+	reg := regexp.MustCompile(`AS(\d+)\s*</a> (.*),\s*([A-Z]{2})`)
 
 	// -1 means no limit of matches
 	res := reg.FindAllStringSubmatch(strcontents, -1)
@@ -117,13 +127,10 @@ func getASNs() (*pb.AsnamesRequest, error) {
 		asnNames = append(asnNames, &pb.AsnName{
 			AsNumber: com.StringToUint32(AS[1]),
 			AsName:   AS[2],
+			AsLocale: AS[3],
 		})
 	}
 
-	log.Println("Finished downloading and packing")
-
-	return &pb.AsnamesRequest{
-		AsnNames: asnNames,
-	}, nil
+	return asnNames
 
 }

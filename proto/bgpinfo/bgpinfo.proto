@@ -50,6 +50,7 @@ message asnames_request {
 message asn_name {
     uint32 as_number = 1;
     string as_name = 2;
+    string as_locale = 3;
 }
 
 message get_asname_request {
@@ -58,6 +59,8 @@ message get_asname_request {
 
 message get_asname_response {
     string as_name = 1;
+    string as_locale = 2;
+    bool exists = 3;
 }
 
 message pie_subnets_response { 
