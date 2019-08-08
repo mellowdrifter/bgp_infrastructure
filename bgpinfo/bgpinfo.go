@@ -15,9 +15,6 @@ import (
 	ini "gopkg.in/ini.v1"
 )
 
-// TODO: Maybe put the config stuff in the server struct???
-type server struct{}
-
 type config struct {
 	port     string
 	priority uint
@@ -30,11 +27,13 @@ type dbinfo struct {
 	user, pass, dbname string
 }
 
-var cfg config
-var db *sql.DB
+type server struct {
+	cfg config
+	db  *sql.DB
+}
 
-// init is here to read all the config.ini options. Ensure they are correct.
-func init() {
+// readConfig is here to read all the config.ini options. Ensure they are correct.
+func readConfig() config {
 
 	// read config
 	exe, err := os.Executable()
@@ -46,17 +45,25 @@ func init() {
 	if err != nil {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
+
+	var cfg config
 	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
 	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
 	cfg.db.dbname = cf.Section("sql").Key("database").String()
 	cfg.db.user = cf.Section("sql").Key("username").String()
 	cfg.db.pass = cf.Section("sql").Key("password").String()
 
+	return cfg
+
 }
 
 func main() {
+
+	var bgpinfoServer server
+	bgpinfoServer.cfg = readConfig()
+
 	// Set up log file
-	f, err := os.OpenFile(cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(bgpinfoServer.cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
@@ -64,8 +71,9 @@ func main() {
 	log.SetOutput(f)
 
 	// Create sql handle and test database connection
-	sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", cfg.db.user, cfg.db.pass, cfg.db.dbname)
-	db, err = sql.Open("mysql", sqlserver)
+	sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s",
+		bgpinfoServer.cfg.db.user, bgpinfoServer.cfg.db.pass, bgpinfoServer.cfg.db.dbname)
+	db, err := sql.Open("mysql", sqlserver)
 	if err != nil {
 		log.Fatalf("can't open database. Got %v", err)
 	}
@@ -76,13 +84,13 @@ func main() {
 	defer db.Close()
 
 	// set up gRPC server
-	log.Printf("Listening on port %s\n", cfg.port)
-	lis, err := net.Listen("tcp", cfg.port)
+	log.Printf("Listening on port %s\n", bgpinfoServer.cfg.port)
+	lis, err := net.Listen("tcp", bgpinfoServer.cfg.port)
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
 	grpcServer := grpc.NewServer()
-	pb.RegisterBgpInfoServer(grpcServer, &server{})
+	pb.RegisterBgpInfoServer(grpcServer, &bgpinfoServer)
 
 	grpcServer.Serve(lis)
 }
@@ -96,7 +104,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	update := repack(v)
 
 	// update database
-	err := add(update)
+	err := add(update, s.db)
 	if err != nil {
 		log.Printf("Got error in AddLatest: %s\n", err)
 		return &pb.Result{}, err
@@ -111,7 +119,7 @@ func (s *server) GetPrefixCount(ctx context.Context, e *pb.Empty) (*pb.PrefixCou
 	// Pull prefix counts for tweeting. Latest, 6 hours ago, and a week ago.
 	log.Println("Running GetPrefixCount")
 
-	res, err := getPrefixCountHelper()
+	res, err := getPrefixCountHelper(s.db)
 	if err != nil {
 		log.Printf("Got error in GetPrefixCount: %s\n", err)
 		return &pb.PrefixCountResponse{}, err
@@ -124,7 +132,7 @@ func (s *server) GetPieSubnets(ctx context.Context, e *pb.Empty) (*pb.PieSubnets
 	// Pull subnets counts to create Pie graph.
 	log.Println("Running GetPieSubnets")
 
-	res, err := getPieSubnetsHelper()
+	res, err := getPieSubnetsHelper(s.db)
 	if err != nil {
 		log.Printf("Got error in GetPieSubnets: %s\n", err)
 		return &pb.PieSubnetsResponse{}, err
@@ -137,7 +145,7 @@ func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (
 	// Pull subnets counts to create Pie graph.
 	log.Println("Running GetMovementTotals")
 
-	res, err := getMovementTotalsHelper(t)
+	res, err := getMovementTotalsHelper(t, s.db)
 	if err != nil {
 		log.Printf("Got error in GetMovementTotals: %s\n", err)
 		return &pb.MovementTotalsResponse{}, err
@@ -149,7 +157,7 @@ func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (
 func (s *server) UpdateTweetBit(ctx context.Context, t *pb.Timestamp) (*pb.Result, error) {
 	// Set the tweet bit to the provided time.
 	log.Println("Running UpdateTweetBit")
-	res, err := updateTweetBitHelper(t.GetTime())
+	res, err := updateTweetBitHelper(t.GetTime(), s.db)
 	if err != nil {
 		log.Printf("Got error in updateTweetBitHelper: %s\n", err)
 		return &pb.Result{}, err
@@ -163,7 +171,7 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 	// Pull RPKI counts to create Pie graph.
 	log.Println("Running GetRPKI")
 
-	res, err := getRPKIHelper()
+	res, err := getRPKIHelper(s.db)
 	if err != nil {
 		log.Printf("Got error in GetRPKI: %s\n", err)
 		return &pb.Roas{}, err
@@ -176,7 +184,7 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
 	log.Println("Running GetAsname")
 
-	res, err := getAsnameHelper(a)
+	res, err := getAsnameHelper(a, s.db)
 	if err != nil {
 		log.Printf("Got error in GetAsname: %s\n", err)
 		return &pb.GetAsnameResponse{}, err
@@ -191,7 +199,7 @@ func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb
 	log.Println("Running UpdateAsname")
 	fmt.Printf("There are a total of %d AS numbers\n", len(asn.GetAsnNames()))
 
-	res, err := updateASNHelper(asn)
+	res, err := updateASNHelper(asn, s.db)
 	if err != nil {
 		log.Printf("Got error in UpdateAsnnames: %s\n", err)
 		return &pb.Result{}, err

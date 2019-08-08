@@ -11,7 +11,7 @@ import (
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
-func query() {
+func query(db *sql.DB) {
 
 	bgpInfo := bgpStat{}
 	err := db.QueryRow(`select TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
@@ -34,7 +34,7 @@ func query() {
 	fmt.Printf("%+v\n", bgpInfo)
 }
 
-func add(b *bgpUpdate) error {
+func add(b *bgpUpdate, db *sql.DB) error {
 	// fmt.Printf("Update is %+v\n", b)
 	// All the required info. Fields can be added/deleted in future
 	result, err := db.Exec(
@@ -78,7 +78,7 @@ func add(b *bgpUpdate) error {
 	return nil
 }
 
-func getPrefixCountHelper() (*pb.PrefixCountResponse, error) {
+func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 	var data pb.PrefixCountResponse
 
 	// Latest data
@@ -128,7 +128,7 @@ func getPrefixCountHelper() (*pb.PrefixCountResponse, error) {
 	return &data, nil
 }
 
-func getPieSubnetsHelper() (*pb.PieSubnetsResponse, error) {
+func getPieSubnetsHelper(db *sql.DB) (*pb.PieSubnetsResponse, error) {
 
 	var masks pb.Masks
 	var pie pb.PieSubnetsResponse
@@ -175,7 +175,7 @@ func getPieSubnetsHelper() (*pb.PieSubnetsResponse, error) {
 
 }
 
-func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse, error) {
+func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTotalsResponse, error) {
 	// time helpers
 	secondsInWeek := 604800
 	secondsInMonth := 2628000
@@ -231,7 +231,7 @@ func getMovementTotalsHelper(m *pb.MovementRequest) (*pb.MovementTotalsResponse,
 
 }
 
-func getRPKIHelper() (*pb.Roas, error) {
+func getRPKIHelper(db *sql.DB) (*pb.Roas, error) {
 	var r pb.Roas
 	query := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
 	from INFO ORDER by TIME DESC LIMIT 1`
@@ -249,7 +249,7 @@ func getRPKIHelper() (*pb.Roas, error) {
 	return &r, nil
 }
 
-func getAsnameHelper(a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
+func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse, error) {
 	var n pb.GetAsnameResponse
 	query := fmt.Sprintf(`select ASNAME, LOCALE from ASNUMNAME WHERE ASNUMBER = '%d'`,
 		a.GetAsNumber())
@@ -275,7 +275,7 @@ func getAsnameHelper(a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
 
 }
 
-func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
+func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 
 	// Create a new temp table to hold new values.
 	_, err := db.Exec(`CREATE TABLE ASNUMNAME_NEW LIKE ASNUMNAME`)
@@ -320,7 +320,7 @@ func updateASNHelper(asn *pb.AsnamesRequest) (*pb.Result, error) {
 
 }
 
-func updateTweetBitHelper(t uint64) (*pb.Result, error) {
+func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
 	_, err := db.Exec(fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t))
 	if err != nil {
 		return &pb.Result{}, err
