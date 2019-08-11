@@ -24,6 +24,10 @@ message values {
     roas roas = 7;
 }
 
+message list_of_values {
+    repeated values values = 1;
+}
+
 message empty {
     // Sometimes we just need to request data. No inputs required.
 }

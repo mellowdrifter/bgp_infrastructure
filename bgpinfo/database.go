@@ -8,24 +8,25 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
 func query(db *sql.DB) {
 
-	bgpInfo := bgpStat{}
+	bgpInfo := com.BgpStat{}
 	err := db.QueryRow(`select TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
 		PEERS6_CONFIGURED, PEERS_UP, PEERS6_UP
 		from INFO ORDER by TIME DESC limit 1`).Scan(
-		&bgpInfo.time,
-		&bgpInfo.v4Count,
-		&bgpInfo.v6Count,
-		&bgpInfo.v4Total,
-		&bgpInfo.v6Total,
-		&bgpInfo.peersConfigured,
-		&bgpInfo.peers6Configured,
-		&bgpInfo.peersUp,
-		&bgpInfo.peers6Up,
+		&bgpInfo.Time,
+		&bgpInfo.V4Count,
+		&bgpInfo.V6Count,
+		&bgpInfo.V4Total,
+		&bgpInfo.V6Total,
+		&bgpInfo.PeersConfigured,
+		&bgpInfo.Peers6Configured,
+		&bgpInfo.PeersUp,
+		&bgpInfo.Peers6Up,
 	)
 	if err != nil {
 		log.Fatalf("Can't extract information. Got %v", err)
@@ -34,7 +35,7 @@ func query(db *sql.DB) {
 	fmt.Printf("%+v\n", bgpInfo)
 }
 
-func add(b *bgpUpdate, db *sql.DB) error {
+func add(b *com.BgpUpdate, db *sql.DB) error {
 	// fmt.Printf("Update is %+v\n", b)
 	// All the required info. Fields can be added/deleted in future
 	result, err := db.Exec(
@@ -57,16 +58,16 @@ func add(b *bgpUpdate, db *sql.DB) error {
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
 				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.time, b.v4Count, b.v6Count, b.v4Total, b.v6Total, b.peersConfigured,
-		b.peersUp, b.peers6Configured, b.peers6Up, b.v4_24,
-		b.v4_23, b.v4_22, b.v4_21, b.v4_20, b.v4_19, b.v4_18, b.v4_17, b.v4_16,
-		b.v4_15, b.v4_14, b.v4_13, b.v4_12, b.v4_11, b.v4_10, b.v4_09, b.v4_08,
-		b.v6_48, b.v6_47, b.v6_46, b.v6_45, b.v6_44, b.v6_43, b.v6_42, b.v6_41,
-		b.v6_40, b.v6_39, b.v6_38, b.v6_37, b.v6_36, b.v6_35, b.v6_34, b.v6_33,
-		b.v6_32, b.v6_31, b.v6_30, b.v6_29, b.v6_28, b.v6_27, b.v6_26, b.v6_25,
-		b.v6_24, b.v6_23, b.v6_22, b.v6_21, b.v6_20, b.v6_19, b.v6_18, b.v6_17,
-		b.v6_16, b.v6_15, b.v6_14, b.v6_13, b.v6_12, b.v6_11, b.v6_10, b.v6_09,
-		b.v6_08, b.as4, b.as6, b.as10, b.as4Only, b.as6Only, b.asBoth, b.largeC4,
+		b.Time, b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
+		b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
+		b.V4_23, b.V4_22, b.V4_21, b.V4_20, b.V4_19, b.V4_18, b.V4_17, b.V4_16,
+		b.V4_15, b.V4_14, b.V4_13, b.V4_12, b.V4_11, b.V4_10, b.V4_09, b.V4_08,
+		b.V6_48, b.V6_47, b.V6_46, b.V6_45, b.V6_44, b.V6_43, b.V6_42, b.V6_41,
+		b.V6_40, b.V6_39, b.V6_38, b.V6_37, b.V6_36, b.V6_35, b.V6_34, b.V6_33,
+		b.V6_32, b.V6_31, b.V6_30, b.V6_29, b.V6_28, b.V6_27, b.V6_26, b.V6_25,
+		b.V6_24, b.V6_23, b.V6_22, b.V6_21, b.V6_20, b.V6_19, b.V6_18, b.V6_17,
+		b.V6_16, b.V6_15, b.V6_14, b.V6_13, b.V6_12, b.V6_11, b.V6_10, b.V6_09,
+		b.V6_08, b.as4, b.as6, b.as10, b.as4Only, b.as6Only, b.asBoth, b.largeC4,
 		b.largeC6, b.roavalid4, b.roainvalid4, b.roaunknown4, b.roavalid6,
 		b.roainvalid6, b.roaunknown6)
 
