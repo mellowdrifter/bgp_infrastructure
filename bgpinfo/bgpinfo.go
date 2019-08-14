@@ -10,6 +10,7 @@ import (
 	"path"
 
 	"github.com/golang/protobuf/proto"
+	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 	"google.golang.org/grpc"
 	ini "gopkg.in/ini.v1"
@@ -101,7 +102,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	log.Println(proto.MarshalTextString(v))
 
 	// get correct struct
-	update := repack(v)
+	update := com.ProtoToStruct(v)
 
 	// update database
 	err := add(update, s.db)

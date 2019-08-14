@@ -67,9 +67,9 @@ func add(b *com.BgpUpdate, db *sql.DB) error {
 		b.V6_32, b.V6_31, b.V6_30, b.V6_29, b.V6_28, b.V6_27, b.V6_26, b.V6_25,
 		b.V6_24, b.V6_23, b.V6_22, b.V6_21, b.V6_20, b.V6_19, b.V6_18, b.V6_17,
 		b.V6_16, b.V6_15, b.V6_14, b.V6_13, b.V6_12, b.V6_11, b.V6_10, b.V6_09,
-		b.V6_08, b.as4, b.as6, b.as10, b.as4Only, b.as6Only, b.asBoth, b.largeC4,
-		b.largeC6, b.roavalid4, b.roainvalid4, b.roaunknown4, b.roavalid6,
-		b.roainvalid6, b.roaunknown6)
+		b.V6_08, b.As4, b.As6, b.As10, b.As4Only, b.As6Only, b.AsBoth, b.LargeC4,
+		b.LargeC6, b.Roavalid4, b.Roainvalid4, b.Roaunknown4, b.Roavalid6,
+		b.Roainvalid6, b.Roaunknown6)
 
 	log.Printf("updated database: %v", result)
 

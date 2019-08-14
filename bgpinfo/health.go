@@ -3,16 +3,20 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"os/exec"
 )
 
+//TODO: This does nothing right now!
+
 func isHealthy() bool {
-	return dbHealth() && birdRunning() && minCount() && minPeers()
+	//return dbHealth() && birdRunning() && minCount() && minPeers()
+	return true
 }
 
 // Can we ping the datbase
-func dbHealth() bool {
+func dbHealth(db *sql.DB) bool {
 	err := db.Ping()
 	if err != nil {
 		log.Printf("unable to ping database for healthcheck: %v\n", err)
