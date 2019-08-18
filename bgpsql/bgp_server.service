@@ -1,5 +1,5 @@
 [Unit]
-Description=BGP RPC Server
+Description=BGP SQL Server
 Wants=network.target
 After=mysql.service
 
