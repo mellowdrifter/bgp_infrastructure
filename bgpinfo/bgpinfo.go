@@ -17,15 +17,9 @@ import (
 )
 
 type config struct {
-	port     string
-	priority uint
-	peer     string
-	logfile  string
-	db       dbinfo
-}
-
-type dbinfo struct {
-	user, pass, dbname string
+	port    string
+	logfile string
+	dbname  string
 }
 
 type server struct {
@@ -50,9 +44,7 @@ func readConfig() config {
 	var cfg config
 	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
 	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
-	cfg.db.dbname = cf.Section("sql").Key("database").String()
-	cfg.db.user = cf.Section("sql").Key("username").String()
-	cfg.db.pass = cf.Section("sql").Key("password").String()
+	cfg.dbname = fmt.Sprintf("./%s", cf.Section("sql").Key("database").String())
 
 	return cfg
 
@@ -62,6 +54,7 @@ func main() {
 
 	var bgpinfoServer server
 	bgpinfoServer.cfg = readConfig()
+	//createLocalDatabase(bgpinfoServer.cfg.dbname)
 
 	// Set up log file
 	f, err := os.OpenFile(bgpinfoServer.cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -72,9 +65,7 @@ func main() {
 	log.SetOutput(f)
 
 	// Create sql handle and test database connection
-	sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s",
-		bgpinfoServer.cfg.db.user, bgpinfoServer.cfg.db.pass, bgpinfoServer.cfg.db.dbname)
-	db, err := sql.Open("mysql", sqlserver)
+	db, err := sql.Open("sqlite3", bgpinfoServer.cfg.dbname)
 	if err != nil {
 		log.Fatalf("can't open database. Got %v", err)
 	}
@@ -82,6 +73,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("can't ping database. Got %v", err)
 	}
+	bgpinfoServer.db = db
 	defer db.Close()
 
 	// set up gRPC server

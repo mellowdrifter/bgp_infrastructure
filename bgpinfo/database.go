@@ -7,41 +7,119 @@ import (
 	"strconv"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	"github.com/pkg/errors"
 )
 
-func query(db *sql.DB) {
+// Create an initial bgpinfo database if required.
+func createLocalDatabase(d string) {
+	db, _ := sql.Open("sqlite3", d)
 
-	bgpInfo := com.BgpStat{}
-	err := db.QueryRow(`select TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
-		PEERS6_CONFIGURED, PEERS_UP, PEERS6_UP
-		from INFO ORDER by TIME DESC limit 1`).Scan(
-		&bgpInfo.Time,
-		&bgpInfo.V4Count,
-		&bgpInfo.V6Count,
-		&bgpInfo.V4Total,
-		&bgpInfo.V6Total,
-		&bgpInfo.PeersConfigured,
-		&bgpInfo.Peers6Configured,
-		&bgpInfo.PeersUp,
-		&bgpInfo.Peers6Up,
-	)
-	if err != nil {
-		log.Fatalf("Can't extract information. Got %v", err)
-	}
+	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS INFO`)
+	stmt.Exec()
 
-	fmt.Printf("%+v\n", bgpInfo)
+	stmt, _ = db.Prepare(`CREATE TABLE INFO (
+		TIME int(12) NOT NULL DEFAULT 0,
+		V4COUNT int(10) NOT NULL,
+		V6COUNT int(7) NOT NULL,
+		PEERS_CONFIGURED int(3) DEFAULT NULL,
+		PEERS_UP int(3) DEFAULT NULL,
+		V4_24 int(10) DEFAULT NULL,
+		V4_23 int(10) DEFAULT NULL,
+		V4_22 int(10) DEFAULT NULL,
+		V4_21 int(10) DEFAULT NULL,
+		V4_20 int(10) DEFAULT NULL,
+		V4_19 int(10) DEFAULT NULL,
+		V4_18 int(10) DEFAULT NULL,
+		V4_17 int(10) DEFAULT NULL,
+		V4_16 int(10) DEFAULT NULL,
+		V4_15 int(10) DEFAULT NULL,
+		V4_14 int(10) DEFAULT NULL,
+		V4_13 int(10) DEFAULT NULL,
+		V4_12 int(10) DEFAULT NULL,
+		V4_11 int(10) DEFAULT NULL,
+		V4_10 int(10) DEFAULT NULL,
+		V4_09 int(10) DEFAULT NULL,
+		V4_08 int(10) DEFAULT NULL,
+		V6_48 int(7) DEFAULT NULL,
+		V6_47 int(7) DEFAULT NULL,
+		V6_46 int(7) DEFAULT NULL,
+		V6_45 int(7) DEFAULT NULL,
+		V6_44 int(7) DEFAULT NULL,
+		V6_43 int(7) DEFAULT NULL,
+		V6_42 int(7) DEFAULT NULL,
+		V6_41 int(7) DEFAULT NULL,
+		V6_40 int(7) DEFAULT NULL,
+		V6_39 int(7) DEFAULT NULL,
+		V6_38 int(7) DEFAULT NULL,
+		V6_37 int(7) DEFAULT NULL,
+		V6_36 int(7) DEFAULT NULL,
+		V6_35 int(7) DEFAULT NULL,
+		V6_34 int(7) DEFAULT NULL,
+		V6_33 int(7) DEFAULT NULL,
+		V6_32 int(7) DEFAULT NULL,
+		V6_31 int(7) DEFAULT NULL,
+		V6_30 int(7) DEFAULT NULL,
+		V6_29 int(7) DEFAULT NULL,
+		V6_28 int(7) DEFAULT NULL,
+		V6_27 int(7) DEFAULT NULL,
+		V6_26 int(7) DEFAULT NULL,
+		V6_25 int(7) DEFAULT NULL,
+		V6_24 int(7) DEFAULT NULL,
+		V6_23 int(7) DEFAULT NULL,
+		V6_22 int(7) DEFAULT NULL,
+		V6_21 int(7) DEFAULT NULL,
+		V6_20 int(7) DEFAULT NULL,
+		V6_19 int(7) DEFAULT NULL,
+		V6_18 int(7) DEFAULT NULL,
+		V6_17 int(7) DEFAULT NULL,
+		V6_16 int(7) DEFAULT NULL,
+		V6_15 int(7) DEFAULT NULL,
+		V6_14 int(7) DEFAULT NULL,
+		V6_13 int(7) DEFAULT NULL,
+		V6_12 int(7) DEFAULT NULL,
+		V6_11 int(7) DEFAULT NULL,
+		V6_10 int(7) DEFAULT NULL,
+		V6_09 int(7) DEFAULT NULL,
+		V6_08 int(7) DEFAULT NULL,
+		PEERS6_UP int(3) DEFAULT NULL,
+		PEERS6_CONFIGURED int(3) DEFAULT NULL,
+		TWEET int(1) DEFAULT 0,
+		V4TOTAL int(12) DEFAULT NULL,
+		V6TOTAL int(10) DEFAULT NULL,
+		AS4_LEN int(10) DEFAULT NULL,
+		AS6_LEN int(10) DEFAULT NULL,
+		AS10_LEN int(10) DEFAULT NULL,
+		AS4_ONLY int(10) DEFAULT NULL,
+		AS6_ONLY int(10) DEFAULT NULL,
+		AS_BOTH int(10) DEFAULT NULL,
+		LARGEC4 int(6) DEFAULT NULL,
+		LARGEC6 int(6) DEFAULT NULL,
+		ROAVALIDV4 int(10) DEFAULT NULL,
+		ROAINVALIDV4 int(10) DEFAULT NULL,
+		ROAUNKNOWNV4 int(10) DEFAULT NULL,
+		ROAVALIDV6 int(10) DEFAULT NULL,
+		ROAINVALIDV6 int(10) DEFAULT NULL,
+		ROAUNKNOWNV6 int(10) DEFAULT NULL,
+		PRIMARY KEY (TIME)
+		)`)
+	stmt.Exec()
+
+	db.Close()
+
 }
 
+// add latest BGP update information to database
 func add(b *com.BgpUpdate, db *sql.DB) error {
-	// fmt.Printf("Update is %+v\n", b)
-	// All the required info. Fields can be added/deleted in future
-	result, err := db.Exec(
-		`INSERT INTO INFO (TIME, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL, PEERS_CONFIGURED,
-		PEERS_UP, PEERS6_CONFIGURED, PEERS6_UP, V4_24,
-		V4_23, V4_22, V4_21, V4_20, V4_19,
+	if db == nil {
+		log.Fatalf("db object is nil")
+	}
+	stmt, _ := db.Prepare(`INSERT INTO INFO (TIME, V4COUNT, V6COUNT,
+		V4TOTAL, V6TOTAL, PEERS_CONFIGURED,PEERS_UP,
+		PEERS6_CONFIGURED, PEERS6_UP, V4_24, V4_23, V4_22,
+		V4_21, V4_20, V4_19,
 		V4_18, V4_17, V4_16, V4_15, V4_14, V4_13, V4_12,
 		V4_11, V4_10, V4_09, V4_08, V6_48, V6_47, V6_46,
 		V6_45, V6_44, V6_43, V6_42, V6_41, V6_40, V6_39,
@@ -52,13 +130,13 @@ func add(b *com.BgpUpdate, db *sql.DB) error {
 		V6_10, V6_09, V6_08, AS4_LEN, AS6_LEN, AS10_LEN,
 		AS4_ONLY, AS6_ONLY, AS_BOTH, LARGEC4, LARGEC6,
 		ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
-		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6)
-
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-				?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		b.Time, b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
+		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6) values (?, ?, ?, ?, ?,
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	defer stmt.Close()
+	res, err := stmt.Exec(b.Time, b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
 		b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
 		b.V4_23, b.V4_22, b.V4_21, b.V4_20, b.V4_19, b.V4_18, b.V4_17, b.V4_16,
 		b.V4_15, b.V4_14, b.V4_13, b.V4_12, b.V4_11, b.V4_10, b.V4_09, b.V4_08,
@@ -70,16 +148,18 @@ func add(b *com.BgpUpdate, db *sql.DB) error {
 		b.V6_08, b.As4, b.As6, b.As10, b.As4Only, b.As6Only, b.AsBoth, b.LargeC4,
 		b.LargeC6, b.Roavalid4, b.Roainvalid4, b.Roaunknown4, b.Roavalid6,
 		b.Roainvalid6, b.Roaunknown6)
-
-	log.Printf("updated database: %v", result)
-
 	if err != nil {
-		return fmt.Errorf("Unable to update database: %v", err)
+		return errors.Wrap(err, "Unable to update database.")
 	}
+	log.Printf("updated database: %v", res)
 	return nil
+
 }
 
 func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
+	if db == nil {
+		log.Fatalf("db object is nil")
+	}
 	var data pb.PrefixCountResponse
 
 	// Latest data
@@ -90,7 +170,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Active_6,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Unable to retrieve data")
 	}
 
 	// Six hours ago (last tweeted data)
@@ -101,7 +181,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Sixhoursv6,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Unable to retrieve data")
 	}
 
 	// Last weeks numbers
@@ -113,7 +193,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Weekagov6,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Unable to retrieve data")
 	}
 
 	// /24 and /48 counts
@@ -123,7 +203,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Slash48,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Unable to retrieve data")
 	}
 
 	return &data, nil
@@ -277,43 +357,45 @@ func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse,
 }
 
 func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
+	// Temp table may be sitting around from a failed attempt.
+	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS ASNUMNAME_NEW`)
+	stmt.Exec()
 
-	// Create a new temp table to hold new values.
-	_, err := db.Exec(`CREATE TABLE ASNUMNAME_NEW LIKE ASNUMNAME`)
+	// Create temporary holding table.
+	stmt, _ = db.Prepare(`CREATE TABLE ASNUMNAME_NEW (
+  				ASNUMBER INTEGER NOT NULL,
+  				ASNAME TEXT NOT NULL,
+  				LOCALE TEXT DEFAULT NULL)`)
+
+	_, err := stmt.Exec()
 	if err != nil {
-		return &pb.Result{}, err
+		return &pb.Result{
+			Success: false,
+		}, errors.Wrap(err, "unable to create temp database")
 	}
 
 	// Dump the new values into the new temp table.
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("Error on db.Begin: %v\n", err)
-		return &pb.Result{}, err
-	}
-	stmt, err := tx.Prepare(`INSERT INTO ASNUMNAME_NEW SET ASNUMBER=?, ASNAME=?, LOCALE=?`)
+	tx, _ := db.Begin()
+	stmt, _ = tx.Prepare(`INSERT INTO ASNUMNAME_NEW (
+		ASNUMBER, ASNAME, LOCALE) VALUES (?, ?, ?)`)
 	for _, as := range asn.GetAsnNames() {
 		_, err := stmt.Exec(as.GetAsNumber(), as.GetAsName(), as.GetAsLocale())
 		if err != nil {
-			log.Printf("Error on statement: %v\n", err)
-			return &pb.Result{}, err
+			return &pb.Result{
+				Success: false,
+			}, errors.Wrap(err, "error on statement execute")
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return &pb.Result{}, err
+		return &pb.Result{
+			Success: false,
+		}, errors.Wrap(err, "unable to complete transaction")
 	}
 
 	// Now rename and shift in order to only have one table.
-	tx, err = db.Begin()
-	if err != nil {
-		log.Printf("Error on db.Begin: %v\n", err)
-		return &pb.Result{}, err
-	}
-	tx.Exec(`RENAME TABLE ASNUMNAME TO ASNUMNAME_OLD`)
-	tx.Exec(`RENAME TABLE ASNUMNAME_NEW TO ASNUMNAME`)
-	tx.Exec(`DROP TABLES ASNUMNAME_OLD`)
-	if err := tx.Commit(); err != nil {
-		return &pb.Result{}, err
-	}
+	// TODO: Wrap this into a transaction
+	db.Exec(`DROP TABLE IF EXISTS ASNUMNAME`)
+	db.Exec(`ALTER TABLE ASNUMNAME_NEW RENAME TO ASNUMNAME`)
 
 	return &pb.Result{
 		Success: true,
@@ -322,9 +404,14 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 }
 
 func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
+	if db == nil {
+		log.Fatalf("db object is nil")
+	}
 	_, err := db.Exec(fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t))
 	if err != nil {
-		return &pb.Result{}, err
+		return &pb.Result{
+			Success: false,
+		}, err
 	}
 	return &pb.Result{
 		Success: true,

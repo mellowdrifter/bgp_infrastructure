@@ -30,7 +30,7 @@ type BgpUpdate struct {
 	PeersConfigured                     uint32
 	Peers6Configured                    uint32
 	PeersUp, Peers6Up                   uint32
-	Tweet                               bool
+	Tweet                               uint32
 	As4, As6, As10                      uint32
 	As4Only, As6Only                    uint32
 	AsBoth                              uint32
