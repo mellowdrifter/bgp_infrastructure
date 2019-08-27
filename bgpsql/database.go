@@ -295,9 +295,14 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 	}
 
 	// Now rename and shift in order to only have one table.
-	// TODO: Wrap this into a transaction
-	db.Exec(`DROP TABLE IF EXISTS ASNUMNAME`)
-	db.Exec(`ALTER TABLE ASNUMNAME_NEW RENAME TO ASNUMNAME`)
+	tx, _ = db.Begin()
+	tx.Exec(`DROP TABLE IF EXISTS ASNUMNAME`)
+	tx.Exec(`ALTER TABLE ASNUMNAME_NEW RENAME TO ASNUMNAME`)
+	if err := tx.Commit(); err != nil {
+		return &pb.Result{
+			Success: false,
+		}, errors.Wrap(err, "unable to complete transaction")
+	}
 
 	return &pb.Result{
 		Success: true,
