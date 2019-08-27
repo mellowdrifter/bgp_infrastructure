@@ -10,7 +10,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
-	"github.com/pkg/errors"
+	"github.com/pkg/errors" // May not need this with Go 1.13 anymore
 )
 
 // add latest BGP update information to database
