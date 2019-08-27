@@ -90,16 +90,15 @@ func main() {
 
 func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
 	// Receive the latest BGP info updates and add to the database
-	log.Println("Received an update")
-	log.Println(proto.MarshalTextString(v))
+	log.Println("Running AddLatest")
 
 	// get correct struct
 	update := com.ProtoToStruct(v)
 
 	// update database
-	err := add(update, s.db)
+	err := addLatestHelper(update, s.db)
 	if err != nil {
-		log.Printf("Got error in AddLatest: %s\n", err)
+		log.Printf("Got error in AddLatest: %s with update %q\n", err, proto.MarshalTextString(v))
 		return &pb.Result{}, err
 	}
 

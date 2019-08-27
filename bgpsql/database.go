@@ -13,106 +13,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Create an initial bgpinfo database if required.
-func createLocalDatabase(d string) {
-	db, _ := sql.Open("sqlite3", d)
-
-	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS INFO`)
-	stmt.Exec()
-
-	stmt, _ = db.Prepare(`CREATE TABLE INFO (
-		TIME int(12) NOT NULL DEFAULT 0,
-		V4COUNT int(10) NOT NULL,
-		V6COUNT int(7) NOT NULL,
-		PEERS_CONFIGURED int(3) DEFAULT NULL,
-		PEERS_UP int(3) DEFAULT NULL,
-		V4_24 int(10) DEFAULT NULL,
-		V4_23 int(10) DEFAULT NULL,
-		V4_22 int(10) DEFAULT NULL,
-		V4_21 int(10) DEFAULT NULL,
-		V4_20 int(10) DEFAULT NULL,
-		V4_19 int(10) DEFAULT NULL,
-		V4_18 int(10) DEFAULT NULL,
-		V4_17 int(10) DEFAULT NULL,
-		V4_16 int(10) DEFAULT NULL,
-		V4_15 int(10) DEFAULT NULL,
-		V4_14 int(10) DEFAULT NULL,
-		V4_13 int(10) DEFAULT NULL,
-		V4_12 int(10) DEFAULT NULL,
-		V4_11 int(10) DEFAULT NULL,
-		V4_10 int(10) DEFAULT NULL,
-		V4_09 int(10) DEFAULT NULL,
-		V4_08 int(10) DEFAULT NULL,
-		V6_48 int(7) DEFAULT NULL,
-		V6_47 int(7) DEFAULT NULL,
-		V6_46 int(7) DEFAULT NULL,
-		V6_45 int(7) DEFAULT NULL,
-		V6_44 int(7) DEFAULT NULL,
-		V6_43 int(7) DEFAULT NULL,
-		V6_42 int(7) DEFAULT NULL,
-		V6_41 int(7) DEFAULT NULL,
-		V6_40 int(7) DEFAULT NULL,
-		V6_39 int(7) DEFAULT NULL,
-		V6_38 int(7) DEFAULT NULL,
-		V6_37 int(7) DEFAULT NULL,
-		V6_36 int(7) DEFAULT NULL,
-		V6_35 int(7) DEFAULT NULL,
-		V6_34 int(7) DEFAULT NULL,
-		V6_33 int(7) DEFAULT NULL,
-		V6_32 int(7) DEFAULT NULL,
-		V6_31 int(7) DEFAULT NULL,
-		V6_30 int(7) DEFAULT NULL,
-		V6_29 int(7) DEFAULT NULL,
-		V6_28 int(7) DEFAULT NULL,
-		V6_27 int(7) DEFAULT NULL,
-		V6_26 int(7) DEFAULT NULL,
-		V6_25 int(7) DEFAULT NULL,
-		V6_24 int(7) DEFAULT NULL,
-		V6_23 int(7) DEFAULT NULL,
-		V6_22 int(7) DEFAULT NULL,
-		V6_21 int(7) DEFAULT NULL,
-		V6_20 int(7) DEFAULT NULL,
-		V6_19 int(7) DEFAULT NULL,
-		V6_18 int(7) DEFAULT NULL,
-		V6_17 int(7) DEFAULT NULL,
-		V6_16 int(7) DEFAULT NULL,
-		V6_15 int(7) DEFAULT NULL,
-		V6_14 int(7) DEFAULT NULL,
-		V6_13 int(7) DEFAULT NULL,
-		V6_12 int(7) DEFAULT NULL,
-		V6_11 int(7) DEFAULT NULL,
-		V6_10 int(7) DEFAULT NULL,
-		V6_09 int(7) DEFAULT NULL,
-		V6_08 int(7) DEFAULT NULL,
-		PEERS6_UP int(3) DEFAULT NULL,
-		PEERS6_CONFIGURED int(3) DEFAULT NULL,
-		TWEET int(1) DEFAULT 0,
-		V4TOTAL int(12) DEFAULT NULL,
-		V6TOTAL int(10) DEFAULT NULL,
-		AS4_LEN int(10) DEFAULT NULL,
-		AS6_LEN int(10) DEFAULT NULL,
-		AS10_LEN int(10) DEFAULT NULL,
-		AS4_ONLY int(10) DEFAULT NULL,
-		AS6_ONLY int(10) DEFAULT NULL,
-		AS_BOTH int(10) DEFAULT NULL,
-		LARGEC4 int(6) DEFAULT NULL,
-		LARGEC6 int(6) DEFAULT NULL,
-		ROAVALIDV4 int(10) DEFAULT NULL,
-		ROAINVALIDV4 int(10) DEFAULT NULL,
-		ROAUNKNOWNV4 int(10) DEFAULT NULL,
-		ROAVALIDV6 int(10) DEFAULT NULL,
-		ROAINVALIDV6 int(10) DEFAULT NULL,
-		ROAUNKNOWNV6 int(10) DEFAULT NULL,
-		PRIMARY KEY (TIME)
-		)`)
-	stmt.Exec()
-
-	db.Close()
-
-}
-
 // add latest BGP update information to database
-func add(b *com.BgpUpdate, db *sql.DB) error {
+func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 	if db == nil {
 		log.Fatalf("db object is nil")
 	}
@@ -416,5 +318,103 @@ func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
 	return &pb.Result{
 		Success: true,
 	}, nil
+
+}
+
+// Create an initial bgpinfo database if required.
+func createLocalDatabase(d string) {
+	db, _ := sql.Open("sqlite3", d)
+
+	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS INFO`)
+	stmt.Exec()
+
+	stmt, _ = db.Prepare(`CREATE TABLE INFO (
+		TIME int(12) NOT NULL DEFAULT 0,
+		V4COUNT int(10) NOT NULL,
+		V6COUNT int(7) NOT NULL,
+		PEERS_CONFIGURED int(3) DEFAULT NULL,
+		PEERS_UP int(3) DEFAULT NULL,
+		V4_24 int(10) DEFAULT NULL,
+		V4_23 int(10) DEFAULT NULL,
+		V4_22 int(10) DEFAULT NULL,
+		V4_21 int(10) DEFAULT NULL,
+		V4_20 int(10) DEFAULT NULL,
+		V4_19 int(10) DEFAULT NULL,
+		V4_18 int(10) DEFAULT NULL,
+		V4_17 int(10) DEFAULT NULL,
+		V4_16 int(10) DEFAULT NULL,
+		V4_15 int(10) DEFAULT NULL,
+		V4_14 int(10) DEFAULT NULL,
+		V4_13 int(10) DEFAULT NULL,
+		V4_12 int(10) DEFAULT NULL,
+		V4_11 int(10) DEFAULT NULL,
+		V4_10 int(10) DEFAULT NULL,
+		V4_09 int(10) DEFAULT NULL,
+		V4_08 int(10) DEFAULT NULL,
+		V6_48 int(7) DEFAULT NULL,
+		V6_47 int(7) DEFAULT NULL,
+		V6_46 int(7) DEFAULT NULL,
+		V6_45 int(7) DEFAULT NULL,
+		V6_44 int(7) DEFAULT NULL,
+		V6_43 int(7) DEFAULT NULL,
+		V6_42 int(7) DEFAULT NULL,
+		V6_41 int(7) DEFAULT NULL,
+		V6_40 int(7) DEFAULT NULL,
+		V6_39 int(7) DEFAULT NULL,
+		V6_38 int(7) DEFAULT NULL,
+		V6_37 int(7) DEFAULT NULL,
+		V6_36 int(7) DEFAULT NULL,
+		V6_35 int(7) DEFAULT NULL,
+		V6_34 int(7) DEFAULT NULL,
+		V6_33 int(7) DEFAULT NULL,
+		V6_32 int(7) DEFAULT NULL,
+		V6_31 int(7) DEFAULT NULL,
+		V6_30 int(7) DEFAULT NULL,
+		V6_29 int(7) DEFAULT NULL,
+		V6_28 int(7) DEFAULT NULL,
+		V6_27 int(7) DEFAULT NULL,
+		V6_26 int(7) DEFAULT NULL,
+		V6_25 int(7) DEFAULT NULL,
+		V6_24 int(7) DEFAULT NULL,
+		V6_23 int(7) DEFAULT NULL,
+		V6_22 int(7) DEFAULT NULL,
+		V6_21 int(7) DEFAULT NULL,
+		V6_20 int(7) DEFAULT NULL,
+		V6_19 int(7) DEFAULT NULL,
+		V6_18 int(7) DEFAULT NULL,
+		V6_17 int(7) DEFAULT NULL,
+		V6_16 int(7) DEFAULT NULL,
+		V6_15 int(7) DEFAULT NULL,
+		V6_14 int(7) DEFAULT NULL,
+		V6_13 int(7) DEFAULT NULL,
+		V6_12 int(7) DEFAULT NULL,
+		V6_11 int(7) DEFAULT NULL,
+		V6_10 int(7) DEFAULT NULL,
+		V6_09 int(7) DEFAULT NULL,
+		V6_08 int(7) DEFAULT NULL,
+		PEERS6_UP int(3) DEFAULT NULL,
+		PEERS6_CONFIGURED int(3) DEFAULT NULL,
+		TWEET int(1) DEFAULT 0,
+		V4TOTAL int(12) DEFAULT NULL,
+		V6TOTAL int(10) DEFAULT NULL,
+		AS4_LEN int(10) DEFAULT NULL,
+		AS6_LEN int(10) DEFAULT NULL,
+		AS10_LEN int(10) DEFAULT NULL,
+		AS4_ONLY int(10) DEFAULT NULL,
+		AS6_ONLY int(10) DEFAULT NULL,
+		AS_BOTH int(10) DEFAULT NULL,
+		LARGEC4 int(6) DEFAULT NULL,
+		LARGEC6 int(6) DEFAULT NULL,
+		ROAVALIDV4 int(10) DEFAULT NULL,
+		ROAINVALIDV4 int(10) DEFAULT NULL,
+		ROAUNKNOWNV4 int(10) DEFAULT NULL,
+		ROAVALIDV6 int(10) DEFAULT NULL,
+		ROAINVALIDV6 int(10) DEFAULT NULL,
+		ROAUNKNOWNV6 int(10) DEFAULT NULL,
+		PRIMARY KEY (TIME)
+		)`)
+	stmt.Exec()
+
+	db.Close()
 
 }
