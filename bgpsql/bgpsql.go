@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang/protobuf/proto"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
@@ -65,7 +66,7 @@ func main() {
 	log.SetOutput(f)
 
 	// Create sql handle and test database connection
-	db, err := sql.Open("sqlite3", bgpinfoServer.cfg.dbname)
+	db, err := sql.Open("mysql", bgpinfoServer.cfg.dbname)
 	if err != nil {
 		log.Fatalf("can't open database. Got %v", err)
 	}
