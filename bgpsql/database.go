@@ -7,10 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/go-sql-driver/mysql"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
-	"github.com/pkg/errors" // May not need this with Go 1.13 anymore
 )
 
 // add latest BGP update information to database
@@ -51,7 +50,7 @@ func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 		b.LargeC6, b.Roavalid4, b.Roainvalid4, b.Roaunknown4, b.Roavalid6,
 		b.Roainvalid6, b.Roaunknown6)
 	if err != nil {
-		return errors.Wrap(err, "Unable to update database.")
+		return fmt.Errorf("Unable to update database: %w", err)
 	}
 	log.Printf("updated database: %v", res)
 	return nil
@@ -72,7 +71,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Active_6,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "Unable to retrieve data")
+		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
 	}
 
 	// Six hours ago (last tweeted data)
@@ -83,7 +82,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Sixhoursv6,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "Unable to retrieve data")
+		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
 	}
 
 	// Last weeks numbers
@@ -95,7 +94,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Weekagov6,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "Unable to retrieve data")
+		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
 	}
 
 	// /24 and /48 counts
@@ -105,7 +104,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 		&data.Slash48,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "Unable to retrieve data")
+		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
 	}
 
 	return &data, nil
@@ -273,7 +272,7 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 	if err != nil {
 		return &pb.Result{
 			Success: false,
-		}, errors.Wrap(err, "unable to create temp database")
+		}, fmt.Errorf("unable to create temp database: %w", err)
 	}
 
 	// Dump the new values into the new temp table.
@@ -285,13 +284,13 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 		if err != nil {
 			return &pb.Result{
 				Success: false,
-			}, errors.Wrap(err, "error on statement execute")
+			}, fmt.Errorf("error on statement execute: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return &pb.Result{
 			Success: false,
-		}, errors.Wrap(err, "unable to complete transaction")
+		}, fmt.Errorf("unable to complete transaction: %w", err)
 	}
 
 	// Now rename and shift in order to only have one table.
@@ -301,7 +300,7 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 	if err := tx.Commit(); err != nil {
 		return &pb.Result{
 			Success: false,
-		}, errors.Wrap(err, "unable to complete transaction")
+		}, fmt.Errorf("unable to complete transaction: %w", err)
 	}
 
 	return &pb.Result{
@@ -323,103 +322,5 @@ func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
 	return &pb.Result{
 		Success: true,
 	}, nil
-
-}
-
-// Create an initial bgpinfo database if required.
-func createLocalDatabase(d string) {
-	db, _ := sql.Open("sqlite3", d)
-
-	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS INFO`)
-	stmt.Exec()
-
-	stmt, _ = db.Prepare(`CREATE TABLE INFO (
-		TIME int(12) NOT NULL DEFAULT 0,
-		V4COUNT int(10) NOT NULL,
-		V6COUNT int(7) NOT NULL,
-		PEERS_CONFIGURED int(3) DEFAULT NULL,
-		PEERS_UP int(3) DEFAULT NULL,
-		V4_24 int(10) DEFAULT NULL,
-		V4_23 int(10) DEFAULT NULL,
-		V4_22 int(10) DEFAULT NULL,
-		V4_21 int(10) DEFAULT NULL,
-		V4_20 int(10) DEFAULT NULL,
-		V4_19 int(10) DEFAULT NULL,
-		V4_18 int(10) DEFAULT NULL,
-		V4_17 int(10) DEFAULT NULL,
-		V4_16 int(10) DEFAULT NULL,
-		V4_15 int(10) DEFAULT NULL,
-		V4_14 int(10) DEFAULT NULL,
-		V4_13 int(10) DEFAULT NULL,
-		V4_12 int(10) DEFAULT NULL,
-		V4_11 int(10) DEFAULT NULL,
-		V4_10 int(10) DEFAULT NULL,
-		V4_09 int(10) DEFAULT NULL,
-		V4_08 int(10) DEFAULT NULL,
-		V6_48 int(7) DEFAULT NULL,
-		V6_47 int(7) DEFAULT NULL,
-		V6_46 int(7) DEFAULT NULL,
-		V6_45 int(7) DEFAULT NULL,
-		V6_44 int(7) DEFAULT NULL,
-		V6_43 int(7) DEFAULT NULL,
-		V6_42 int(7) DEFAULT NULL,
-		V6_41 int(7) DEFAULT NULL,
-		V6_40 int(7) DEFAULT NULL,
-		V6_39 int(7) DEFAULT NULL,
-		V6_38 int(7) DEFAULT NULL,
-		V6_37 int(7) DEFAULT NULL,
-		V6_36 int(7) DEFAULT NULL,
-		V6_35 int(7) DEFAULT NULL,
-		V6_34 int(7) DEFAULT NULL,
-		V6_33 int(7) DEFAULT NULL,
-		V6_32 int(7) DEFAULT NULL,
-		V6_31 int(7) DEFAULT NULL,
-		V6_30 int(7) DEFAULT NULL,
-		V6_29 int(7) DEFAULT NULL,
-		V6_28 int(7) DEFAULT NULL,
-		V6_27 int(7) DEFAULT NULL,
-		V6_26 int(7) DEFAULT NULL,
-		V6_25 int(7) DEFAULT NULL,
-		V6_24 int(7) DEFAULT NULL,
-		V6_23 int(7) DEFAULT NULL,
-		V6_22 int(7) DEFAULT NULL,
-		V6_21 int(7) DEFAULT NULL,
-		V6_20 int(7) DEFAULT NULL,
-		V6_19 int(7) DEFAULT NULL,
-		V6_18 int(7) DEFAULT NULL,
-		V6_17 int(7) DEFAULT NULL,
-		V6_16 int(7) DEFAULT NULL,
-		V6_15 int(7) DEFAULT NULL,
-		V6_14 int(7) DEFAULT NULL,
-		V6_13 int(7) DEFAULT NULL,
-		V6_12 int(7) DEFAULT NULL,
-		V6_11 int(7) DEFAULT NULL,
-		V6_10 int(7) DEFAULT NULL,
-		V6_09 int(7) DEFAULT NULL,
-		V6_08 int(7) DEFAULT NULL,
-		PEERS6_UP int(3) DEFAULT NULL,
-		PEERS6_CONFIGURED int(3) DEFAULT NULL,
-		TWEET int(1) DEFAULT 0,
-		V4TOTAL int(12) DEFAULT NULL,
-		V6TOTAL int(10) DEFAULT NULL,
-		AS4_LEN int(10) DEFAULT NULL,
-		AS6_LEN int(10) DEFAULT NULL,
-		AS10_LEN int(10) DEFAULT NULL,
-		AS4_ONLY int(10) DEFAULT NULL,
-		AS6_ONLY int(10) DEFAULT NULL,
-		AS_BOTH int(10) DEFAULT NULL,
-		LARGEC4 int(6) DEFAULT NULL,
-		LARGEC6 int(6) DEFAULT NULL,
-		ROAVALIDV4 int(10) DEFAULT NULL,
-		ROAINVALIDV4 int(10) DEFAULT NULL,
-		ROAUNKNOWNV4 int(10) DEFAULT NULL,
-		ROAVALIDV6 int(10) DEFAULT NULL,
-		ROAINVALIDV6 int(10) DEFAULT NULL,
-		ROAUNKNOWNV6 int(10) DEFAULT NULL,
-		PRIMARY KEY (TIME)
-		)`)
-	stmt.Exec()
-
-	db.Close()
 
 }

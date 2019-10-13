@@ -21,6 +21,8 @@ type config struct {
 	port    string
 	logfile string
 	dbname  string
+	user    string
+	pass    string
 }
 
 type server struct {
@@ -46,6 +48,8 @@ func readConfig() config {
 	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
 	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
 	cfg.dbname = fmt.Sprintf("./%s", cf.Section("sql").Key("database").String())
+	cfg.user = cf.Section("sql").Key("username").String()
+	cfg.pass = cf.Section("sql").Key("password").String()
 
 	return cfg
 
@@ -66,7 +70,10 @@ func main() {
 	log.SetOutput(f)
 
 	// Create sql handle and test database connection
-	db, err := sql.Open("mysql", bgpinfoServer.cfg.dbname)
+	sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s",
+		bgpinfoServer.cfg.user, bgpinfoServer.cfg.pass,
+		bgpinfoServer.cfg.dbname)
+	db, err := sql.Open("mysql", sqlserver)
 	if err != nil {
 		log.Fatalf("can't open database. Got %v", err)
 	}
