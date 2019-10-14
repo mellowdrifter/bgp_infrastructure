@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+from typing import List
+import time
+import sys
+import os
+from matplotlib import dates as mdates
+from matplotlib import pyplot as plt
+from concurrent import futures
 import configparser
 import grapher_pb2 as pb
 import grapher_pb2_grpc
@@ -9,13 +16,6 @@ import io
 import logging
 import matplotlib
 matplotlib.use('Agg')
-from concurrent import futures
-from matplotlib import pyplot as plt
-from matplotlib import dates as mdates
-import os
-import sys
-import time
-from typing import List
 
 
 _ONE_DAY_IN_SECONDS = 60 * 60 * 24
@@ -47,7 +47,7 @@ class GrapherServicer(grapher_pb2_grpc.GrapherServicer):
 
 def get_line_graph(
     request: pb.LineGraphRequest()
-    ) -> pb.GrapherResponse():
+) -> pb.GrapherResponse():
 
     logging.info('running get_line_graph')
 
@@ -58,7 +58,8 @@ def get_line_graph(
     graphs = pb.GrapherResponse()
 
     for i in range(len(request.totals_time)):
-        dates.append(datetime.datetime.fromtimestamp(request.totals_time[i].time))
+        dates.append(datetime.datetime.fromtimestamp(
+            request.totals_time[i].time))
         v4totals.append(request.totals_time[i].v4_values)
         v6totals.append(request.totals_time[i].v6_values)
     totals.append(v4totals)
@@ -70,7 +71,6 @@ def get_line_graph(
         x = metadata.x_axis
         y = metadata.y_axis
         colour = metadata.colour
-
 
         #print(title, x, y, labels, colours, explode)
         image = io.BytesIO()
@@ -101,7 +101,7 @@ def get_line_graph(
         graph.image = image.read()
         graph.title = title
         plt.close()
-        j+=1
+        j += 1
 
     logging.info("Returning line graphs")
     return graphs
@@ -109,12 +109,13 @@ def get_line_graph(
 
 def get_pie_chart(
     request: pb.PieChartRequest()
-    ) -> pb.GrapherResponse():
+) -> pb.GrapherResponse():
 
     logging.info('running get_line_graph')
 
     pieCharts = pb.GrapherResponse()
-    subnets = [list(request.subnets.v4_values), list(request.subnets.v6_values)]
+    subnets = [list(request.subnets.v4_values),
+               list(request.subnets.v6_values)]
 
     j = 0
     for metadata in request.metadatas:
@@ -129,13 +130,11 @@ def get_pie_chart(
 
         #print(title, x, y, labels, colours, explode)
 
-
-    
         # Start with something
         image = io.BytesIO()
         plt.figure(figsize=(x, y))
         plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
-        plt.suptitle(title, fontsize = 17)
+        plt.suptitle(title, fontsize=17)
         plt.pie(subnets[j], labels=labels, colors=colours, explode=explode,
                 autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
         plt.figtext(0.5, 0.93, request.copyright,
@@ -146,14 +145,20 @@ def get_pie_chart(
         pie.image = image.read()
         pie.title = title
         plt.close()
-        j+=1
-    
+        j += 1
+
     logging.info("Returning pie charts")
     return pieCharts
 
+# TODO:
+# Show the actual amounts on the graph.
+# UNKNOWN should also show None
+# How many source ASs?
+
+
 def get_rpki(
     request: pb.RPKIRequest()
-    ) -> pb.GrapherResponse():
+) -> pb.GrapherResponse():
 
     logging.info('running get_rpki')
 
@@ -182,7 +187,7 @@ def get_rpki(
         image = io.BytesIO()
         plt.figure(figsize=(x, y))
         plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
-        plt.suptitle(title, fontsize = 17)
+        plt.suptitle(title, fontsize=17)
         plt.pie(rpkis[j], labels=labels, colors=colours,
                 autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
         plt.figtext(0.5, 0.93, request.copyright,
@@ -194,12 +199,10 @@ def get_rpki(
         rpki.image = image.read()
         rpki.title = title
         plt.close()
-        j+=1
-    
+        j += 1
+
     logging.info("Returning rpki charts")
     return RPKICharts
-
-
 
 
 if __name__ == "__main__":
