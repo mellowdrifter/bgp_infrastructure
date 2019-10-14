@@ -72,6 +72,7 @@ func main() {
 	}
 }
 
+// reloadBird will inform bird to re-read the ROA list.
 func reloadBird(d string) error {
 	cmd := fmt.Sprintf("/usr/sbin/%s", d)
 	cmdArg := []string{"configure"}
@@ -86,6 +87,8 @@ func reloadBird(d string) error {
 	return nil
 }
 
+// getROAs will download the current ROAs from Cloudflare. If there
+// is any error, exit as we'll just use the current list.
 func getROAs() *rpkiResponse {
 	resp, err := http.Get(rpki)
 	if err != nil {
@@ -104,6 +107,8 @@ func getROAs() *rpkiResponse {
 	return r
 }
 
+// divideV4V6 will return two list of ROAs, one for each address family.
+// The downloaded list has no METADATA to determine v4 vs v6.
 func divideV4V6(r *rpkiResponse) (*[]roa, *[]roa) {
 	var v4roa []roa
 	var v6roa []roa
@@ -119,12 +124,12 @@ func divideV4V6(r *rpkiResponse) (*[]roa, *[]roa) {
 	return &v4roa, &v6roa
 }
 
+// writeROAs will create new ROA filters for bird to ingest.
 func writeROAs(roas *[]roa, filename string) error {
-	// TODO: tmpfile should maybe be in-memory? Why did I do it this way?
-	tmpfile := "/tmp/roa"
-	file, err := os.Create(tmpfile)
+	tmp := "/tmp/roa"
+	file, err := os.Create(tmp)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to create %s: %w", tmp, err)
 	}
 	defer file.Close()
 
@@ -132,8 +137,8 @@ func writeROAs(roas *[]roa, filename string) error {
 		update := fmt.Sprintf("roa %s max %d as %s;\n", roa.Prefix, int(roa.Mask), roa.Asn[2:])
 		fmt.Fprintf(file, update)
 	}
-	if err = os.Rename(tmpfile, filename); err != nil {
-		return err
+	if err = os.Rename(tmp, filename); err != nil {
+		return fmt.Errorf("unable to move %s to %s: %w", tmp, filename, err)
 	}
 
 	return nil
