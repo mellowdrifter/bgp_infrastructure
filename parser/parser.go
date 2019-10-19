@@ -77,24 +77,19 @@ func main() {
 // getTableTotal returns the complete RIB and FIB counts.
 func getTableTotal() *pb.PrefixCount {
 	defer c.TimeFunction(time.Now(), "getTableTotal")
-	var totals [][]string
-	cmds := []string{
-		"/usr/sbin/birdc show route count | grep routes | awk {'print $3, $6'}",
-		"/usr/sbin/birdc6 show route count | grep routes | awk {'print $3, $6'}",
-	}
+	cmd := "/usr/sbin/birdc show route count | grep routes | awk {'print $3, $6'}"
 
-	for _, cmd := range cmds {
-		out, err := c.GetOutput(cmd)
-		if err != nil {
-			log.Fatal(err)
-		}
-		totals = append(totals, strings.Fields(out))
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		log.Fatal(err)
 	}
+	numbers := strings.Fields(out)
+
 	return &pb.PrefixCount{
-		Total_4:  c.StringToUint32(totals[0][0]),
-		Active_4: c.StringToUint32(totals[0][1]),
-		Total_6:  c.StringToUint32(totals[1][0]),
-		Active_6: c.StringToUint32(totals[1][1]),
+		Total_4:  c.StringToUint32(numbers[0]),
+		Active_4: c.StringToUint32(numbers[1]),
+		Total_6:  c.StringToUint32(numbers[2]),
+		Active_6: c.StringToUint32(numbers[3]),
 	}
 }
 
@@ -103,10 +98,10 @@ func getPeers() *pb.PeerCount {
 	defer c.TimeFunction(time.Now(), "getPeers")
 	var peers []uint32
 	cmds := []string{
-		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
-		"/usr/sbin/birdc show protocols | awk {'print $6'} | grep Established | wc -l",
-		"/usr/sbin/birdc6 show protocols | awk {'print $1'} | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
-		"/usr/sbin/birdc6 show protocols | awk {'print $6'} | grep Established | wc -l",
+		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep _v4 | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
+		"/usr/sbin/birdc show protocols | awk {'print $1 $6'} | grep _v4 | grep Estab | wc -l",
+		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep _v6 | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
+		"/usr/sbin/birdc show protocols | awk {'print $1 $6'} | grep _v6 | grep Estab | wc -l",
 	}
 
 	for _, cmd := range cmds {
@@ -130,8 +125,8 @@ func getPeers() *pb.PeerCount {
 // TODO: add transit ASs as well and pack into same struct.
 func getAS() *pb.AsCount {
 	defer c.TimeFunction(time.Now(), "getAS")
-	cmd1 := "/usr/sbin/birdc show route primary | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'"
-	cmd2 := "/usr/sbin/birdc6 show route primary | awk '{print $NF}' | tr -d '[]ASie?' | sed -n '1!p'"
+	cmd1 := "/usr/sbin/birdc show route primary table master4 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
+	cmd2 := "/usr/sbin/birdc show route primary table master6 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
 
 	as4, err := c.GetOutput(cmd1)
 	if err != nil {
@@ -173,7 +168,7 @@ func getAS() *pb.AsCount {
 }
 
 // getTransitAS returns a unique slice of all ASNs providing transit.
-// TODO: Do something with this!
+// TODO: Do something with this! Also both ipv4 and ipv6!
 func getTransitAS() []string {
 	defer c.TimeFunction(time.Now(), "getTransitAS")
 	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
@@ -188,23 +183,23 @@ func getTransitAS() []string {
 func getMasks() *pb.Masks {
 	defer c.TimeFunction(time.Now(), "getMasks")
 	v6 := make(map[string]uint32)
-	cmd := "/usr/sbin/birdc6 show route primary | awk {'print $1'}"
+	cmd := "/usr/sbin/birdc show route primary table master6 | awk {'print $1'} | sed -e '1,2d'"
 	subnets, err := c.GetOutput(cmd)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, s := range strings.Fields(subnets)[1:] {
+	for _, s := range strings.Fields(subnets) {
 		mask := strings.Split(s, "::/")[1]
 		v6[mask]++
 	}
 
 	v4 := make(map[string]uint32)
-	cmd2 := "/usr/sbin/birdc show route primary | awk {'print $1'}"
+	cmd2 := "/usr/sbin/birdc show route primary table master4 | awk {'print $1'} | sed -e '1,2d'"
 	subnets2, err := c.GetOutput(cmd2)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, s := range strings.Fields(subnets2)[1:] {
+	for _, s := range strings.Fields(subnets2) {
 		mask := strings.Split(s, "/")[1]
 		v4[mask]++
 	}
@@ -282,8 +277,8 @@ func getLargeCommunities() *pb.LargeCommunity {
 	defer c.TimeFunction(time.Now(), "getLargeCommunities")
 	var comm []uint32
 	cmds := []string{
-		"/usr/sbin/birdc 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l",
-		"/usr/sbin/birdc6 'show route primary where bgp_large_community ~ [(*,*,*)]' | sed -n '1!p' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where bgp_large_community ~ [(*,*,*)]' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where bgp_large_community ~ [(*,*,*)]' | sed -e '1,2d' | wc -l",
 	}
 
 	for _, cmd := range cmds {
@@ -305,12 +300,12 @@ func getROAs() *pb.Roas {
 	defer c.TimeFunction(time.Now(), "getROAs")
 	var roas []uint32
 	cmds := []string{
-		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l",
-		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l",
-		"/usr/sbin/birdc 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l",
-		"/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_VALID' | wc -l",
-		"/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_INVALID' | wc -l",
-		"/usr/sbin/birdc6 'show route primary where roa_check(roa_table, net, bgp_path.last) = ROA_UNKNOWN' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_VALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_INVALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_VALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_INVALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
 	}
 
 	for _, cmd := range cmds {
