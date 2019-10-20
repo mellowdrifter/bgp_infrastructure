@@ -47,7 +47,7 @@ func readConfig() config {
 	var cfg config
 	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
 	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
-	cfg.dbname = fmt.Sprintf("./%s", cf.Section("sql").Key("database").String())
+	cfg.dbname = fmt.Sprintf("%s", cf.Section("sql").Key("database").String())
 	cfg.user = cf.Section("sql").Key("username").String()
 	cfg.pass = cf.Section("sql").Key("password").String()
 
