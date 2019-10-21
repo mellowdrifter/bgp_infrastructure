@@ -258,7 +258,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
 	log.Printf("Running getSourcedFromDaemon")
 
-	cmd := fmt.Sprintf("/usr/sbin/birdc6 'show route primary where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}'", as)
+	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master6 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", as)
 	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
@@ -276,7 +276,7 @@ func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
 
 	v6Count := len(prefixes)
 
-	cmd = fmt.Sprintf("/usr/sbin/birdc 'show route primary where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}'", as)
+	cmd = fmt.Sprintf("/usr/sbin/birdc 'show route primary table master4 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", as)
 	log.Printf(cmd)
 	out, err = com.GetOutput(cmd)
 	if err != nil {
@@ -310,15 +310,7 @@ func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
 func getOriginFromDaemon(ip net.IP) (int, bool, error) {
 	log.Printf("Running getOriginFromDaemon")
 
-	var daemon string
-
-	switch ip.To4() {
-	case nil:
-		daemon = "birdc6"
-	default:
-		daemon = "birdc"
-	}
-	cmd := fmt.Sprintf("/usr/sbin/%s show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $NF}' | tr -d '[]ASie?'", daemon, ip.String())
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}' | tr -d '[]ASie?'", ip.String())
 	//log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
@@ -344,17 +336,9 @@ func getOriginFromDaemon(ip net.IP) (int, bool, error) {
 func getASPathFromDaemon(ip net.IP) ([]*pb.Asn, []*pb.Asn, bool, error) {
 	log.Printf("Running getASPathFromDaemon")
 
-	var daemon string
-
 	var asns, asSet []*pb.Asn
 
-	switch ip.To4() {
-	case nil:
-		daemon = "birdc6"
-	default:
-		daemon = "birdc"
-	}
-	cmd := fmt.Sprintf("/usr/sbin/%s show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | grep as_path | awk '{$1=\"\"; print $0}'", daemon, ip.String())
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep as_path | awk '{$1=\"\"; print $0}'", ip.String())
 	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
@@ -401,15 +385,7 @@ func getASPathFromDaemon(ip net.IP) ([]*pb.Asn, []*pb.Asn, bool, error) {
 func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
 	log.Printf("Running getRouteFromDaemon")
 
-	var daemon string
-
-	switch ip.To4() {
-	case nil:
-		daemon = "birdc6"
-	default:
-		daemon = "birdc"
-	}
-	cmd := fmt.Sprintf("/usr/sbin/%s show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1' | awk '{print $1}' | tr -d '[]ASie?'", daemon, ip.String())
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}' | tr -d '[]ASie?'", ip.String())
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return nil, false, err
@@ -425,35 +401,24 @@ func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
 }
 
 func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
-	// I need to get the correct things here!
-	statuses := map[string]pb.RoaResponse_ROAStatus{
-		"(enum 35)0": pb.RoaResponse_UNKNOWN,
-		"(enum 35)2": pb.RoaResponse_INVALID,
-		"(enum 35)1": pb.RoaResponse_VALID,
-	}
 
-	var daemon string
-
-	switch ip.To4() {
-	case nil:
-		daemon = "birdc6"
-	default:
-		daemon = "birdc"
-	}
-
-	// In order to check the ROA, I need the current route and origin AS.
+	// In order to check the ROA, I need the current route.
 	prefix, exists, err := getRouteFromDaemon(ip)
 	if err != nil || !exists {
 		return &pb.RoaResponse{}, err
 	}
 
-	origin, exists, err := getOriginFromDaemon(ip)
-	if err != nil || !exists {
-		return &pb.RoaResponse{}, err
+	// Check for an existing ROA
+	// I've set local preference on all routes to make this easier to determine:
+	// 200 = ROA_VALID
+	// 100 = ROA_UNKNOWN
+	//  50 = ROA_INVALID
+	statuses := map[string]pb.RoaResponse_ROAStatus{
+		"100": pb.RoaResponse_UNKNOWN,
+		"50":  pb.RoaResponse_INVALID,
+		"200": pb.RoaResponse_VALID,
 	}
-
-	// Now check for an existing ROA
-	cmd := fmt.Sprintf("/usr/sbin/%s 'eval roa_check(roa_table, %s, %d)' | grep -Ev 'BIRD|device1|name|info|kernel1'", daemon, prefix.String(), origin)
+	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route all primary for %s' | grep local_pref", prefix.String())
 	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
@@ -462,13 +427,16 @@ func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
 
 	log.Printf(out)
 
+	// Get the local preference
+	pref := strings.Fields(out)
+
 	mask, _ := prefix.Mask.Size()
 	return &pb.RoaResponse{
 		IpAddress: &pb.IpAddress{
 			Address: prefix.IP.String(),
 			Mask:    uint32(mask),
 		},
-		Status: statuses[out],
+		Status: statuses[pref[len(pref)-1]],
 		Exists: exists,
 	}, nil
 
