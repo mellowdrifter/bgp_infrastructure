@@ -1,16 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
 	"regexp"
 	"strconv"
+	"time"
 
 	_ "net/http/pprof"
 )
@@ -26,6 +27,14 @@ const (
 	arin    rir = 2
 	lacnic  rir = 3
 	ripe    rir = 4
+
+	// refresh is the amount of seconds to wait until a new json is pulled.
+	//refresh = 4 * time.Hour
+	refresh = 10 * time.Second
+
+	// 8282 is the RFC port for RPKI-RTR
+	port = 8282
+	loc  = "localhost"
 )
 
 // enum used for RIRs
@@ -82,16 +91,29 @@ func main() {
 
 	roaFile := path.Join(dir, cache)
 	log.Printf("Downloading %s\n", roaFile)
-	roas, err := readROAs(roaFile)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	for _, roa := range roas {
-		fmt.Printf("%+v\n", roa)
+	// readAndOutput just reads the json forever.
+	go readAndOutput(roaFile)
+
+	server()
+	//fmt.Print("Press 'Enter' to continue...")
+	//bufio.NewReader(os.Stdin).ReadBytes('\n')
+
+}
+
+func readAndOutput(f string) {
+	for {
+		roas, err := readROAs(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, roa := range roas {
+			fmt.Printf("%+v\n", roa)
+
+		}
+		time.Sleep(refresh)
 	}
-	fmt.Print("Press 'Enter' to continue...")
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
 
 }
 
@@ -154,4 +176,25 @@ func asnToInt(a string) int {
 	}
 
 	return n
+}
+
+func server() {
+	add := fmt.Sprintf("%s:%d", loc, port)
+	l, err := net.Listen("tcp", add)
+	if err != nil {
+		fmt.Printf("Unable to start server: %w", err)
+		os.Exit(1)
+	}
+	defer l.Close()
+	for {
+		// Listen for an incoming connection.
+		_, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting: ", err.Error())
+			os.Exit(1)
+		}
+		// Handle connections in a new goroutine.
+		fmt.Println("something")
+		continue
+	}
 }
