@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -11,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "net/http/pprof"
@@ -70,6 +72,12 @@ type roas struct {
 	Roas []jsonroa `json:"roas"`
 }
 
+// Server is our main thing
+type Server struct {
+	roas []roa
+	net  net.Conn
+}
+
 func main() {
 
 	// set up log file
@@ -92,33 +100,46 @@ func main() {
 	roaFile := path.Join(dir, cache)
 	log.Printf("Downloading %s\n", roaFile)
 
-	// readAndOutput just reads the json forever.
-	go readAndOutput(roaFile)
+	// This is our server itself
+	var thing Server
 
-	server()
-	//fmt.Print("Press 'Enter' to continue...")
-	//bufio.NewReader(os.Stdin).ReadBytes('\n')
+	// Keep ROAs updated
+	go thing.readROAs(roaFile)
+
+	// Actually do something
+	add := fmt.Sprintf("%s:%d", loc, port)
+	l, err := net.Listen("tcp", add)
+	if err != nil {
+		fmt.Printf("Unable to start server: %w", err)
+		os.Exit(1)
+	}
+	defer l.Close()
+	for {
+		thing.net, err = l.Accept()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		thing.handleQuery()
+	}
 
 }
 
-func readAndOutput(f string) {
+// readROAs will update the server struct with the current list of ROAs
+func (s *Server) readROAs(f string) {
 	for {
 		roas, err := readROAs(f)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		for _, roa := range roas {
-			fmt.Printf("%+v\n", roa)
-
-		}
+		s.roas = roas
+		fmt.Println("roas updated")
 		time.Sleep(refresh)
 	}
 
 }
 
 // readROAs will read the current ROAs into memory.
-// TODO: change local file to remote
 func readROAs(file string) ([]roa, error) {
 
 	f, err := ioutil.ReadFile(file)
@@ -178,23 +199,27 @@ func asnToInt(a string) int {
 	return n
 }
 
-func server() {
-	add := fmt.Sprintf("%s:%d", loc, port)
-	l, err := net.Listen("tcp", add)
-	if err != nil {
-		fmt.Printf("Unable to start server: %w", err)
-		os.Exit(1)
-	}
-	defer l.Close()
+func (s *Server) handleQuery() {
+	fmt.Printf("Servering %s\n", s.net.RemoteAddr().String())
 	for {
-		// Listen for an incoming connection.
-		_, err := l.Accept()
+		netData, err := bufio.NewReader(s.net).ReadString('\n')
 		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
-			os.Exit(1)
+			fmt.Println(err)
+			return
 		}
-		// Handle connections in a new goroutine.
-		fmt.Println("something")
-		continue
+		temp := strings.TrimSpace(string(netData))
+		if temp == "stop" {
+			break
+		}
+		fmt.Println(temp)
+		i, err := strconv.Atoi(temp)
+		if err != nil {
+			break
+		}
+		for _, roa := range s.roas {
+			if roa.ASN == i {
+				fmt.Println(roa)
+			}
+		}
 	}
 }
