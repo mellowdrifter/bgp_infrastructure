@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -12,7 +13,6 @@ import (
 	"path"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	_ "net/http/pprof"
@@ -37,6 +37,16 @@ const (
 	// 8282 is the RFC port for RPKI-RTR
 	port = 8282
 	loc  = "localhost"
+
+	// PDU stuff. All in bit length.
+	// header is 8 bytes long which includes the length field itself.
+	protocol     = 8
+	pType        = 8
+	sessionID    = 16
+	length       = 32
+	prefixLength = 8
+	maxLength    = 8
+	asn          = 32
 )
 
 // enum used for RIRs
@@ -107,15 +117,15 @@ func main() {
 	go thing.readROAs(roaFile)
 
 	// Actually do something
-	add := fmt.Sprintf("%s:%d", loc, port)
-	l, err := net.Listen("tcp", add)
+	// add := fmt.Sprintf("%s:%d", loc, port)
+	l, err := net.ListenTCP("tcp", &net.TCPAddr{Port: port})
 	if err != nil {
 		fmt.Printf("Unable to start server: %w", err)
 		os.Exit(1)
 	}
 	defer l.Close()
 	for {
-		thing.net, err = l.Accept()
+		thing.net, err = l.AcceptTCP()
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -200,26 +210,23 @@ func asnToInt(a string) int {
 }
 
 func (s *Server) handleQuery() {
-	fmt.Printf("Servering %s\n", s.net.RemoteAddr().String())
+	fmt.Printf("Incoming from %s\n", s.net.RemoteAddr().String())
+	defer s.net.Close()
+
+	buf := new(bytes.Buffer)
+	readBuf := make([]byte, 1024)
+
 	for {
-		netData, err := bufio.NewReader(s.net).ReadString('\n')
+		dataLen, err := s.net.Read(readBuf)
 		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		temp := strings.TrimSpace(string(netData))
-		if temp == "stop" {
-			break
-		}
-		fmt.Println(temp)
-		i, err := strconv.Atoi(temp)
-		if err != nil {
-			break
-		}
-		for _, roa := range s.roas {
-			if roa.ASN == i {
-				fmt.Println(roa)
+			if err == io.EOF {
+				fmt.Println("Connection closed by client!")
+				break
 			}
 		}
+		buf.Write(readBuf[:dataLen])
+
+		fmt.Printf("*** %v\n", buf)
+
 	}
 }
