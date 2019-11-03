@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "net/http/pprof"
@@ -31,8 +33,8 @@ const (
 	ripe    rir = 4
 
 	// refresh is the amount of seconds to wait until a new json is pulled.
-	//refresh = 4 * time.Hour
-	refresh = 10 * time.Second
+	refresh = 4 * time.Hour
+	//refresh = 10 * time.Second
 
 	// 8282 is the RFC port for RPKI-RTR
 	port = 8282
@@ -115,6 +117,7 @@ func main() {
 
 	// Keep ROAs updated
 	go thing.readROAs(roaFile)
+	time.Sleep(time.Second * 5)
 
 	// Actually do something
 	// add := fmt.Sprintf("%s:%d", loc, port)
@@ -125,12 +128,13 @@ func main() {
 	}
 	defer l.Close()
 	for {
-		thing.net, err = l.AcceptTCP()
+		conn, err := l.AcceptTCP()
 		if err != nil {
 			fmt.Println(err)
-			return
+			continue
 		}
-		thing.handleQuery()
+		//thing.handleQuery()
+		go startSession(conn, thing.roas)
 	}
 
 }
@@ -229,4 +233,47 @@ func (s *Server) handleQuery() {
 		fmt.Printf("*** %v\n", buf)
 
 	}
+}
+
+func startSession(conn *net.TCPConn, roas []roa) {
+	defer conn.Close()
+	fmt.Printf("Incoming from %s\n", conn.RemoteAddr().String())
+	binary.Write(conn, binary.BigEndian, version1)
+	binary.Write(conn, binary.BigEndian, cacheResponse)
+	binary.Write(conn, binary.BigEndian, uint16(123))
+	binary.Write(conn, binary.BigEndian, uint32(8))
+	fmt.Println("Sent a cache Repsonse PDU")
+
+	fmt.Printf("There is %d ROAs\n", len(roas))
+	time.Sleep(5 * time.Second)
+
+	for i, roa := range roas {
+		if strings.Contains(roa.Prefix, ":") {
+			continue
+		}
+		fmt.Printf("Sending %d: Prefix: %s\n", i, roa.Prefix)
+		IPAddress := net.ParseIP(roa.Prefix)
+		binary.Write(conn, binary.BigEndian, version1)
+		binary.Write(conn, binary.BigEndian, ipv4Prefix)
+		binary.Write(conn, binary.BigEndian, zeroUint16)
+		binary.Write(conn, binary.BigEndian, uint32(20))
+		binary.Write(conn, binary.BigEndian, uint8(1))
+		binary.Write(conn, binary.BigEndian, uint8(roa.MinMask))
+		binary.Write(conn, binary.BigEndian, uint8(roa.MaxMask))
+		binary.Write(conn, binary.BigEndian, uint8(0))
+		binary.Write(conn, binary.BigEndian, IPAddress.To4())
+		binary.Write(conn, binary.BigEndian, uint32(roa.ASN))
+	}
+	fmt.Printf("Finished sending all IPv4 prefixes. Now sending end of update")
+	binary.Write(conn, binary.BigEndian, version1)
+	binary.Write(conn, binary.BigEndian, endOfData)
+	binary.Write(conn, binary.BigEndian, uint16(123))
+	binary.Write(conn, binary.BigEndian, uint32(24))
+	binary.Write(conn, binary.BigEndian, uint32(123))
+	binary.Write(conn, binary.BigEndian, uint32(900))
+	binary.Write(conn, binary.BigEndian, uint32(30))
+	binary.Write(conn, binary.BigEndian, uint32(172812))
+
+	time.Sleep(60 + time.Second)
+
 }
