@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,23 +32,15 @@ const (
 	ripe    rir = 4
 
 	// refresh is the amount of seconds to wait until a new json is pulled.
-	refresh = 4 * time.Hour
+	refresh = 4 * time.Minute
 	//refresh = 10 * time.Second
 
 	// 8282 is the RFC port for RPKI-RTR
 	port = 8282
 	loc  = "localhost"
-
-	// PDU stuff. All in bit length.
-	// header is 8 bytes long which includes the length field itself.
-	protocol     = 8
-	pType        = 8
-	sessionID    = 16
-	length       = 32
-	prefixLength = 8
-	maxLength    = 8
-	asn          = 32
 )
+
+var cacheSerial uint32 = 0
 
 // enum used for RIRs
 type rir int
@@ -142,6 +133,7 @@ func main() {
 // readROAs will update the server struct with the current list of ROAs
 func (s *Server) readROAs(f string) {
 	for {
+		cacheSerial++
 		roas, err := readROAs(f)
 		if err != nil {
 			log.Fatal(err)
@@ -198,6 +190,7 @@ func stringToInt(s string) int {
 	n, err := strconv.Atoi(s)
 	if err != nil {
 		log.Printf("Unable to convert %s to int", s)
+		return 0
 	}
 
 	return n
@@ -208,6 +201,7 @@ func asnToInt(a string) int {
 	n, err := strconv.Atoi(a[2:])
 	if err != nil {
 		log.Printf("Unable to convert ASN %s to int", a)
+		return 0
 	}
 
 	return n
@@ -236,44 +230,45 @@ func (s *Server) handleQuery() {
 }
 
 func startSession(conn *net.TCPConn, roas []roa) {
-	defer conn.Close()
 	fmt.Printf("Incoming from %s\n", conn.RemoteAddr().String())
-	binary.Write(conn, binary.BigEndian, version1)
-	binary.Write(conn, binary.BigEndian, cacheResponse)
-	binary.Write(conn, binary.BigEndian, uint16(123))
-	binary.Write(conn, binary.BigEndian, uint32(8))
-	fmt.Println("Sent a cache Repsonse PDU")
 
-	fmt.Printf("There is %d ROAs\n", len(roas))
-	time.Sleep(5 * time.Second)
-
-	for i, roa := range roas {
-		if strings.Contains(roa.Prefix, ":") {
-			continue
-		}
-		fmt.Printf("Sending %d: Prefix: %s\n", i, roa.Prefix)
-		IPAddress := net.ParseIP(roa.Prefix)
-		binary.Write(conn, binary.BigEndian, version1)
-		binary.Write(conn, binary.BigEndian, ipv4Prefix)
-		binary.Write(conn, binary.BigEndian, zeroUint16)
-		binary.Write(conn, binary.BigEndian, uint32(20))
-		binary.Write(conn, binary.BigEndian, uint8(1))
-		binary.Write(conn, binary.BigEndian, uint8(roa.MinMask))
-		binary.Write(conn, binary.BigEndian, uint8(roa.MaxMask))
-		binary.Write(conn, binary.BigEndian, uint8(0))
-		binary.Write(conn, binary.BigEndian, IPAddress.To4())
-		binary.Write(conn, binary.BigEndian, uint32(roa.ASN))
+	cpdu := cacheResponsePDU{
+		sessionID: uint16(123),
 	}
-	fmt.Printf("Finished sending all IPv4 prefixes. Now sending end of update")
-	binary.Write(conn, binary.BigEndian, version1)
-	binary.Write(conn, binary.BigEndian, endOfData)
-	binary.Write(conn, binary.BigEndian, uint16(123))
-	binary.Write(conn, binary.BigEndian, uint32(24))
-	binary.Write(conn, binary.BigEndian, uint32(123))
-	binary.Write(conn, binary.BigEndian, uint32(900))
-	binary.Write(conn, binary.BigEndian, uint32(30))
-	binary.Write(conn, binary.BigEndian, uint32(172812))
+	cpdu.serialize(conn)
 
-	time.Sleep(60 + time.Second)
+	for _, roa := range roas {
+		IPAddress := net.ParseIP(roa.Prefix)
+		// TODO put ipv4/ipv6 signal in when creating the ROAs
+		switch strings.Contains(roa.Prefix, ":") {
+		case true:
+			ppdu := ipv6PrefixPDU{
+				flags:  uint8(1),
+				min:    uint8(roa.MinMask),
+				max:    uint8(roa.MaxMask),
+				prefix: IPAddress.To16(),
+				asn:    uint32(roa.ASN),
+			}
+			ppdu.serialize(conn)
+		case false:
+			ppdu := ipv4PrefixPDU{
+				flags:  uint8(1),
+				min:    uint8(roa.MinMask),
+				max:    uint8(roa.MaxMask),
+				prefix: IPAddress.To4(),
+				asn:    uint32(roa.ASN),
+			}
+			ppdu.serialize(conn)
+		}
+	}
+	fmt.Printf("Finished sending all IPv4 prefixes")
+	epdu := endOfDataPDU{
+		sessionID: uint16(123),
+		serial:    cacheSerial,
+		refresh:   uint32(900),
+		retry:     uint32(30),
+		expire:    uint32(171999),
+	}
+	epdu.serialize(conn)
 
 }
