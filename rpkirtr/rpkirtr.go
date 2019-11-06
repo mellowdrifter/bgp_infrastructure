@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -82,7 +83,7 @@ type CacheServer struct {
 	serial   uint32
 }
 
-// Each client will have their own thing
+// Each client has their own stuff
 type client struct {
 	conn net.Conn
 }
@@ -117,6 +118,9 @@ func main() {
 	// ROAs should be updated all the time
 	go thing.readROAs(roaFile)
 
+	// Show me how many clients are connected
+	go thing.printClients()
+
 	// I'm listening!
 	thing.start()
 
@@ -131,6 +135,20 @@ func (s *CacheServer) listen() {
 	s.listener = l
 	fmt.Printf("Listening on port %d\n", port)
 
+}
+
+func (s *CacheServer) printClients() {
+	for {
+		s.mutex.Lock()
+		fmt.Printf("I currently have %d clients connected\n", len(s.clients))
+		if len(s.clients) > 0 {
+			for i, client := range s.clients {
+				fmt.Printf("Client #%d: Address: %s\n", i, client.conn.RemoteAddr().String())
+			}
+		}
+		s.mutex.Unlock()
+		time.Sleep(time.Minute)
+	}
 }
 
 func (s *CacheServer) close() {
@@ -151,15 +169,29 @@ func (s *CacheServer) start() {
 
 func (s *CacheServer) serve(client *client) {
 	defer s.mutex.Unlock()
+	s.mutex.Lock()
 	fmt.Printf("Serving %s\n", client.conn.RemoteAddr().String())
 	session := rand.Intn(100)
+
+	// TODO: This is crap
+	var whatPDU unknownPDU
+	var r resetQueryPDU
+	var q serialQueryPDU
+	binary.Read(client.conn, binary.BigEndian, &whatPDU)
+	if whatPDU.Ptype == resetQuery {
+		binary.Read(client.conn, binary.BigEndian, &r)
+	} else if whatPDU.Ptype == serialQuery {
+		binary.Read(client.conn, binary.BigEndian, &q)
+	}
+
+	fmt.Printf("whatPDU = %+v\n", whatPDU)
+	fmt.Printf("resetPDU = %+v\n", r)
+	fmt.Printf("serialPDU = %+v\n", q)
 
 	cpdu := cacheResponsePDU{
 		sessionID: uint16(session),
 	}
 	cpdu.serialize(client.conn)
-
-	s.mutex.Lock()
 
 	for _, roa := range s.roas {
 		IPAddress := net.ParseIP(roa.Prefix)
@@ -185,7 +217,7 @@ func (s *CacheServer) serve(client *client) {
 			ppdu.serialize(client.conn)
 		}
 	}
-	fmt.Printf("Finished sending all prefixes")
+	fmt.Println("Finished sending all prefixes")
 	epdu := endOfDataPDU{
 		sessionID: uint16(session),
 		//serial:    cacheSerial,
