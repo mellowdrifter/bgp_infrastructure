@@ -23,18 +23,82 @@ const (
 	// protocol versions
 	version0 uint8 = 0
 	version1 uint8 = 1
-
-	zeroUint16    uint16 = 0
-	length8Uint8  uint8  = 8
-	length8Uint32 uint32 = 8
-	length20Uint8 uint8  = 20
 )
 
-type cacheResponsePDU struct {
-	sessionID uint16
+type headerPDU struct {
+	Version uint8
+	Ptype   uint8
 }
 
-func (p *cacheResponsePDU) serialize(wr io.Writer) {
+type serialNotifyPDU struct {
+	/*
+	   0          8          16         24        31
+	   .-------------------------------------------.
+	   | Protocol |   PDU    |                     |
+	   | Version  |   Type   |     Session ID      |
+	   |    1     |    0     |                     |
+	   +-------------------------------------------+
+	   |                                           |
+	   |                Length=12                  |
+	   |                                           |
+	   +-------------------------------------------+
+	   |                                           |
+	   |               Serial Number               |
+	   |                                           |
+	   `-------------------------------------------'
+	*/
+	Session uint16
+	Serial  uint32
+}
+
+func (p *serialNotifyPDU) serialize(wr io.Writer) {
+	fmt.Printf("Sending a serial notify PDU: %+v\n", *p)
+	binary.Write(wr, binary.BigEndian, version1)
+	binary.Write(wr, binary.BigEndian, serialNotify)
+	binary.Write(wr, binary.BigEndian, uint32(12))
+	binary.Write(wr, binary.BigEndian, uint32(8))
+}
+
+type serialQueryPDU struct {
+	/*
+	   0          8          16         24        31
+	   .-------------------------------------------.
+	   | Protocol |   PDU    |                     |
+	   | Version  |   Type   |     Session ID      |
+	   |    1     |    1     |                     |
+	   +-------------------------------------------+
+	   |                                           |
+	   |                 Length=12                 |
+	   |                                           |
+	   +-------------------------------------------+
+	   |                                           |
+	   |               Serial Number               |
+	   |                                           |
+	   `-------------------------------------------'
+	*/
+	Session uint16
+	Length  uint32
+	Serial  uint32
+}
+
+type resetQueryPDU struct {
+	/*
+	   0          8          16         24        31
+	   .-------------------------------------------.
+	   | Protocol |   PDU    |                     |
+	   | Version  |   Type   |         zero        |
+	   |    1     |    2     |                     |
+	   +-------------------------------------------+
+	   |                                           |
+	   |                 Length=8                  |
+	   |                                           |
+	   `-------------------------------------------'
+	*/
+	Zero   uint16
+	Length uint32
+}
+
+type cacheResponsePDU struct {
 	/*
 	   0          8          16         24        31
 	   .-------------------------------------------.
@@ -47,22 +111,18 @@ func (p *cacheResponsePDU) serialize(wr io.Writer) {
 	   |                                           |
 	   `-------------------------------------------'
 	*/
+	sessionID uint16
+}
+
+func (p *cacheResponsePDU) serialize(wr io.Writer) {
 	fmt.Printf("Sending a cache Repsonse PDU: %v\n", *p)
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, cacheResponse)
 	binary.Write(wr, binary.BigEndian, p.sessionID)
-	binary.Write(wr, binary.BigEndian, length8Uint32)
+	binary.Write(wr, binary.BigEndian, uint32(8))
 }
 
 type ipv4PrefixPDU struct {
-	flags  uint8
-	min    uint8
-	max    uint8
-	prefix net.IP // For IPv4 this should be 4 bytes
-	asn    uint32
-}
-
-func (p *ipv4PrefixPDU) serialize(wr io.Writer) {
 	/*
 	   0          8          16         24        31
 	   .-------------------------------------------.
@@ -87,6 +147,14 @@ func (p *ipv4PrefixPDU) serialize(wr io.Writer) {
 	   |                                           |
 	   `-------------------------------------------'
 	*/
+	flags  uint8
+	min    uint8
+	max    uint8
+	prefix net.IP // For IPv4 this should be 4 bytes
+	asn    uint32
+}
+
+func (p *ipv4PrefixPDU) serialize(wr io.Writer) {
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, ipv4Prefix)
 	binary.Write(wr, binary.BigEndian, uint16(0))
@@ -101,14 +169,6 @@ func (p *ipv4PrefixPDU) serialize(wr io.Writer) {
 }
 
 type ipv6PrefixPDU struct {
-	flags  uint8
-	min    uint8
-	max    uint8
-	prefix net.IP // For IPv6 this should be 16 bytes
-	asn    uint32
-}
-
-func (p *ipv6PrefixPDU) serialize(wr io.Writer) {
 	/*
 	   0          8          16         24        31
 	   .-------------------------------------------.
@@ -137,6 +197,14 @@ func (p *ipv6PrefixPDU) serialize(wr io.Writer) {
 	   |                                           |
 	   `-------------------------------------------'
 	*/
+	flags  uint8
+	min    uint8
+	max    uint8
+	prefix net.IP // For IPv6 this should be 16 bytes
+	asn    uint32
+}
+
+func (p *ipv6PrefixPDU) serialize(wr io.Writer) {
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, ipv6Prefix)
 	binary.Write(wr, binary.BigEndian, uint16(0))
@@ -151,14 +219,6 @@ func (p *ipv6PrefixPDU) serialize(wr io.Writer) {
 }
 
 type endOfDataPDU struct {
-	sessionID uint16
-	serial    uint32
-	refresh   uint32
-	retry     uint32
-	expire    uint32
-}
-
-func (p *endOfDataPDU) serialize(wr io.Writer) {
 	/*
 	   0          8          16         24        31
 	   .-------------------------------------------.
@@ -187,6 +247,14 @@ func (p *endOfDataPDU) serialize(wr io.Writer) {
 	   |                                           |
 	   `-------------------------------------------'
 	*/
+	sessionID uint16
+	serial    uint32
+	refresh   uint32
+	retry     uint32
+	expire    uint32
+}
+
+func (p *endOfDataPDU) serialize(wr io.Writer) {
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, endOfData)
 	binary.Write(wr, binary.BigEndian, p.sessionID)
@@ -199,9 +267,6 @@ func (p *endOfDataPDU) serialize(wr io.Writer) {
 }
 
 type cacheResetPDU struct {
-}
-
-func (p *cacheResetPDU) serialize(wr io.Writer) {
 	/*
 	   0          8          16         24        31
 	   .-------------------------------------------.
@@ -214,9 +279,12 @@ func (p *cacheResetPDU) serialize(wr io.Writer) {
 	   |                                           |
 	   `-------------------------------------------'
 	*/
+}
+
+func (p *cacheResetPDU) serialize(wr io.Writer) {
 	fmt.Printf("Sending a cache reset PDU: %v\n", *p)
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, cacheReset)
 	binary.Write(wr, binary.BigEndian, uint16(0))
-	binary.Write(wr, binary.BigEndian, length8Uint32)
+	binary.Write(wr, binary.BigEndian, uint32(8))
 }
