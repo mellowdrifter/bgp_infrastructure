@@ -85,7 +85,11 @@ type CacheServer struct {
 
 // Each client has their own stuff
 type client struct {
-	conn net.Conn
+	conn   net.Conn
+	addr   string
+	roas   *[]roa
+	serial *uint32
+	mutex  *sync.Mutex
 }
 
 func main() {
@@ -116,7 +120,7 @@ func main() {
 	thing.listen()
 
 	// ROAs should be updated all the time
-	go thing.readROAs(roaFile)
+	go thing.updateROAs(roaFile)
 
 	// Show me how many clients are connected
 	go thing.printClients()
@@ -168,67 +172,27 @@ func (s *CacheServer) start() {
 }
 
 func (s *CacheServer) serve(client *client) {
-	defer s.mutex.Unlock()
-	s.mutex.Lock()
 	fmt.Printf("Serving %s\n", client.conn.RemoteAddr().String())
-	session := rand.Intn(100)
 
-	// TODO: This is crap
-	var whatPDU unknownPDU
-	var r resetQueryPDU
-	var q serialQueryPDU
-	binary.Read(client.conn, binary.BigEndian, &whatPDU)
-	if whatPDU.Ptype == resetQuery {
-		binary.Read(client.conn, binary.BigEndian, &r)
-	} else if whatPDU.Ptype == serialQuery {
-		binary.Read(client.conn, binary.BigEndian, &q)
-	}
-
-	fmt.Printf("whatPDU = %+v\n", whatPDU)
-	fmt.Printf("resetPDU = %+v\n", r)
-	fmt.Printf("serialPDU = %+v\n", q)
-
-	cpdu := cacheResponsePDU{
-		sessionID: uint16(session),
-	}
-	cpdu.serialize(client.conn)
-
-	for _, roa := range s.roas {
-		IPAddress := net.ParseIP(roa.Prefix)
-		// TODO put ipv4/ipv6 signal in when creating the ROAs
-		switch strings.Contains(roa.Prefix, ":") {
-		case true:
-			ppdu := ipv6PrefixPDU{
-				flags:  uint8(1),
-				min:    uint8(roa.MinMask),
-				max:    uint8(roa.MaxMask),
-				prefix: IPAddress.To16(),
-				asn:    uint32(roa.ASN),
-			}
-			ppdu.serialize(client.conn)
-		case false:
-			ppdu := ipv4PrefixPDU{
-				flags:  uint8(1),
-				min:    uint8(roa.MinMask),
-				max:    uint8(roa.MaxMask),
-				prefix: IPAddress.To4(),
-				asn:    uint32(roa.ASN),
-			}
-			ppdu.serialize(client.conn)
+	for {
+		// Handle incoming PDU
+		var header headerPDU
+		var r resetQueryPDU
+		var q serialQueryPDU
+		binary.Read(client.conn, binary.BigEndian, &header)
+		if header.Ptype == resetQuery {
+			binary.Read(client.conn, binary.BigEndian, &r)
+			fmt.Printf("%+v\n", r)
+			client.sendRoa()
+		} else if header.Ptype == serialQuery {
+			binary.Read(client.conn, binary.BigEndian, &q)
+			fmt.Printf("%+v\n", q)
+			client.sendRoa()
 		}
 	}
-	fmt.Println("Finished sending all prefixes")
-	epdu := endOfDataPDU{
-		sessionID: uint16(session),
-		//serial:    cacheSerial,
-		refresh: uint32(900),
-		retry:   uint32(30),
-		expire:  uint32(171999),
-	}
-	epdu.serialize(client.conn)
-
 }
 
+// accept adds a new client to the current list of clients being served.
 func (s *CacheServer) accept(conn net.Conn) *client {
 	fmt.Printf("Connection from %v, total clients: %d\n",
 		conn.RemoteAddr().String(), len(s.clients)+1)
@@ -236,8 +200,23 @@ func (s *CacheServer) accept(conn net.Conn) *client {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// If existing client, close the old connection.
+	for _, client := range s.clients {
+		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+		if client.addr == ip {
+			s.remove(client)
+			conn.Close()
+			break
+		}
+	}
+
+	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	client := &client{
-		conn: conn,
+		conn:   conn,
+		addr:   ip,
+		roas:   &s.roas,
+		serial: &s.serial,
+		mutex:  s.mutex,
 	}
 
 	s.clients = append(s.clients, client)
@@ -245,8 +224,23 @@ func (s *CacheServer) accept(conn net.Conn) *client {
 	return client
 }
 
-// readROAs will update the server struct with the current list of ROAs
-func (s *CacheServer) readROAs(f string) {
+// remove removes a client from the current list of clients being served.
+func (s *CacheServer) remove(client *client) {
+	fmt.Printf("Removing client %s\n", client.conn.RemoteAddr().String())
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// remove the connection from client array
+	for i, check := range s.clients {
+		if check == client {
+			s.clients = append(s.clients[:i], s.clients[i+1:]...)
+		}
+	}
+	client.conn.Close()
+}
+
+// updateROAs will update the server struct with the current list of ROAs
+func (s *CacheServer) updateROAs(f string) {
 	for {
 		s.mutex.Lock()
 		s.serial++
@@ -322,4 +316,49 @@ func asnToInt(a string) int {
 	}
 
 	return n
+}
+
+func (c *client) sendRoa() {
+	defer c.mutex.Unlock()
+	c.mutex.Lock()
+	session := rand.Intn(100)
+	cpdu := cacheResponsePDU{
+		sessionID: uint16(session),
+	}
+	cpdu.serialize(c.conn)
+
+	for _, roa := range *c.roas {
+		IPAddress := net.ParseIP(roa.Prefix)
+		// TODO put ipv4/ipv6 signal in when creating the ROAs
+		switch strings.Contains(roa.Prefix, ":") {
+		case true:
+			ppdu := ipv6PrefixPDU{
+				flags:  uint8(1),
+				min:    uint8(roa.MinMask),
+				max:    uint8(roa.MaxMask),
+				prefix: IPAddress.To16(),
+				asn:    uint32(roa.ASN),
+			}
+			ppdu.serialize(c.conn)
+		case false:
+			ppdu := ipv4PrefixPDU{
+				flags:  uint8(1),
+				min:    uint8(roa.MinMask),
+				max:    uint8(roa.MaxMask),
+				prefix: IPAddress.To4(),
+				asn:    uint32(roa.ASN),
+			}
+			ppdu.serialize(c.conn)
+		}
+	}
+	fmt.Println("Finished sending all prefixes")
+	epdu := endOfDataPDU{
+		sessionID: uint16(session),
+		//serial:    cacheSerial,
+		refresh: uint32(900),
+		retry:   uint32(30),
+		expire:  uint32(171999),
+	}
+	epdu.serialize(c.conn)
+
 }
