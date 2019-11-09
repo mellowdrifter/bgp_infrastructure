@@ -10,8 +10,6 @@ import (
 	"net"
 	"os"
 	"regexp"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -81,16 +79,16 @@ type CacheServer struct {
 	mutex    *sync.RWMutex
 	serial   uint32
 	session  uint16
+	diff     serialDiff
 }
 
-// Each client has their own stuff
-type client struct {
-	conn    net.Conn
-	session *uint16
-	addr    string
-	roas    *[]roa
-	serial  *uint32
-	mutex   *sync.RWMutex
+// serialDiff will have a list of add and deletes of ROAs to get from
+// oldSerial to newSerial.
+type serialDiff struct {
+	oldSerial uint32
+	newSerial uint32
+	delRoa    []roa
+	addRoa    []roa
 }
 
 func main() {
@@ -106,12 +104,18 @@ func main() {
 	// random seed used for session ID
 	rand.Seed(time.Now().UTC().UnixNano())
 
+	// We need our initial set of ROAs.
 	log.Printf("Downloading %s\n", cacheurl)
+	roas, err := readROAs(cacheurl)
+	if err != nil {
+		log.Fatalf("Unable to download ROAs, aborting: %v", err)
+	}
 
 	// This is our server itself
 	thing := CacheServer{
 		mutex:   &sync.RWMutex{},
 		session: uint16(rand.Intn(65535)),
+		roas:    roas,
 	}
 	thing.mutex = &sync.RWMutex{}
 	thing.listen()
@@ -255,16 +259,74 @@ func (s *CacheServer) remove(c *client) {
 // updateROAs will update the server struct with the current list of ROAs
 func (s *CacheServer) updateROAs(f string) {
 	for {
+		time.Sleep(refresh)
 		s.mutex.Lock()
-		s.serial++
 		roas, err := readROAs(f)
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		// Calculate diffs
+		diff := makeDiff(roas, s.roas, s.serial)
+		s.diff = diff
+
+		// Increment serial and replace
+		s.serial++
 		s.roas = roas
 		fmt.Printf("roas updated, serial is now %d\n", s.serial)
 		s.mutex.Unlock()
-		time.Sleep(refresh)
+	}
+
+}
+
+// makeDiff will return a list of ROAs that need to be deleted or updated
+// in order for a particular serial version to updated to the latest version.
+func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
+	newMap := make(map[string]roa, len(new))
+	oldMap := make(map[string]roa, len(old))
+	var addROA, delROA []roa
+
+	for _, roa := range new {
+		newMap[fmt.Sprintf("%s%d%d%d", roa.Prefix, roa.MinMask, roa.MaxMask, roa.ASN)] = roa
+	}
+	for _, roa := range old {
+		oldMap[fmt.Sprintf("%s%d%d%d", roa.Prefix, roa.MinMask, roa.MaxMask, roa.ASN)] = roa
+	}
+
+	// If ROA is in newMap but not oldMap, we need to add it
+	for k, v := range newMap {
+		_, ok := oldMap[k]
+		if !ok {
+			addROA = append(addROA, v)
+		}
+	}
+
+	// If ROA is in oldMap but not newMap, we need to delete it.
+	for k, v := range oldMap {
+		_, ok := newMap[k]
+		if !ok {
+			delROA = append(delROA, v)
+		}
+	}
+
+	if len(addROA) == 0 {
+		fmt.Println("No addROA diff this time")
+	}
+	if len(delROA) == 0 {
+		fmt.Println("No delROA diff this time")
+	}
+	if len(addROA) > 0 {
+		fmt.Printf("New ROAs to be added: %+v\n", addROA)
+	}
+	if len(delROA) > 0 {
+		fmt.Printf("Old ROAs to be deleted: %+v\n", delROA)
+	}
+
+	return serialDiff{
+		oldSerial: serial,
+		newSerial: serial + 1,
+		addRoa:    addROA,
+		delRoa:    delROA,
 	}
 
 }
@@ -312,97 +374,5 @@ func readROAs(url string) ([]roa, error) {
 	}
 
 	return roas, nil
-
-}
-
-// stringToInt does inline convertions and logs errors, instead of panicing.
-func stringToInt(s string) int {
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		log.Printf("Unable to convert %s to int", s)
-		return 0
-	}
-
-	return n
-}
-
-// The Cloudflare JSON prepends AS to all numbers. Need to remove it here.
-func asnToInt(a string) int {
-	n, err := strconv.Atoi(a[2:])
-	if err != nil {
-		log.Printf("Unable to convert ASN %s to int", a)
-		return 0
-	}
-
-	return n
-}
-
-// reset has no data besides the header
-func (c *client) sendReset() {
-	rpdu := cacheResetPDU{}
-	rpdu.serialize(c.conn)
-}
-
-func (c *client) sendRoa() {
-	session := rand.Intn(100)
-	cpdu := cacheResponsePDU{
-		sessionID: uint16(session),
-	}
-	cpdu.serialize(c.conn)
-
-	c.mutex.RLock()
-	for _, roa := range *c.roas {
-		IPAddress := net.ParseIP(roa.Prefix)
-		// TODO put ipv4/ipv6 signal in when creating the ROAs
-		switch strings.Contains(roa.Prefix, ":") {
-		case true:
-			ppdu := ipv6PrefixPDU{
-				flags:  uint8(1),
-				min:    uint8(roa.MinMask),
-				max:    uint8(roa.MaxMask),
-				prefix: IPAddress.To16(),
-				asn:    uint32(roa.ASN),
-			}
-			ppdu.serialize(c.conn)
-		case false:
-			ppdu := ipv4PrefixPDU{
-				flags:  uint8(1),
-				min:    uint8(roa.MinMask),
-				max:    uint8(roa.MaxMask),
-				prefix: IPAddress.To4(),
-				asn:    uint32(roa.ASN),
-			}
-			ppdu.serialize(c.conn)
-		}
-	}
-	c.mutex.RUnlock()
-	fmt.Println("Finished sending all prefixes")
-	epdu := endOfDataPDU{
-		sessionID: uint16(session),
-		//serial:    cacheSerial,
-		refresh: uint32(900),
-		retry:   uint32(30),
-		expire:  uint32(171999),
-	}
-	epdu.serialize(c.conn)
-
-}
-
-// TODO: Test this somehow
-func (c *client) error(code int, report string) {
-	epdu := errorReportPDU{
-		code:   uint16(code),
-		report: report,
-	}
-	epdu.serialize(c.conn)
-
-}
-
-func (c *client) status() {
-	fmt.Println("Status of client:")
-	fmt.Printf("Address is %s\n", c.addr)
-	c.mutex.RLock()
-	fmt.Printf("Serial is %d\n", *c.serial)
-	c.mutex.RUnlock()
 
 }
