@@ -1,3 +1,7 @@
+// This app implements RFC8210.
+// The Resource Public Key Infrastructure (RPKI) to Router Protocol,
+// Version 1
+
 package main
 
 import (
@@ -184,6 +188,7 @@ func (s *CacheServer) serve(client *client) {
 		switch {
 		// I only support version 1 for now.
 		case header.Version != 1:
+			fmt.Printf("Received something I don't know :'(  %+v\n", header)
 			client.error(4, "Unsupported Protocol Version")
 			client.conn.Close()
 			return
@@ -191,16 +196,34 @@ func (s *CacheServer) serve(client *client) {
 		case header.Ptype == resetQuery:
 			var r resetQueryPDU
 			binary.Read(client.conn, binary.BigEndian, &r)
-			fmt.Printf("received a reset Query PDU: %+v\n", r)
+			fmt.Printf("received a reset Query PDU from %s\n", client.addr)
 			client.sendRoa()
 
 		case header.Ptype == serialQuery:
 			var q serialQueryPDU
 			binary.Read(client.conn, binary.BigEndian, &q)
-			fmt.Printf("received a serial query PDU, so going to send a reset: %+v\n", q)
-			// For now send a cache reset
-			// TODO: adjust this once I have diffs working
-			client.sendReset()
+			// If the client sends in the current or previous serial, then we can handle it.
+			// If the serial is older or unknown, we need to send a reset.
+			s.mutex.RLock()
+			serial := s.diff.newSerial
+			s.mutex.RUnlock()
+			// TODO: These serials could change while busy here
+			if q.Serial != serial && q.Serial != serial-1 {
+				fmt.Printf("received a serial query PDU, with an unmanagable serial from %s\n", client.addr)
+				fmt.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
+				client.sendReset()
+			}
+			if q.Serial == serial {
+				fmt.Printf("received a serial number which currently matches my own from %s\n", client.addr)
+				fmt.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
+				client.sendEmpty(q.Session)
+			}
+			if q.Serial == serial-1 {
+				fmt.Printf("received a serial number one less, so sending diff to %s\n", client.addr)
+				fmt.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
+				// TODO: If serial is diff, but there is no actual diff, send empty?
+				client.sendEmpty(q.Session)
+			}
 		}
 	}
 }

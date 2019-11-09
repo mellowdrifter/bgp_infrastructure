@@ -24,6 +24,30 @@ func (c *client) sendReset() {
 	rpdu.serialize(c.conn)
 }
 
+// sendDiff should send additions and deletions to the client.
+func (c *client) sendDiff(serialDiff) {
+
+}
+
+// sendEmpty sends an empty response. Not sure if this is the right thing to do when getting
+// a serial query in which the serial numbers match :/
+func (c *client) sendEmpty(session uint16) {
+	cpdu := cacheResponsePDU{
+		// TODO: Not sure what, where to get this? OR what it's for!
+		sessionID: session,
+	}
+	cpdu.serialize(c.conn)
+	epdu := endOfDataPDU{
+		sessionID: session,
+		refresh:   uint32(900),
+		retry:     uint32(30),
+		expire:    uint32(171999),
+		serial:    *c.serial,
+	}
+	epdu.serialize(c.conn)
+
+}
+
 func (c *client) sendRoa() {
 	session := rand.Intn(100)
 	cpdu := cacheResponsePDU{
@@ -60,10 +84,10 @@ func (c *client) sendRoa() {
 	fmt.Println("Finished sending all prefixes")
 	epdu := endOfDataPDU{
 		sessionID: uint16(session),
-		//serial:    cacheSerial,
-		refresh: uint32(900),
-		retry:   uint32(30),
-		expire:  uint32(171999),
+		serial:    *c.serial,
+		refresh:   uint32(900),
+		retry:     uint32(30),
+		expire:    uint32(171999),
 	}
 	epdu.serialize(c.conn)
 
@@ -82,8 +106,4 @@ func (c *client) error(code int, report string) {
 func (c *client) status() {
 	fmt.Println("Status of client:")
 	fmt.Printf("Address is %s\n", c.addr)
-	c.mutex.RLock()
-	fmt.Printf("Serial is %d\n", *c.serial)
-	c.mutex.RUnlock()
-
 }
