@@ -8,21 +8,20 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
 	"os"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"net/http"
 	_ "net/http/pprof"
 )
 
 const (
-	//cacheurl = "https://rpki.cloudflare.com/rpki.json"
-	cache   = "data/rpki.json"
+	cacheurl = "https://rpki.cloudflare.com/rpki.json"
+	//cache    = "data/rpki.json"
 	logfile = "/var/log/rpkirtr.log"
 
 	// Each region will just be an enum.
@@ -79,17 +78,19 @@ type CacheServer struct {
 	listener net.Listener
 	clients  []*client
 	roas     []roa
-	mutex    *sync.Mutex
+	mutex    *sync.RWMutex
 	serial   uint32
+	session  uint16
 }
 
 // Each client has their own stuff
 type client struct {
-	conn   net.Conn
-	addr   string
-	roas   *[]roa
-	serial *uint32
-	mutex  *sync.Mutex
+	conn    net.Conn
+	session *uint16
+	addr    string
+	roas    *[]roa
+	serial  *uint32
+	mutex   *sync.RWMutex
 }
 
 func main() {
@@ -102,25 +103,21 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+	// random seed used for session ID
+	rand.Seed(time.Now().UTC().UnixNano())
 
-	dir, err := os.Getwd()
-	if err != nil {
-		log.Fatal(fmt.Errorf("unable to get current working directory: %w", err))
-	}
-
-	roaFile := path.Join(dir, cache)
-	log.Printf("Downloading %s\n", roaFile)
+	log.Printf("Downloading %s\n", cacheurl)
 
 	// This is our server itself
-	var thing CacheServer
-	thing.mutex = &sync.Mutex{}
+	thing := CacheServer{
+		mutex:   &sync.RWMutex{},
+		session: uint16(rand.Intn(65535)),
+	}
+	thing.mutex = &sync.RWMutex{}
 	thing.listen()
 
 	// ROAs should be updated all the time
-	go thing.updateROAs(roaFile)
+	go thing.updateROAs(cacheurl)
 
 	// Show me how many clients are connected
 	go thing.printClients()
@@ -143,14 +140,14 @@ func (s *CacheServer) listen() {
 
 func (s *CacheServer) printClients() {
 	for {
-		s.mutex.Lock()
+		s.mutex.RLock()
 		fmt.Printf("I currently have %d clients connected\n", len(s.clients))
 		if len(s.clients) > 0 {
-			for i, client := range s.clients {
-				fmt.Printf("Client #%d: Address: %s\n", i, client.conn.RemoteAddr().String())
+			for _, client := range s.clients {
+				client.status()
 			}
 		}
-		s.mutex.Unlock()
+		s.mutex.RUnlock()
 		time.Sleep(time.Minute)
 	}
 }
@@ -171,23 +168,35 @@ func (s *CacheServer) start() {
 	}
 }
 
+// Mux out the incoming connections. Should probably be called handleClient
 func (s *CacheServer) serve(client *client) {
 	fmt.Printf("Serving %s\n", client.conn.RemoteAddr().String())
 
 	for {
 		// Handle incoming PDU
 		var header headerPDU
-		var r resetQueryPDU
-		var q serialQueryPDU
 		binary.Read(client.conn, binary.BigEndian, &header)
-		if header.Ptype == resetQuery {
+
+		switch {
+		// I only support version 1 for now.
+		case header.Version != 1:
+			client.error(4, "Unsupported Protocol Version")
+			client.conn.Close()
+			return
+
+		case header.Ptype == resetQuery:
+			var r resetQueryPDU
 			binary.Read(client.conn, binary.BigEndian, &r)
-			fmt.Printf("%+v\n", r)
+			fmt.Printf("received a reset Query PDU: %+v\n", r)
 			client.sendRoa()
-		} else if header.Ptype == serialQuery {
+
+		case header.Ptype == serialQuery:
+			var q serialQueryPDU
 			binary.Read(client.conn, binary.BigEndian, &q)
-			fmt.Printf("%+v\n", q)
-			client.sendRoa()
+			fmt.Printf("received a serial query PDU, so going to send a reset: %+v\n", q)
+			// For now send a cache reset
+			// TODO: adjust this once I have diffs working
+			client.sendReset()
 		}
 	}
 }
@@ -204,11 +213,12 @@ func (s *CacheServer) accept(conn net.Conn) *client {
 	for _, client := range s.clients {
 		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 		if client.addr == ip {
+			fmt.Printf("Already have a connection from %s, so closing existing one\n", client.addr)
 			s.remove(client)
-			conn.Close()
 			break
 		}
 	}
+	fmt.Println("### End of close loop")
 
 	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	client := &client{
@@ -225,18 +235,21 @@ func (s *CacheServer) accept(conn net.Conn) *client {
 }
 
 // remove removes a client from the current list of clients being served.
-func (s *CacheServer) remove(client *client) {
-	fmt.Printf("Removing client %s\n", client.conn.RemoteAddr().String())
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+func (s *CacheServer) remove(c *client) {
+	fmt.Printf("Removing client %s\n", c.conn.RemoteAddr().String())
 
 	// remove the connection from client array
 	for i, check := range s.clients {
-		if check == client {
+		if check == c {
 			s.clients = append(s.clients[:i], s.clients[i+1:]...)
 		}
 	}
-	client.conn.Close()
+	fmt.Println("End of check loop")
+	err := c.conn.Close()
+	if err != nil {
+		fmt.Printf("*** Error closing connection! %v\n", err)
+	}
+
 }
 
 // updateROAs will update the server struct with the current list of ROAs
@@ -257,11 +270,17 @@ func (s *CacheServer) updateROAs(f string) {
 }
 
 // readROAs will read the current ROAs into memory.
-func readROAs(file string) ([]roa, error) {
+func readROAs(url string) ([]roa, error) {
 
-	f, err := ioutil.ReadFile(file)
+	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read file: %w", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	f, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
 	}
 
 	rirs := map[string]rir{
@@ -318,15 +337,20 @@ func asnToInt(a string) int {
 	return n
 }
 
+// reset has no data besides the header
+func (c *client) sendReset() {
+	rpdu := cacheResetPDU{}
+	rpdu.serialize(c.conn)
+}
+
 func (c *client) sendRoa() {
-	defer c.mutex.Unlock()
-	c.mutex.Lock()
 	session := rand.Intn(100)
 	cpdu := cacheResponsePDU{
 		sessionID: uint16(session),
 	}
 	cpdu.serialize(c.conn)
 
+	c.mutex.RLock()
 	for _, roa := range *c.roas {
 		IPAddress := net.ParseIP(roa.Prefix)
 		// TODO put ipv4/ipv6 signal in when creating the ROAs
@@ -351,6 +375,7 @@ func (c *client) sendRoa() {
 			ppdu.serialize(c.conn)
 		}
 	}
+	c.mutex.RUnlock()
 	fmt.Println("Finished sending all prefixes")
 	epdu := endOfDataPDU{
 		sessionID: uint16(session),
@@ -360,5 +385,24 @@ func (c *client) sendRoa() {
 		expire:  uint32(171999),
 	}
 	epdu.serialize(c.conn)
+
+}
+
+// TODO: Test this somehow
+func (c *client) error(code int, report string) {
+	epdu := errorReportPDU{
+		code:   uint16(code),
+		report: report,
+	}
+	epdu.serialize(c.conn)
+
+}
+
+func (c *client) status() {
+	fmt.Println("Status of client:")
+	fmt.Printf("Address is %s\n", c.addr)
+	c.mutex.RLock()
+	fmt.Printf("Serial is %d\n", *c.serial)
+	c.mutex.RUnlock()
 
 }

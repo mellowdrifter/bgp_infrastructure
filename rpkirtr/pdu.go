@@ -288,3 +288,56 @@ func (p *cacheResetPDU) serialize(wr io.Writer) {
 	binary.Write(wr, binary.BigEndian, uint16(0))
 	binary.Write(wr, binary.BigEndian, uint32(8))
 }
+
+type errorReportPDU struct {
+	/*
+	   0          8          16         24        31
+	   .-------------------------------------------.
+	   | Protocol |   PDU    |                     |
+	   | Version  |   Type   |     Error Code      |
+	   |    1     |    10    |                     |
+	   +-------------------------------------------+
+	   |                                           |
+	   |                  Length                   |
+	   |                                           |
+	   +-------------------------------------------+
+	   |                                           |
+	   |       Length of Encapsulated PDU          |
+	   |                                           |
+	   +-------------------------------------------+
+	   |                                           |
+	   ~               Erroneous PDU               ~
+	   |                                           |
+	   +-------------------------------------------+
+	   |                                           |
+	   |           Length of Error Text            |
+	   |                                           |
+	   +-------------------------------------------+
+	   |                                           |
+	   |              Arbitrary Text               |
+	   |                    of                     |
+	   ~          Error Diagnostic Message         ~
+	   |                                           |
+	   `-------------------------------------------'
+	*/
+	code   uint16
+	report string
+}
+
+func (p *errorReportPDU) serialize(wr io.Writer) {
+	fmt.Printf("Sending an error report PDU: %v\n", *p)
+	// length of encapped PDU 0 for now
+	// not encapping PDU, so empty field there
+	// TODO: Make this better of course
+	reportLength := len([]byte(p.report))
+	totalLength := 128 + reportLength
+
+	binary.Write(wr, binary.BigEndian, version1)
+	binary.Write(wr, binary.BigEndian, errorReport)
+	binary.Write(wr, binary.BigEndian, p.code)
+	binary.Write(wr, binary.BigEndian, totalLength)
+	binary.Write(wr, binary.BigEndian, uint32(0))
+	binary.Write(wr, binary.BigEndian, reportLength)
+	binary.Write(wr, binary.BigEndian, p.report)
+
+}
