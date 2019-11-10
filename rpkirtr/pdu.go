@@ -23,6 +23,10 @@ const (
 	// protocol versions
 	version0 uint8 = 0
 	version1 uint8 = 1
+
+	// flags
+	withdraw uint8 = 0
+	announce uint8 = 1
 )
 
 type headerPDU struct {
@@ -55,8 +59,9 @@ func (p *serialNotifyPDU) serialize(wr io.Writer) {
 	fmt.Printf("Sending a serial notify PDU: %+v\n", *p)
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, serialNotify)
+	binary.Write(wr, binary.BigEndian, p.Session)
 	binary.Write(wr, binary.BigEndian, uint32(12))
-	binary.Write(wr, binary.BigEndian, uint32(8))
+	binary.Write(wr, binary.BigEndian, p.Serial)
 }
 
 type serialQueryPDU struct {

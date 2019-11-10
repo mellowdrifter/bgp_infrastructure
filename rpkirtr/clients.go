@@ -25,7 +25,81 @@ func (c *client) sendReset() {
 }
 
 // sendDiff should send additions and deletions to the client.
-func (c *client) sendDiff(serialDiff) {
+func (c *client) sendDiff(diff serialDiff, session uint16) {
+	cpdu := cacheResponsePDU{
+		sessionID: session,
+	}
+	cpdu.serialize(c.conn)
+	if diff.diff {
+		for _, roa := range diff.addRoa {
+			IPAddress := net.ParseIP(roa.Prefix)
+			// TODO put ipv4/ipv6 signal in when creating the ROAs
+			switch strings.Contains(roa.Prefix, ":") {
+			case true:
+				ppdu := ipv6PrefixPDU{
+					flags:  announce,
+					min:    uint8(roa.MinMask),
+					max:    uint8(roa.MaxMask),
+					prefix: IPAddress.To16(),
+					asn:    uint32(roa.ASN),
+				}
+				ppdu.serialize(c.conn)
+			case false:
+				ppdu := ipv4PrefixPDU{
+					flags:  announce,
+					min:    uint8(roa.MinMask),
+					max:    uint8(roa.MaxMask),
+					prefix: IPAddress.To4(),
+					asn:    uint32(roa.ASN),
+				}
+				ppdu.serialize(c.conn)
+			}
+		}
+		// TODO: Better to put add/remove all in a single list with the flag type
+		for _, roa := range diff.delRoa {
+			IPAddress := net.ParseIP(roa.Prefix)
+			// TODO put ipv4/ipv6 signal in when creating the ROAs
+			switch strings.Contains(roa.Prefix, ":") {
+			case true:
+				ppdu := ipv6PrefixPDU{
+					flags:  withdraw,
+					min:    uint8(roa.MinMask),
+					max:    uint8(roa.MaxMask),
+					prefix: IPAddress.To16(),
+					asn:    uint32(roa.ASN),
+				}
+				ppdu.serialize(c.conn)
+			case false:
+				ppdu := ipv4PrefixPDU{
+					flags:  withdraw,
+					min:    uint8(roa.MinMask),
+					max:    uint8(roa.MaxMask),
+					prefix: IPAddress.To4(),
+					asn:    uint32(roa.ASN),
+				}
+				ppdu.serialize(c.conn)
+			}
+		}
+		fmt.Println("Finished sending all diffs")
+	}
+	epdu := endOfDataPDU{
+		sessionID: uint16(session),
+		serial:    *c.serial,
+		refresh:   uint32(900),
+		retry:     uint32(30),
+		expire:    uint32(171999),
+	}
+	epdu.serialize(c.conn)
+
+}
+
+// Notify client that an update has taken place
+func (c *client) notify(serial uint32, session uint16) {
+	npdu := serialNotifyPDU{
+		Session: session,
+		Serial:  serial,
+	}
+	npdu.serialize(c.conn)
 
 }
 
@@ -38,11 +112,11 @@ func (c *client) sendEmpty(session uint16) {
 	}
 	cpdu.serialize(c.conn)
 	epdu := endOfDataPDU{
-		sessionID: session,
+		sessionID: uint16(session),
+		serial:    *c.serial,
 		refresh:   uint32(900),
 		retry:     uint32(30),
 		expire:    uint32(171999),
-		serial:    *c.serial,
 	}
 	epdu.serialize(c.conn)
 
@@ -62,7 +136,7 @@ func (c *client) sendRoa() {
 		switch strings.Contains(roa.Prefix, ":") {
 		case true:
 			ppdu := ipv6PrefixPDU{
-				flags:  uint8(1),
+				flags:  announce,
 				min:    uint8(roa.MinMask),
 				max:    uint8(roa.MaxMask),
 				prefix: IPAddress.To16(),
@@ -71,7 +145,7 @@ func (c *client) sendRoa() {
 			ppdu.serialize(c.conn)
 		case false:
 			ppdu := ipv4PrefixPDU{
-				flags:  uint8(1),
+				flags:  announce,
 				min:    uint8(roa.MinMask),
 				max:    uint8(roa.MaxMask),
 				prefix: IPAddress.To4(),

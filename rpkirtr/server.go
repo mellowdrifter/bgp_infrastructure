@@ -93,6 +93,8 @@ type serialDiff struct {
 	newSerial uint32
 	delRoa    []roa
 	addRoa    []roa
+	// There may be no actual diffs between now and last
+	diff bool
 }
 
 func main() {
@@ -221,8 +223,9 @@ func (s *CacheServer) serve(client *client) {
 			if q.Serial == serial-1 {
 				fmt.Printf("received a serial number one less, so sending diff to %s\n", client.addr)
 				fmt.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
-				// TODO: If serial is diff, but there is no actual diff, send empty?
-				client.sendEmpty(q.Session)
+				s.mutex.RLock()
+				client.sendDiff(s.diff, q.Session)
+				s.mutex.RUnlock()
 			}
 		}
 	}
@@ -297,9 +300,14 @@ func (s *CacheServer) updateROAs(f string) {
 		s.serial++
 		s.roas = roas
 		fmt.Printf("roas updated, serial is now %d\n", s.serial)
+
+		// TODO: Notify should only be sent if there is an actual diff
+		for _, c := range s.clients {
+			fmt.Printf("sending a notify to %s\n", c.addr)
+			c.notify(s.serial, s.session)
+		}
 		s.mutex.Unlock()
 	}
-
 }
 
 // makeDiff will return a list of ROAs that need to be deleted or updated
@@ -308,6 +316,7 @@ func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
 	newMap := make(map[string]roa, len(new))
 	oldMap := make(map[string]roa, len(old))
 	var addROA, delROA []roa
+	var diff bool
 
 	for _, roa := range new {
 		newMap[fmt.Sprintf("%s%d%d%d", roa.Prefix, roa.MinMask, roa.MaxMask, roa.ASN)] = roa
@@ -345,11 +354,16 @@ func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
 		fmt.Printf("Old ROAs to be deleted: %+v\n", delROA)
 	}
 
+	if len(addROA) > 0 || len(delROA) > 0 {
+		diff = true
+	}
+
 	return serialDiff{
 		oldSerial: serial,
 		newSerial: serial + 1,
 		addRoa:    addROA,
 		delRoa:    delROA,
+		diff:      diff,
 	}
 
 }
