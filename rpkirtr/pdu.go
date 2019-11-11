@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
+	"log"
 	"net"
 )
 
@@ -56,7 +56,7 @@ type serialNotifyPDU struct {
 }
 
 func (p *serialNotifyPDU) serialize(wr io.Writer) {
-	fmt.Printf("Sending a serial notify PDU: %+v\n", *p)
+	log.Printf("Sending a serial notify PDU: %+v\n", *p)
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, serialNotify)
 	binary.Write(wr, binary.BigEndian, p.Session)
@@ -120,7 +120,7 @@ type cacheResponsePDU struct {
 }
 
 func (p *cacheResponsePDU) serialize(wr io.Writer) {
-	fmt.Printf("Sending a cache Repsonse PDU: %v\n", *p)
+	log.Printf("Sending a cache Repsonse PDU: %v\n", *p)
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, cacheResponse)
 	binary.Write(wr, binary.BigEndian, p.sessionID)
@@ -268,7 +268,7 @@ func (p *endOfDataPDU) serialize(wr io.Writer) {
 	binary.Write(wr, binary.BigEndian, p.refresh)
 	binary.Write(wr, binary.BigEndian, p.retry)
 	binary.Write(wr, binary.BigEndian, p.expire)
-	fmt.Printf("Finished sending end of data PDU: %v\n", *p)
+	log.Printf("Finished sending end of data PDU: %v\n", *p)
 }
 
 type cacheResetPDU struct {
@@ -287,7 +287,7 @@ type cacheResetPDU struct {
 }
 
 func (p *cacheResetPDU) serialize(wr io.Writer) {
-	fmt.Printf("Sending a cache reset PDU: %v\n", *p)
+	log.Printf("Sending a cache reset PDU: %v\n", *p)
 	binary.Write(wr, binary.BigEndian, version1)
 	binary.Write(wr, binary.BigEndian, cacheReset)
 	binary.Write(wr, binary.BigEndian, uint16(0))
@@ -330,7 +330,7 @@ type errorReportPDU struct {
 }
 
 func (p *errorReportPDU) serialize(wr io.Writer) {
-	fmt.Printf("Sending an error report PDU: %v\n", *p)
+	log.Printf("Sending an error report PDU: %v\n", *p)
 	// length of encapped PDU 0 for now
 	// not encapping PDU, so empty field there
 	// TODO: Make this better of course

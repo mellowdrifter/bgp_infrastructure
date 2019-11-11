@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -80,7 +80,7 @@ func (c *client) sendDiff(diff serialDiff, session uint16) {
 				ppdu.serialize(c.conn)
 			}
 		}
-		fmt.Println("Finished sending all diffs")
+		log.Println("Finished sending all diffs")
 	}
 	epdu := endOfDataPDU{
 		sessionID: uint16(session),
@@ -155,7 +155,7 @@ func (c *client) sendRoa() {
 		}
 	}
 	c.mutex.RUnlock()
-	fmt.Println("Finished sending all prefixes")
+	log.Println("Finished sending all prefixes")
 	epdu := endOfDataPDU{
 		sessionID: uint16(session),
 		serial:    *c.serial,
@@ -178,6 +178,6 @@ func (c *client) error(code int, report string) {
 }
 
 func (c *client) status() {
-	fmt.Println("Status of client:")
-	fmt.Printf("Address is %s\n", c.addr)
+	log.Println("Status of client:")
+	log.Printf("Address is %s\n", c.addr)
 }
