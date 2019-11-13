@@ -27,9 +27,7 @@ func TestSerialNotifyPDU(t *testing.T) {
 			serial:  456,
 		},
 		{
-			desc:    "zero values",
-			session: 0,
-			serial:  0,
+			desc: "zero values",
 		},
 	}
 

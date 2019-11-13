@@ -5,7 +5,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -34,13 +33,17 @@ const (
 	lacnic  rir = 3
 	ripe    rir = 4
 
-	// refresh is the amount of seconds to wait until a new json is pulled.
-	// refresh = 4 * time.Minute
-	refresh = 15 * time.Minute
+	// refreshROA is the amount of seconds to wait until a new json is pulled.
+	refreshROA = 1 * time.Minute
 
 	// 8282 is the RFC port for RPKI-RTR
 	port = 8282
 	loc  = "localhost"
+
+	// Intervals are the default intervals in seconds if no specific value is configured
+	refresh = uint32(3600) // 1 - 86400
+	retry   = uint32(600)  // 1 - 7200
+	expire  = uint32(7200) // 600 - 172800
 
 	//maxMinMask is the largest min mask wanted
 	maxMinMaskv4 = 24
@@ -80,7 +83,7 @@ type roas struct {
 	Roas []jsonroa `json:"roas"`
 }
 
-// CacheServer is our main thing
+// CacheServer is our RPKI server.
 type CacheServer struct {
 	listener net.Listener
 	clients  []*client
@@ -123,23 +126,24 @@ func main() {
 		log.Fatalf("Unable to download ROAs, aborting: %v", err)
 	}
 
-	// This is our server itself
-	thing := CacheServer{
+	// Set up our server with it's initial data.
+	rpki := CacheServer{
 		mutex:   &sync.RWMutex{},
 		session: uint16(rand.Intn(65535)),
 		roas:    roas,
 	}
-	thing.mutex = &sync.RWMutex{}
-	thing.listen()
+	rpki.mutex = &sync.RWMutex{}
+	rpki.listen()
 
-	// ROAs should be updated all the time
-	go thing.updateROAs(cacheurl)
+	// ROAs should be updated at every refresh interval
+	go rpki.updateROAs(cacheurl)
 
 	// Show me how many clients are connected
-	go thing.printClients()
+	go rpki.printClients()
 
 	// I'm listening!
-	thing.start()
+	defer rpki.close()
+	rpki.start()
 
 }
 
@@ -154,6 +158,7 @@ func (s *CacheServer) listen() {
 
 }
 
+// printClients is just for debugging purposes
 func (s *CacheServer) printClients() {
 	for {
 		s.mutex.RLock()
@@ -164,14 +169,16 @@ func (s *CacheServer) printClients() {
 			}
 		}
 		s.mutex.RUnlock()
-		time.Sleep(time.Minute)
+		time.Sleep(time.Hour)
 	}
 }
 
+// close off the listener if existing
 func (s *CacheServer) close() {
 	s.listener.Close()
 }
 
+// start will start the listener as well as accept client and handle each.
 func (s *CacheServer) start() {
 	for {
 		conn, err := s.listener.Accept()
@@ -179,60 +186,7 @@ func (s *CacheServer) start() {
 			log.Printf("%v\n", err)
 		} else {
 			client := s.accept(conn)
-			go s.serve(client)
-		}
-	}
-}
-
-// Mux out the incoming connections. Should probably be called handleClient
-func (s *CacheServer) serve(client *client) {
-	log.Printf("Serving %s\n", client.conn.RemoteAddr().String())
-
-	for {
-		// Handle incoming PDU
-		var header headerPDU
-		binary.Read(client.conn, binary.BigEndian, &header)
-
-		switch {
-		// I only support version 1 for now.
-		case header.Version != 1:
-			log.Printf("Received something I don't know :'(  %+v\n", header)
-			client.error(4, "Unsupported Protocol Version")
-			client.conn.Close()
-			return
-
-		case header.Ptype == resetQuery:
-			var r resetQueryPDU
-			binary.Read(client.conn, binary.BigEndian, &r)
-			log.Printf("received a reset Query PDU from %s\n", client.addr)
-			client.sendRoa()
-
-		case header.Ptype == serialQuery:
-			var q serialQueryPDU
-			binary.Read(client.conn, binary.BigEndian, &q)
-			// If the client sends in the current or previous serial, then we can handle it.
-			// If the serial is older or unknown, we need to send a reset.
-			s.mutex.RLock()
-			serial := s.diff.newSerial
-			s.mutex.RUnlock()
-			// TODO: These serials could change while busy here
-			if q.Serial != serial && q.Serial != serial-1 {
-				log.Printf("received a serial query PDU, with an unmanagable serial from %s\n", client.addr)
-				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
-				client.sendReset()
-			}
-			if q.Serial == serial {
-				log.Printf("received a serial number which currently matches my own from %s\n", client.addr)
-				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
-				client.sendEmpty(q.Session)
-			}
-			if q.Serial == serial-1 {
-				log.Printf("received a serial number one less, so sending diff to %s\n", client.addr)
-				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
-				s.mutex.RLock()
-				client.sendDiff(s.diff, q.Session)
-				s.mutex.RUnlock()
-			}
+			go client.handleClient()
 		}
 	}
 }
@@ -245,24 +199,26 @@ func (s *CacheServer) accept(conn net.Conn) *client {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// If existing client, close the old connection.
+	// If existing client, close the old connection if it's still persistant.
 	for _, client := range s.clients {
 		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 		if client.addr == ip {
-			log.Printf("Already have a connection from %s, so closing existing one\n", client.addr)
+			log.Printf("Already have a connection from %s, so attemping to close existing one\n", client.addr)
 			s.remove(client)
 			break
 		}
 	}
-	log.Println("### End of close loop")
 
 	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+
+	// Each client will have a pointer to a load of the server's data.
 	client := &client{
 		conn:   conn,
 		addr:   ip,
 		roas:   &s.roas,
 		serial: &s.serial,
 		mutex:  s.mutex,
+		diff:   &s.diff,
 	}
 
 	s.clients = append(s.clients, client)
@@ -280,7 +236,6 @@ func (s *CacheServer) remove(c *client) {
 			s.clients = append(s.clients[:i], s.clients[i+1:]...)
 		}
 	}
-	log.Println("End of check loop")
 	err := c.conn.Close()
 	if err != nil {
 		log.Printf("*** Error closing connection! %v\n", err)
@@ -291,11 +246,15 @@ func (s *CacheServer) remove(c *client) {
 // updateROAs will update the server struct with the current list of ROAs
 func (s *CacheServer) updateROAs(f string) {
 	for {
-		time.Sleep(refresh)
+		time.Sleep(refreshROA)
 		s.mutex.Lock()
+		defer s.mutex.Unlock()
 		roas, err := readROAs(f)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("Unable to update ROAs, so keeping existing ROAs for now: %v\n", err)
+			break
+			// TODO: What happens if I'm unable to update ROAs? The diff struct could get old.
+			// Check the client diff update to ensure it's doing the right thing
 		}
 
 		// Calculate diffs
@@ -307,12 +266,13 @@ func (s *CacheServer) updateROAs(f string) {
 		s.roas = roas
 		log.Printf("roas updated, serial is now %d\n", s.serial)
 
-		// TODO: Notify should only be sent if there is an actual diff
-		for _, c := range s.clients {
-			log.Printf("sending a notify to %s\n", c.addr)
-			c.notify(s.serial, s.session)
+		// If there is a diff calculated, send a notify to all clients to update.
+		if s.diff.diff {
+			for _, c := range s.clients {
+				log.Printf("diff calculated, sending a notify to %s\n", c.addr)
+				c.notify(s.serial, s.session)
+			}
 		}
-		s.mutex.Unlock()
 	}
 }
 
@@ -323,8 +283,7 @@ func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
 	oldMap := make(map[string]roa, len(old))
 	var addROA, delROA []roa
 
-	// TODO: This works, but is a bit of a mess. Hash needs more than just prefix
-	// as you can have multiple ROAs per prefix (which includes min mask)
+	// TODO: Move map generation to it's own function as there is a lot of code duplication here.
 	for _, roa := range new {
 		newMap[fmt.Sprintf("%s%d%d", roa.Prefix, roa.MaxMask, roa.ASN)] = roa
 	}
@@ -348,6 +307,7 @@ func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
 		}
 	}
 
+	// The following is for debugging purposes. Will remove eventually once I have test coverage.
 	if len(addROA) == 0 {
 		log.Println("No addROA diff this time")
 	}
@@ -361,6 +321,7 @@ func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
 		log.Printf("Old ROAs to be deleted: %+v\n", delROA)
 	}
 
+	// There is only an actual diff is something is added or deleted.
 	diff := (len(addROA) > 0 || len(delROA) > 0)
 
 	return serialDiff{
@@ -372,7 +333,9 @@ func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
 	}
 }
 
-// readROAs will read the current ROAs into memory.
+// readROAs will fetch the latest set of ROAs and add to a local struct
+// TODO: For now this is getting data from cloudflare, but eventually I want to get this from
+// the RIRs directly.
 func readROAs(url string) ([]roa, error) {
 
 	resp, err := http.Get(url)

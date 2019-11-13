@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"log"
 	"math/rand"
 	"net"
@@ -16,6 +17,7 @@ type client struct {
 	roas    *[]roa
 	serial  *uint32
 	mutex   *sync.RWMutex
+	diff    *serialDiff
 }
 
 // reset has no data besides the header
@@ -180,4 +182,57 @@ func (c *client) error(code int, report string) {
 func (c *client) status() {
 	log.Println("Status of client:")
 	log.Printf("Address is %s\n", c.addr)
+}
+
+// Handle each client.
+func (c *client) handleClient() {
+	log.Printf("Serving %s\n", c.conn.RemoteAddr().String())
+
+	for {
+		// What is the incoming PDU?
+		var header headerPDU
+		binary.Read(c.conn, binary.BigEndian, &header)
+
+		switch {
+		// I only support version 1 for now.
+		case header.Version != 1:
+			log.Printf("Received something I don't know :'(  %+v\n", header)
+			c.error(4, "Unsupported Protocol Version")
+			c.conn.Close()
+			return
+
+		case header.Ptype == resetQuery:
+			var r resetQueryPDU
+			binary.Read(c.conn, binary.BigEndian, &r)
+			log.Printf("received a reset Query PDU from %s\n", c.addr)
+			c.sendRoa()
+
+		case header.Ptype == serialQuery:
+			var q serialQueryPDU
+			binary.Read(c.conn, binary.BigEndian, &q)
+			// If the client sends in the current or previous serial, then we can handle it.
+			// If the serial is older or unknown, we need to send a reset.
+			c.mutex.RLock()
+			serial := c.diff.newSerial
+			c.mutex.RUnlock()
+			// TODO: These serials could change while busy here
+			if q.Serial != serial && q.Serial != serial-1 {
+				log.Printf("received a serial query PDU, with an unmanagable serial from %s\n", c.addr)
+				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
+				c.sendReset()
+			}
+			if q.Serial == serial {
+				log.Printf("received a serial number which currently matches my own from %s\n", c.addr)
+				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
+				c.sendEmpty(q.Session)
+			}
+			if q.Serial == serial-1 {
+				log.Printf("received a serial number one less, so sending diff to %s\n", c.addr)
+				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
+				c.mutex.RLock()
+				c.sendDiff(*c.diff, q.Session)
+				c.mutex.RUnlock()
+			}
+		}
+	}
 }

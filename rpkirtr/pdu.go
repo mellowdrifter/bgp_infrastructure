@@ -29,6 +29,7 @@ const (
 	announce uint8 = 1
 )
 
+// headerPDU is used to extract the header of each incoming PDU
 type headerPDU struct {
 	Version uint8
 	Ptype   uint8
@@ -57,11 +58,20 @@ type serialNotifyPDU struct {
 
 func (p *serialNotifyPDU) serialize(wr io.Writer) {
 	log.Printf("Sending a serial notify PDU: %+v\n", *p)
-	binary.Write(wr, binary.BigEndian, version1)
-	binary.Write(wr, binary.BigEndian, serialNotify)
-	binary.Write(wr, binary.BigEndian, p.Session)
-	binary.Write(wr, binary.BigEndian, uint32(12))
-	binary.Write(wr, binary.BigEndian, p.Serial)
+	pdu := struct {
+		version uint8
+		ptype   uint8
+		session uint16
+		length  uint32
+		serial  uint32
+	}{
+		version1,
+		serialNotify,
+		p.Session,
+		uint32(12),
+		p.Serial,
+	}
+	binary.Write(wr, binary.BigEndian, pdu)
 }
 
 type serialQueryPDU struct {
@@ -120,11 +130,19 @@ type cacheResponsePDU struct {
 }
 
 func (p *cacheResponsePDU) serialize(wr io.Writer) {
-	log.Printf("Sending a cache Repsonse PDU: %v\n", *p)
-	binary.Write(wr, binary.BigEndian, version1)
-	binary.Write(wr, binary.BigEndian, cacheResponse)
-	binary.Write(wr, binary.BigEndian, p.sessionID)
-	binary.Write(wr, binary.BigEndian, uint32(8))
+	log.Printf("Sending a cache Response PDU: %v\n", *p)
+	pdu := struct {
+		version uint8
+		ptype   uint8
+		session uint16
+		length  uint32
+	}{
+		version1,
+		cacheResponse,
+		p.sessionID,
+		uint32(8),
+	}
+	binary.Write(wr, binary.BigEndian, pdu)
 }
 
 type ipv4PrefixPDU struct {
@@ -260,15 +278,28 @@ type endOfDataPDU struct {
 }
 
 func (p *endOfDataPDU) serialize(wr io.Writer) {
-	binary.Write(wr, binary.BigEndian, version1)
-	binary.Write(wr, binary.BigEndian, endOfData)
-	binary.Write(wr, binary.BigEndian, p.sessionID)
-	binary.Write(wr, binary.BigEndian, uint32(24))
-	binary.Write(wr, binary.BigEndian, p.serial)
-	binary.Write(wr, binary.BigEndian, p.refresh)
-	binary.Write(wr, binary.BigEndian, p.retry)
-	binary.Write(wr, binary.BigEndian, p.expire)
-	log.Printf("Finished sending end of data PDU: %v\n", *p)
+	log.Printf("Sending end of data PDU: %v\n", *p)
+	pdu := struct {
+		version uint8
+		ptype   uint8
+		session uint16
+		length  uint32
+		serual  uint32
+		refresh uint32
+		retry   uint32
+		expire  uint32
+	}{
+		version1,
+		endOfData,
+		p.sessionID,
+		uint32(24),
+		p.serial,
+		p.refresh,
+		p.retry,
+		p.expire,
+	}
+	binary.Write(wr, binary.BigEndian, pdu)
+
 }
 
 type cacheResetPDU struct {
@@ -288,10 +319,18 @@ type cacheResetPDU struct {
 
 func (p *cacheResetPDU) serialize(wr io.Writer) {
 	log.Printf("Sending a cache reset PDU: %v\n", *p)
-	binary.Write(wr, binary.BigEndian, version1)
-	binary.Write(wr, binary.BigEndian, cacheReset)
-	binary.Write(wr, binary.BigEndian, uint16(0))
-	binary.Write(wr, binary.BigEndian, uint32(8))
+	pdu := struct {
+		version uint8
+		ptype   uint8
+		zero    uint16
+		length  uint32
+	}{
+		version1,
+		cacheReset,
+		uint16(0),
+		uint32(8),
+	}
+	binary.Write(wr, binary.BigEndian, pdu)
 }
 
 type errorReportPDU struct {
