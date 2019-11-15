@@ -161,9 +161,9 @@ func (c *client) sendRoa() {
 	epdu := endOfDataPDU{
 		sessionID: uint16(session),
 		serial:    *c.serial,
-		refresh:   uint32(900),
-		retry:     uint32(30),
-		expire:    uint32(171999),
+		refresh:   refresh,
+		retry:     retry,
+		expire:    expire,
 	}
 	epdu.serialize(c.conn)
 
@@ -179,19 +179,19 @@ func (c *client) error(code int, report string) {
 
 }
 
-func (c *client) status() {
-	log.Println("Status of client:")
-	log.Printf("Address is %s\n", c.addr)
-}
-
 // Handle each client.
 func (c *client) handleClient() {
 	log.Printf("Serving %s\n", c.conn.RemoteAddr().String())
 
 	for {
+
 		// What is the incoming PDU?
 		var header headerPDU
 		binary.Read(c.conn, binary.BigEndian, &header)
+		// debug logging for now
+		if header != (headerPDU{}) {
+			log.Printf("Received: %#v\n", header)
+		}
 
 		switch {
 		// I only support version 1 for now.
@@ -210,12 +210,12 @@ func (c *client) handleClient() {
 		case header.Ptype == serialQuery:
 			var q serialQueryPDU
 			binary.Read(c.conn, binary.BigEndian, &q)
+			log.Printf("received a serial Query PDU from %s\n", c.addr)
 			// If the client sends in the current or previous serial, then we can handle it.
 			// If the serial is older or unknown, we need to send a reset.
 			c.mutex.RLock()
 			serial := c.diff.newSerial
 			c.mutex.RUnlock()
-			// TODO: These serials could change while busy here
 			if q.Serial != serial && q.Serial != serial-1 {
 				log.Printf("received a serial query PDU, with an unmanagable serial from %s\n", c.addr)
 				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)

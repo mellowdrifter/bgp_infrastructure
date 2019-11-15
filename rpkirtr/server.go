@@ -163,11 +163,6 @@ func (s *CacheServer) printClients() {
 	for {
 		s.mutex.RLock()
 		log.Printf("I currently have %d clients connected\n", len(s.clients))
-		if len(s.clients) > 0 {
-			for _, client := range s.clients {
-				client.status()
-			}
-		}
 		s.mutex.RUnlock()
 		time.Sleep(time.Hour)
 	}
@@ -223,6 +218,8 @@ func (s *CacheServer) accept(conn net.Conn) *client {
 
 	s.clients = append(s.clients, client)
 
+	log.Printf("New client added to list: %#v\n", s.clients)
+
 	return client
 }
 
@@ -248,30 +245,28 @@ func (s *CacheServer) updateROAs(f string) {
 	for {
 		time.Sleep(refreshROA)
 		s.mutex.Lock()
-		defer s.mutex.Unlock()
 		roas, err := readROAs(f)
 		if err != nil {
 			log.Printf("Unable to update ROAs, so keeping existing ROAs for now: %v\n", err)
-			break
+			s.mutex.Unlock()
+			return
 			// TODO: What happens if I'm unable to update ROAs? The diff struct could get old.
 			// Check the client diff update to ensure it's doing the right thing
 		}
 
 		// Calculate diffs
-		diff := makeDiff(roas, s.roas, s.serial)
-		s.diff = diff
+		s.diff = makeDiff(roas, s.roas, s.serial)
 
 		// Increment serial and replace
 		s.serial++
 		s.roas = roas
 		log.Printf("roas updated, serial is now %d\n", s.serial)
 
-		// If there is a diff calculated, send a notify to all clients to update.
-		if s.diff.diff {
-			for _, c := range s.clients {
-				log.Printf("diff calculated, sending a notify to %s\n", c.addr)
-				c.notify(s.serial, s.session)
-			}
+		s.mutex.Unlock()
+		// Notify all clients that the serial number has been updated.
+		for _, c := range s.clients {
+			log.Printf("sending a notify to %s\n", c.addr)
+			c.notify(s.serial, s.session)
 		}
 	}
 }
