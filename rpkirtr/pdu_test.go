@@ -61,3 +61,52 @@ func TestSerialNotifyPDU(t *testing.T) {
 		}
 	}
 }
+
+func TestCacheResponsePDU(t *testing.T) {
+	type cachePDU struct {
+		Version uint8
+		Ptype   uint8
+		Session uint16
+		Length  uint32
+	}
+	pdus := []struct {
+		desc    string
+		session uint16
+	}{
+		{
+			desc:    "regular values",
+			session: 123,
+		},
+		{
+			desc: "zero values",
+		},
+	}
+
+	for _, p := range pdus {
+
+		// Send data to be encoded
+		var buffer bytes.Buffer
+		pdu := &cacheResponsePDU{
+			sessionID: p.session,
+		}
+		pdu.serialize(&buffer)
+
+		// Read data back that was written
+		buf := bytes.NewReader(buffer.Bytes())
+		var got cachePDU
+		binary.Read(buf, binary.BigEndian, &got)
+
+		// Directly create PDU
+		want := cachePDU{
+			Version: version1,
+			Ptype:   cacheResponse,
+			Session: p.session,
+			Length:  8,
+		}
+
+		// Compare them
+		if !cmp.Equal(got, want) {
+			t.Errorf("PDU encoded is not what was expected. Got %+v, Wanted %+v\n", got, want)
+		}
+	}
+}

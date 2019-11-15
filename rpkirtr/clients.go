@@ -42,7 +42,7 @@ func (c *client) sendDiff(diff serialDiff, session uint16) {
 					flags:  announce,
 					min:    uint8(roa.MinMask),
 					max:    uint8(roa.MaxMask),
-					prefix: IPAddress.To16(),
+					prefix: ipv6ToByte(IPAddress.To16()),
 					asn:    uint32(roa.ASN),
 				}
 				ppdu.serialize(c.conn)
@@ -51,7 +51,7 @@ func (c *client) sendDiff(diff serialDiff, session uint16) {
 					flags:  announce,
 					min:    uint8(roa.MinMask),
 					max:    uint8(roa.MaxMask),
-					prefix: IPAddress.To4(),
+					prefix: ipv4ToByte(IPAddress.To4()),
 					asn:    uint32(roa.ASN),
 				}
 				ppdu.serialize(c.conn)
@@ -67,7 +67,7 @@ func (c *client) sendDiff(diff serialDiff, session uint16) {
 					flags:  withdraw,
 					min:    uint8(roa.MinMask),
 					max:    uint8(roa.MaxMask),
-					prefix: IPAddress.To16(),
+					prefix: ipv6ToByte(IPAddress.To16()),
 					asn:    uint32(roa.ASN),
 				}
 				ppdu.serialize(c.conn)
@@ -76,7 +76,7 @@ func (c *client) sendDiff(diff serialDiff, session uint16) {
 					flags:  withdraw,
 					min:    uint8(roa.MinMask),
 					max:    uint8(roa.MaxMask),
-					prefix: IPAddress.To4(),
+					prefix: ipv4ToByte(IPAddress.To4()),
 					asn:    uint32(roa.ASN),
 				}
 				ppdu.serialize(c.conn)
@@ -141,7 +141,7 @@ func (c *client) sendRoa() {
 				flags:  announce,
 				min:    uint8(roa.MinMask),
 				max:    uint8(roa.MaxMask),
-				prefix: IPAddress.To16(),
+				prefix: ipv6ToByte(IPAddress.To16()),
 				asn:    uint32(roa.ASN),
 			}
 			ppdu.serialize(c.conn)
@@ -150,7 +150,7 @@ func (c *client) sendRoa() {
 				flags:  announce,
 				min:    uint8(roa.MinMask),
 				max:    uint8(roa.MaxMask),
-				prefix: IPAddress.To4(),
+				prefix: ipv4ToByte(IPAddress.To4()),
 				asn:    uint32(roa.ASN),
 			}
 			ppdu.serialize(c.conn)

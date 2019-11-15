@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
-	"net"
 )
 
 const (
@@ -173,7 +172,7 @@ type ipv4PrefixPDU struct {
 	flags  uint8
 	min    uint8
 	max    uint8
-	prefix net.IP // For IPv4 this should be 4 bytes
+	prefix [4]byte
 	asn    uint32
 }
 
@@ -223,7 +222,7 @@ type ipv6PrefixPDU struct {
 	flags  uint8
 	min    uint8
 	max    uint8
-	prefix net.IP // For IPv6 this should be 16 bytes
+	prefix [16]byte
 	asn    uint32
 }
 
