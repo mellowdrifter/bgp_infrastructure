@@ -5,7 +5,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"strings"
 	"sync"
 )
 
@@ -27,60 +26,17 @@ func (c *client) sendReset() {
 }
 
 // sendDiff should send additions and deletions to the client.
-func (c *client) sendDiff(diff serialDiff, session uint16) {
+func (c *client) sendDiff(diff *serialDiff, session uint16) {
 	cpdu := cacheResponsePDU{
 		sessionID: session,
 	}
 	cpdu.serialize(c.conn)
 	if diff.diff {
 		for _, roa := range diff.addRoa {
-			IPAddress := net.ParseIP(roa.Prefix)
-			// TODO put ipv4/ipv6 signal in when creating the ROAs
-			switch strings.Contains(roa.Prefix, ":") {
-			case true:
-				ppdu := ipv6PrefixPDU{
-					flags:  announce,
-					min:    uint8(roa.MinMask),
-					max:    uint8(roa.MaxMask),
-					prefix: ipv6ToByte(IPAddress.To16()),
-					asn:    uint32(roa.ASN),
-				}
-				ppdu.serialize(c.conn)
-			case false:
-				ppdu := ipv4PrefixPDU{
-					flags:  announce,
-					min:    uint8(roa.MinMask),
-					max:    uint8(roa.MaxMask),
-					prefix: ipv4ToByte(IPAddress.To4()),
-					asn:    uint32(roa.ASN),
-				}
-				ppdu.serialize(c.conn)
-			}
+			writePrefixPDU(&roa, c.conn, announce)
 		}
-		// TODO: Better to put add/remove all in a single list with the flag type
 		for _, roa := range diff.delRoa {
-			IPAddress := net.ParseIP(roa.Prefix)
-			// TODO put ipv4/ipv6 signal in when creating the ROAs
-			switch strings.Contains(roa.Prefix, ":") {
-			case true:
-				ppdu := ipv6PrefixPDU{
-					flags:  withdraw,
-					min:    uint8(roa.MinMask),
-					max:    uint8(roa.MaxMask),
-					prefix: ipv6ToByte(IPAddress.To16()),
-					asn:    uint32(roa.ASN),
-				}
-				ppdu.serialize(c.conn)
-			case false:
-				ppdu := ipv4PrefixPDU{
-					flags:  withdraw,
-					min:    uint8(roa.MinMask),
-					max:    uint8(roa.MaxMask),
-					prefix: ipv4ToByte(IPAddress.To4()),
-					asn:    uint32(roa.ASN),
-				}
-				ppdu.serialize(c.conn)
-			}
+			writePrefixPDU(&roa, c.conn, withdraw)
 		}
 		log.Println("Finished sending all diffs")
 	}
@@ -95,6 +51,31 @@ func (c *client) sendDiff(diff serialDiff, session uint16) {
 
 }
 
+// writePrefixPDU will directly write the update or withdraw prefix PDU.
+func writePrefixPDU(r *roa, c net.Conn, flag uint8) {
+	IPAddress := net.ParseIP(r.Prefix)
+	switch r.IsV4 {
+	case true:
+		ppdu := ipv4PrefixPDU{
+			flags:  flag,
+			min:    r.MinMask,
+			max:    r.MaxMask,
+			prefix: ipv4ToByte(IPAddress.To4()),
+			asn:    r.ASN,
+		}
+		ppdu.serialize(c)
+	case false:
+		ppdu := ipv6PrefixPDU{
+			flags:  flag,
+			min:    r.MinMask,
+			max:    r.MaxMask,
+			prefix: ipv6ToByte(IPAddress.To16()),
+			asn:    r.ASN,
+		}
+		ppdu.serialize(c)
+	}
+}
+
 // Notify client that an update has taken place
 func (c *client) notify(serial uint32, session uint16) {
 	npdu := serialNotifyPDU{
@@ -105,11 +86,9 @@ func (c *client) notify(serial uint32, session uint16) {
 
 }
 
-// sendEmpty sends an empty response. Not sure if this is the right thing to do when getting
-// a serial query in which the serial numbers match :/
+// sendEmpty sends an empty response if there is no update required.
 func (c *client) sendEmpty(session uint16) {
 	cpdu := cacheResponsePDU{
-		// TODO: Not sure what, where to get this? OR what it's for!
 		sessionID: session,
 	}
 	cpdu.serialize(c.conn)
@@ -133,28 +112,7 @@ func (c *client) sendRoa() {
 
 	c.mutex.RLock()
 	for _, roa := range *c.roas {
-		IPAddress := net.ParseIP(roa.Prefix)
-		// TODO put ipv4/ipv6 signal in when creating the ROAs
-		switch strings.Contains(roa.Prefix, ":") {
-		case true:
-			ppdu := ipv6PrefixPDU{
-				flags:  announce,
-				min:    uint8(roa.MinMask),
-				max:    uint8(roa.MaxMask),
-				prefix: ipv6ToByte(IPAddress.To16()),
-				asn:    uint32(roa.ASN),
-			}
-			ppdu.serialize(c.conn)
-		case false:
-			ppdu := ipv4PrefixPDU{
-				flags:  announce,
-				min:    uint8(roa.MinMask),
-				max:    uint8(roa.MaxMask),
-				prefix: ipv4ToByte(IPAddress.To4()),
-				asn:    uint32(roa.ASN),
-			}
-			ppdu.serialize(c.conn)
-		}
+		writePrefixPDU(&roa, c.conn, announce)
 	}
 	c.mutex.RUnlock()
 	log.Println("Finished sending all prefixes")
@@ -230,7 +188,7 @@ func (c *client) handleClient() {
 				log.Printf("received a serial number one less, so sending diff to %s\n", c.addr)
 				log.Printf("Serial received: %d. Current server serial: %d\n", q.Serial, serial)
 				c.mutex.RLock()
-				c.sendDiff(*c.diff, q.Session)
+				c.sendDiff(c.diff, q.Session)
 				c.mutex.RUnlock()
 			}
 		}

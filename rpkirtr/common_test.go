@@ -157,7 +157,7 @@ func TestMakeDiff(t *testing.T) {
 				diff:      false,
 			},
 		}, {
-			desc: "one ROA, mask change",
+			desc: "Min mask change",
 			new: []roa{
 				roa{
 					Prefix:  "192.168.1.1",
@@ -190,6 +190,86 @@ func TestMakeDiff(t *testing.T) {
 					roa{
 						Prefix:  "192.168.1.1",
 						MinMask: 23,
+						MaxMask: 32,
+						ASN:     123,
+					},
+				},
+				diff: true,
+			},
+		}, {
+			desc: "Max mask change",
+			new: []roa{
+				roa{
+					Prefix:  "192.168.1.1",
+					MinMask: 24,
+					MaxMask: 31,
+					ASN:     123,
+				},
+			},
+			old: []roa{
+				roa{
+					Prefix:  "192.168.1.1",
+					MinMask: 24,
+					MaxMask: 32,
+					ASN:     123,
+				},
+			},
+			serial: 1,
+			want: serialDiff{
+				oldSerial: 1,
+				newSerial: 2,
+				delRoa: []roa{
+					roa{
+						Prefix:  "192.168.1.1",
+						MinMask: 24,
+						MaxMask: 32,
+						ASN:     123,
+					},
+				},
+				addRoa: []roa{
+					roa{
+						Prefix:  "192.168.1.1",
+						MinMask: 24,
+						MaxMask: 31,
+						ASN:     123,
+					},
+				},
+				diff: true,
+			},
+		}, {
+			desc: "ASN change",
+			new: []roa{
+				roa{
+					Prefix:  "192.168.1.1",
+					MinMask: 24,
+					MaxMask: 32,
+					ASN:     123,
+				},
+			},
+			old: []roa{
+				roa{
+					Prefix:  "192.168.1.1",
+					MinMask: 24,
+					MaxMask: 32,
+					ASN:     1234,
+				},
+			},
+			serial: 1,
+			want: serialDiff{
+				oldSerial: 1,
+				newSerial: 2,
+				delRoa: []roa{
+					roa{
+						Prefix:  "192.168.1.1",
+						MinMask: 24,
+						MaxMask: 32,
+						ASN:     1234,
+					},
+				},
+				addRoa: []roa{
+					roa{
+						Prefix:  "192.168.1.1",
+						MinMask: 24,
 						MaxMask: 32,
 						ASN:     123,
 					},

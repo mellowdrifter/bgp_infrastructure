@@ -177,16 +177,31 @@ type ipv4PrefixPDU struct {
 }
 
 func (p *ipv4PrefixPDU) serialize(wr io.Writer) {
-	binary.Write(wr, binary.BigEndian, version1)
-	binary.Write(wr, binary.BigEndian, ipv4Prefix)
-	binary.Write(wr, binary.BigEndian, uint16(0))
-	binary.Write(wr, binary.BigEndian, uint32(20))
-	binary.Write(wr, binary.BigEndian, p.flags)
-	binary.Write(wr, binary.BigEndian, p.min)
-	binary.Write(wr, binary.BigEndian, p.max)
-	binary.Write(wr, binary.BigEndian, uint8(0))
-	binary.Write(wr, binary.BigEndian, p.prefix)
-	binary.Write(wr, binary.BigEndian, p.asn)
+
+	pdu := struct {
+		version uint8
+		ptype   uint8
+		zero16  uint16
+		length  uint32
+		flags   uint8
+		min     uint8
+		max     uint8
+		zero8   uint8
+		prefix  [4]byte
+		asn     uint32
+	}{
+		version1,
+		ipv4Prefix,
+		uint16(0),
+		uint32(20),
+		p.flags,
+		p.min,
+		p.max,
+		uint8(0),
+		p.prefix,
+		p.asn,
+	}
+	binary.Write(wr, binary.BigEndian, pdu)
 
 }
 
@@ -227,16 +242,31 @@ type ipv6PrefixPDU struct {
 }
 
 func (p *ipv6PrefixPDU) serialize(wr io.Writer) {
-	binary.Write(wr, binary.BigEndian, version1)
-	binary.Write(wr, binary.BigEndian, ipv6Prefix)
-	binary.Write(wr, binary.BigEndian, uint16(0))
-	binary.Write(wr, binary.BigEndian, uint32(32))
-	binary.Write(wr, binary.BigEndian, p.flags)
-	binary.Write(wr, binary.BigEndian, p.min)
-	binary.Write(wr, binary.BigEndian, p.max)
-	binary.Write(wr, binary.BigEndian, uint8(0))
-	binary.Write(wr, binary.BigEndian, p.prefix)
-	binary.Write(wr, binary.BigEndian, p.asn)
+
+	pdu := struct {
+		version uint8
+		ptype   uint8
+		zero16  uint16
+		length  uint32
+		flags   uint8
+		min     uint8
+		max     uint8
+		zero8   uint8
+		prefix  [16]byte
+		asn     uint32
+	}{
+		version1,
+		ipv6Prefix,
+		uint16(0),
+		uint32(32),
+		p.flags,
+		p.min,
+		p.max,
+		uint8(0),
+		p.prefix,
+		p.asn,
+	}
+	binary.Write(wr, binary.BigEndian, pdu)
 
 }
 

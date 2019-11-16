@@ -47,7 +47,7 @@ const (
 )
 
 // enum used for RIRs
-type rir int
+type rir uint8
 
 // jsonroa is a struct to push the cloudflare ROA data into.
 type jsonroa struct {
@@ -58,12 +58,14 @@ type jsonroa struct {
 }
 
 // Converted ROA struct with all the details.
+// Handy calculator - http://golang-sizeof.tips/ - current size 24
 type roa struct {
 	Prefix  string
 	MinMask uint8
 	MaxMask uint8
 	ASN     uint32
 	RIR     rir
+	IsV4    bool
 }
 
 // rpkiResponse, metadata, and roas are all used to unmarshal the json file.
@@ -75,6 +77,7 @@ type metadata struct {
 	Generated float64 `json:"generated"`
 	Valid     float64 `json:"valid"`
 }
+
 type roas struct {
 	Roas []jsonroa `json:"roas"`
 }
@@ -121,6 +124,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to download ROAs, aborting: %v", err)
 	}
+
+	// https://golangcode.com/print-the-current-memory-usage/
+	go PrintMemUsage()
 
 	// Set up our server with it's initial data.
 	rpki := CacheServer{

@@ -8,7 +8,10 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"runtime"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // stringToInt does inline convertions and logs errors, instead of panicing.
@@ -149,10 +152,32 @@ func readROAs(url string) ([]roa, error) {
 			MaxMask: uint8(r.Mask),
 			ASN:     uint32(asnToInt(r.ASN)),
 			RIR:     rirs[r.RIR],
+			IsV4:    strings.Contains(prefix[1], "."),
 		})
 
 	}
 
 	return roas, nil
 
+}
+
+// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
+// of garage collection cycles completed.
+// Taken from https://golangcode.com/print-the-current-memory-usage/
+func PrintMemUsage() {
+	for {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+		log.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+		log.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+		log.Printf("\tSys = %v MiB", bToMb(m.Sys))
+		log.Printf("\tNumGC = %v\n", m.NumGC)
+		time.Sleep(1 * time.Minute)
+	}
+}
+
+// Taken from https://golangcode.com/print-the-current-memory-usage/
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
