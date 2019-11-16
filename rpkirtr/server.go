@@ -5,18 +5,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
 	"os"
-	"regexp"
 	"sync"
 	"time"
 
-	"net/http"
 	_ "net/http/pprof"
 
 	"github.com/pkg/profile"
@@ -34,7 +30,7 @@ const (
 	ripe    rir = 4
 
 	// refreshROA is the amount of seconds to wait until a new json is pulled.
-	refreshROA = 1 * time.Minute
+	refreshROA = 15 * time.Minute
 
 	// 8282 is the RFC port for RPKI-RTR
 	port = 8282
@@ -106,7 +102,7 @@ type serialDiff struct {
 }
 
 func main() {
-	defer profile.Start().Stop()
+	defer profile.Start(profile.MemProfile).Stop()
 
 	// set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -138,8 +134,8 @@ func main() {
 	// ROAs should be updated at every refresh interval
 	go rpki.updateROAs(cacheurl)
 
-	// Show me how many clients are connected
-	go rpki.printClients()
+	// Show me the status of the server. Mostly for debugging
+	go rpki.status()
 
 	// I'm listening!
 	defer rpki.close()
@@ -158,14 +154,18 @@ func (s *CacheServer) listen() {
 
 }
 
-// printClients is just for debugging purposes
-func (s *CacheServer) printClients() {
+func (s *CacheServer) status() {
 	for {
 		s.mutex.RLock()
 		log.Printf("I currently have %d clients connected\n", len(s.clients))
+		log.Printf("Current ROA count is %d\n", len(s.roas))
+		log.Printf("Current serial number is %d\n", s.serial)
+		log.Printf("Last diff is %t\n", s.diff.diff)
+		log.Printf("Current size of diff is %d\n", len(s.diff.addRoa)+len(s.diff.delRoa))
 		s.mutex.RUnlock()
-		time.Sleep(time.Hour)
+		time.Sleep(5 * time.Minute)
 	}
+
 }
 
 // close off the listener if existing
@@ -269,109 +269,4 @@ func (s *CacheServer) updateROAs(f string) {
 			c.notify(s.serial, s.session)
 		}
 	}
-}
-
-// makeDiff will return a list of ROAs that need to be deleted or updated
-// in order for a particular serial version to updated to the latest version.
-func makeDiff(new []roa, old []roa, serial uint32) serialDiff {
-	newMap := make(map[string]roa, len(new))
-	oldMap := make(map[string]roa, len(old))
-	var addROA, delROA []roa
-
-	// TODO: Move map generation to it's own function as there is a lot of code duplication here.
-	for _, roa := range new {
-		newMap[fmt.Sprintf("%s%d%d", roa.Prefix, roa.MaxMask, roa.ASN)] = roa
-	}
-	for _, roa := range old {
-		oldMap[fmt.Sprintf("%s%d%d", roa.Prefix, roa.MaxMask, roa.ASN)] = roa
-	}
-
-	// If ROA is in newMap but not oldMap, we need to add it
-	for k, v := range newMap {
-		_, ok := oldMap[k]
-		if !ok {
-			addROA = append(addROA, v)
-		}
-	}
-
-	// If ROA is in oldMap but not newMap, we need to delete it.
-	for k, v := range oldMap {
-		_, ok := newMap[k]
-		if !ok {
-			delROA = append(delROA, v)
-		}
-	}
-
-	// The following is for debugging purposes. Will remove eventually once I have test coverage.
-	if len(addROA) == 0 {
-		log.Println("No addROA diff this time")
-	}
-	if len(delROA) == 0 {
-		log.Println("No delROA diff this time")
-	}
-	if len(addROA) > 0 {
-		log.Printf("New ROAs to be added: %+v\n", addROA)
-	}
-	if len(delROA) > 0 {
-		log.Printf("Old ROAs to be deleted: %+v\n", delROA)
-	}
-
-	// There is only an actual diff is something is added or deleted.
-	diff := (len(addROA) > 0 || len(delROA) > 0)
-
-	return serialDiff{
-		oldSerial: serial,
-		newSerial: serial + 1,
-		addRoa:    addROA,
-		delRoa:    delROA,
-		diff:      diff,
-	}
-}
-
-// readROAs will fetch the latest set of ROAs and add to a local struct
-// TODO: For now this is getting data from cloudflare, but eventually I want to get this from
-// the RIRs directly.
-func readROAs(url string) ([]roa, error) {
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	f, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	rirs := map[string]rir{
-		"Cloudflare - AFRINIC": afrinic,
-		"Cloudflare - ARIN":    arin,
-		"Cloudflare - APNIC":   apnic,
-		"Cloudflare - LACNIC":  lacnic,
-		"Cloudflare - RIPE":    ripe,
-	}
-
-	var r rpkiResponse
-	json.Unmarshal(f, &r)
-
-	// We know how many ROAs we have, so we can add that capacity directly
-	roas := make([]roa, 0, len(r.roas.Roas))
-
-	rxp := regexp.MustCompile(`(.*)/(.*)`)
-
-	for _, r := range r.roas.Roas {
-		prefix := rxp.FindStringSubmatch(r.Prefix)
-		roas = append(roas, roa{
-			Prefix:  prefix[1],
-			MinMask: uint8(stringToInt(prefix[2])),
-			MaxMask: uint8(r.Mask),
-			ASN:     uint32(asnToInt(r.ASN)),
-			RIR:     rirs[r.RIR],
-		})
-
-	}
-
-	return roas, nil
-
 }
