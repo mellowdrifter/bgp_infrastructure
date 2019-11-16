@@ -1,11 +1,4 @@
-# Travis CI for the master branch
-
-[![Travis CI](https://img.shields.io/travis/mellowdrifter/bgp_infrastructure/master.svg?style=flat-square)](https://travis-ci.org/mellowdrifter/bgp_infrastructure)
-
-# Link to GoDoc
-
-[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://godoc.org/github.com/mellowdrifter/bgp_infrastructure)
-
-# Codecov for the master branch
-
-[![Coverage Status](http://codecov.io/github/mellowdrifter/bgp_infrastructure/coverage.svg?branch=master)](http://codecov.io/github/mellowdrifter/bgp_infrastructure?branch=master)
+[![CircleCI](https://circleci.com/gh/mellowdrifter/bgp_infrastructure/tree/master.svg?style=shield)](https://circleci.com/gh/mellowdrifter/bgp_infrastructure/tree/master)
+[![Codecov](https://codecov.io/gh/mellowdrifter/bgp_infrastructure/branch/master/graph/badge.svg)](https://codecov.io/gh/mellowdrifter/bgp_infrastructure)
+[![Go ReportCard](http://goreportcard.com/badge/mellowdrifter/bgp_infrastructure)](http://goreportcard.com/report/mellowdrifter/bgp_infrastructure)
+[![Go Doc](https://godoc.org/github.com/mellowdrifter/bgp_infrastructure?status.svg)](https://godoc.org/github.com/mellowdrifter/bgp_infrastructure)
