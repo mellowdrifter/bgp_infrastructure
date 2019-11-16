@@ -1,6 +1,6 @@
 # Travis CI for the master branch
 
-[![Travis CI](https://img.shields.io/travis/vendor/package/master.svg?style=flat-square)](https://travis-ci.org/vendor/package)
+[![Travis CI](https://img.shields.io/travis/mellowdrifter/bgp_infrastructure/master.svg?style=flat-square)](https://travis-ci.org/vendor/package)
 
 # Link to GoDoc
 
@@ -8,4 +8,4 @@
 
 # Codecov for the master branch
 
-[![Coverage Status](http://codecov.io/github/vendor/package/coverage.svg?branch=master)](http://codecov.io/github/vendor/package?branch=master)
+[![Coverage Status](http://codecov.io/github/mellowdrifter/bgp_infrastructure/coverage.svg?branch=master)](http://codecov.io/github/vendor/package?branch=master)
