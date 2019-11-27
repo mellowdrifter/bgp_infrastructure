@@ -91,7 +91,9 @@ func (o *msgOpen) serialize(wr io.Writer) {
 		pl      uint8
 		ptype   uint8
 		l       uint8
-		fourasn uint32
+		afi     uint16
+		res     uint8
+		safi    uint8
 	}{
 		allOnes,
 		allOnes,
@@ -101,12 +103,14 @@ func (o *msgOpen) serialize(wr io.Writer) {
 		64500,
 		30,
 		bgpid{2, 2, 2, 2},
-		8,
+		8, // plength
 		2,
-		6,
-		cap4byte,
+		6, //pl
+		mpbgp,
 		4,
-		64500,
+		1,
+		0,
+		1,
 	}
 	log.Printf("Sending an open message: %#v\n", m)
 	binary.Write(wr, binary.BigEndian, m)
@@ -124,15 +128,15 @@ type msgCapability struct {
 
 func sendKeepAlive(wr io.Writer) {
 	k := struct {
-		one     uint64
-		two     uint64
-		version uint8
-		length  uint16
+		one    uint64
+		two    uint64
+		length uint16
+		ptype  uint8
 	}{
 		allOnes,
 		allOnes,
-		bgpVersion,
 		19,
+		keepalive,
 	}
 	log.Printf("Sending a keepalive: %#v\n", k)
 	binary.Write(wr, binary.BigEndian, k)
@@ -164,12 +168,19 @@ func (m *msgNotification) unsupported(wr io.Writer, non []uint8) {
 	}{
 		allOnes,
 		allOnes,
-		0,
+		20,
 		notification,
 		openError,
 		unsupportedCapability,
 		non,
 	}
+	log.Printf("%#v\n", n)
 	binary.Write(wr, binary.BigEndian, n)
 
+}
+
+// this is just for End-Of-RIB. Needs more work!
+type msgUpdate struct {
+	Length uint16
+	Attr   uint16
 }

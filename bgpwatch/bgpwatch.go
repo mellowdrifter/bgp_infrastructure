@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"sync"
-	"time"
 )
 
 const (
@@ -122,64 +121,69 @@ func (s *bgpWatchServer) remove(p *peer) {
 
 // most of the logic will eventually be here
 func (p *peer) handle() {
-	msg := getMessage(p.conn)
-	b := bytes.NewReader(msg)
+	for {
+		msg := getMessage(p.conn)
+		b := bytes.NewReader(msg)
 
-	// BGP always has a marker of 128s bits worth of 1s
-	var m marker
-	binary.Read(b, binary.BigEndian, &m)
+		// BGP always has a marker of 128s bits worth of 1s
+		var m marker
+		binary.Read(b, binary.BigEndian, &m)
 
-	// What is the incoming packet?
-	var h header
-	binary.Read(b, binary.BigEndian, &h)
+		// What is the incoming packet?
+		var h header
+		binary.Read(b, binary.BigEndian, &h)
 
-	// debug logging for now
-	log.Printf("Received: %#v\n", m)
-	log.Printf("Received: %#v\n", h)
-	fmt.Printf("Length is %d\n", h.Length)
+		if h.Type == open {
+			fmt.Println("Received Open Message")
+			var o msgOpen
+			binary.Read(b, binary.BigEndian, &o)
+			log.Printf("Version: %v\n", o.Version)
+			log.Printf("ASN: %v\n", o.ASN)
+			log.Printf("Holdtime: %v\n", o.HoldTime)
+			log.Printf("ID: %v\n", o.BGPID.string())
+			log.Printf("Optional Parameters length: %d\n", int(o.ParamLen))
 
-	if h.Type == open {
-		fmt.Println("Received Open Message")
-		var o msgOpen
-		binary.Read(b, binary.BigEndian, &o)
-		log.Printf("Received: %#v\n", o)
-		log.Printf("Version: %v\n", o.Version)
-		log.Printf("ASN: %v\n", o.ASN)
-		log.Printf("Holdtime: %v\n", o.HoldTime)
-		log.Printf("ID: %v\n", o.BGPID.string())
-		log.Printf("Optional Parameters length: %d\n", int(o.ParamLen))
+			// Read parameters into buffer
+			pbuffer := make([]byte, int(o.ParamLen))
+			// errors
+			io.ReadFull(b, pbuffer)
 
-		// Read parameters into buffer
-		pbuffer := make([]byte, int(o.ParamLen))
+			// Decode and assign
+			p.param = decodeOptionalParameters(pbuffer)
 
-		// errors
-		io.ReadFull(b, pbuffer)
-
-		// Decode and assign
-		p.param = decodeOptionalParameters(pbuffer)
-
-		// are there any unsupported parameters?
-		if len(p.param.unsupported) > 0 {
-			log.Println("Sending a notify")
-			notify := msgNotification{
-				Code:    2,
-				Subcode: 7,
+			op := msgOpen{}
+			op.serialize(p.conn)
+			// are there any unsupported parameters?
+			if len(p.param.unsupported) > 0 {
+				log.Println("Sending a notify")
+				notify := msgNotification{
+					Code:    2,
+					Subcode: 7,
+				}
+				notify.unsupported(p.conn, p.param.unsupported)
 			}
-			notify.unsupported(p.conn, p.param.unsupported)
+
+		}
+		if h.Type == keepalive {
+			log.Println("received keepalive")
+			sendKeepAlive(p.conn)
+			log.Println("sent keepalive")
 		}
 
-		op := msgOpen{}
-		op.serialize(p.conn)
+		if h.Type == update {
+			log.Println("received update message")
+			var u msgUpdate
+			binary.Read(b, binary.BigEndian, &u)
+			// More reading. Seems different address familes are different.
+			if u.Length == 0 && u.Attr == 0 {
+				log.Printf("Received End-Of-RIB marker")
+			}
 
-		time.Sleep(3 * time.Second)
-		sendKeepAlive(p.conn)
-
-		time.Sleep(10 * time.Second)
-	}
-	for {
+		}
 	}
 }
 
+// If BGP session sends notification, we die here
 func getMessage(c net.Conn) []byte {
 	// 4096 is the max BGP packet size
 	buffer := make([]byte, 4096)
