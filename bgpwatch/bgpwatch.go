@@ -4,11 +4,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 const (
@@ -16,13 +19,16 @@ const (
 	port      uint8  = 179
 	localasn  uint32 = 64500
 	remoteans uint32 = 64501
-	rid              = "0.0.0.1"
+)
+
+var (
+	rid = [4]byte{0, 0, 0, 1}
 )
 
 type bgpWatchServer struct {
 	listener net.Listener
 	peers    []*peer
-	mutex    *sync.RWMutex
+	mutex    sync.RWMutex
 }
 
 type peer struct {
@@ -32,12 +38,13 @@ type peer struct {
 	conn  net.Conn
 	mutex *sync.RWMutex
 	fsm   uint8
+	param parameters
 }
 
 func main() {
 
 	serv := bgpWatchServer{
-		mutex: &sync.RWMutex{},
+		mutex: sync.RWMutex{},
 	}
 	serv.listen()
 
@@ -79,16 +86,19 @@ func (s *bgpWatchServer) accept(conn net.Conn) *peer {
 
 	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+
 	// Each client will have a pointer to a load of the server's data.
 	peer := &peer{
 		conn:  conn,
+		buf:   rw,
 		addr:  ip,
-		mutex: s.mutex,
+		mutex: &s.mutex,
 	}
 
 	s.peers = append(s.peers, peer)
 
-	log.Printf("New peer added to list: %#v\n", s.peers)
+	log.Printf("New peer added to list: %+v\n", s.peers)
 
 	return peer
 }
@@ -112,32 +122,79 @@ func (s *bgpWatchServer) remove(p *peer) {
 
 // most of the logic will eventually be here
 func (p *peer) handle() {
+	msg := getMessage(p.conn)
+	b := bytes.NewReader(msg)
+
 	// BGP always has a marker of 128s bits worth of 1s
 	var m marker
-	binary.Read(p.conn, binary.BigEndian, &m)
+	binary.Read(b, binary.BigEndian, &m)
 
 	// What is the incoming packet?
 	var h header
-	binary.Read(p.conn, binary.BigEndian, &h)
+	binary.Read(b, binary.BigEndian, &h)
 
 	// debug logging for now
 	log.Printf("Received: %#v\n", m)
 	log.Printf("Received: %#v\n", h)
 	fmt.Printf("Length is %d\n", h.Length)
 
-	if h.Type == 1 {
+	if h.Type == open {
 		fmt.Println("Received Open Message")
-		var o openHeader
-		binary.Read(p.conn, binary.BigEndian, &o)
+		var o msgOpen
+		binary.Read(b, binary.BigEndian, &o)
 		log.Printf("Received: %#v\n", o)
 		log.Printf("Version: %v\n", o.Version)
 		log.Printf("ASN: %v\n", o.ASN)
 		log.Printf("Holdtime: %v\n", o.HoldTime)
 		log.Printf("ID: %v\n", o.BGPID.string())
-		log.Printf("ParamLength: %v\n", o.ParamLen)
-		keepalive := header{}
-		keepalive.serialize(p.conn)
+		log.Printf("Optional Parameters length: %d\n", int(o.ParamLen))
+
+		// Read parameters into buffer
+		pbuffer := make([]byte, int(o.ParamLen))
+
+		// errors
+		io.ReadFull(b, pbuffer)
+
+		// Decode and assign
+		p.param = decodeOptionalParameters(pbuffer)
+
+		// are there any unsupported parameters?
+		if len(p.param.unsupported) > 0 {
+			log.Println("Sending a notify")
+			notify := msgNotification{
+				Code:    2,
+				Subcode: 7,
+			}
+			notify.unsupported(p.conn, p.param.unsupported)
+		}
+
+		op := msgOpen{}
+		op.serialize(p.conn)
+
+		time.Sleep(3 * time.Second)
+		sendKeepAlive(p.conn)
+
+		time.Sleep(10 * time.Second)
 	}
 	for {
 	}
+}
+
+func getMessage(c net.Conn) []byte {
+	// 4096 is the max BGP packet size
+	buffer := make([]byte, 4096)
+	// 19 is the minimum size (keepalive)
+	io.ReadFull(c, buffer[:19])
+	log.Println("Read the first 19 bytes")
+
+	// These calculations should go into a function
+	length := int(buffer[16])*256 + int(buffer[17])
+	log.Printf("The total packet length will be %d\n", length)
+
+	// Check for errors on these readfulls
+	io.ReadFull(c, buffer[19:length])
+
+	// Only the bytes of interest should be returned
+	return buffer[:length]
+
 }
