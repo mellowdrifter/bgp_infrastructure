@@ -22,6 +22,7 @@ const (
 type parameters struct {
 	fourByteASN  uint32
 	addrFamilies []addr
+	supported    []uint8
 	unsupported  []uint8
 }
 
@@ -60,12 +61,15 @@ func decodeOptionalParameters(param []byte) parameters {
 			log.Printf("case cap4byte")
 			io.CopyN(t, r, int64(cap.Length))
 			peerParameters.fourByteASN = decode4OctetAS(t)
+			peerParameters.supported = append(peerParameters.supported, cap.Code)
+
 		case mpbgp:
 			log.Printf("case mpbgp")
 			io.CopyN(t, r, int64(cap.Length))
 			addr := decodeMPBGP(t)
 			log.Printf("AFI is %d, SAFI is %d\n", addr.AFI, addr.SAFI)
 			peerParameters.addrFamilies = append(peerParameters.addrFamilies, addr)
+			peerParameters.supported = append(peerParameters.supported, cap.Code)
 
 		default:
 			log.Printf("unsupported")

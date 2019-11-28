@@ -8,9 +8,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 const (
@@ -31,13 +33,17 @@ type bgpWatchServer struct {
 }
 
 type peer struct {
-	buf   *bufio.ReadWriter
-	rasn  uint32
-	addr  string
-	conn  net.Conn
-	mutex *sync.RWMutex
-	fsm   uint8
-	param parameters
+	buf        *bufio.ReadWriter // ever going to use this?
+	rasn       uint32
+	ip         string
+	conn       net.Conn
+	mutex      sync.RWMutex
+	param      parameters
+	keepalives uint64
+	updates    uint64
+	withdraws  uint64
+	startTime  time.Time
+	buff       *bytes.Reader
 }
 
 func main() {
@@ -70,7 +76,7 @@ func (s *bgpWatchServer) start() {
 			log.Printf("%v\n", err)
 		} else {
 			peer := s.accept(conn)
-			go peer.handle()
+			go peer.peerWorker()
 		}
 	}
 }
@@ -85,14 +91,23 @@ func (s *bgpWatchServer) accept(conn net.Conn) *peer {
 
 	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 
+	// If new client trying to connect with existing connection, remove old peer from pool
+	for _, peer := range s.peers {
+		if ip == peer.ip {
+			s.remove(peer)
+			break
+		}
+	}
+
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 	// Each client will have a pointer to a load of the server's data.
 	peer := &peer{
-		conn:  conn,
-		buf:   rw,
-		addr:  ip,
-		mutex: &s.mutex,
+		conn:      conn,
+		buf:       rw,
+		ip:        ip,
+		mutex:     sync.RWMutex{},
+		startTime: time.Now(),
 	}
 
 	s.peers = append(s.peers, peer)
@@ -102,9 +117,9 @@ func (s *bgpWatchServer) accept(conn net.Conn) *peer {
 	return peer
 }
 
-// how do I get back here??
+// remove removes a client from the current list of clients being served.
 func (s *bgpWatchServer) remove(p *peer) {
-	log.Printf("Removing client %s\n", p.addr)
+	log.Printf("Removing dead peer %s\n", p.conn.RemoteAddr().String())
 
 	// remove the connection from client array
 	for i, check := range s.peers {
@@ -112,45 +127,39 @@ func (s *bgpWatchServer) remove(p *peer) {
 			s.peers = append(s.peers[:i], s.peers[i+1:]...)
 		}
 	}
-	err := p.conn.Close()
-	if err != nil {
-		log.Printf("*** Error closing connection! %v\n", err)
-	}
+	// Don't worry about errors as it's mostly because it's already closed.
+	p.conn.Close()
 
 }
 
-// most of the logic will eventually be here
-func (p *peer) handle() {
+func (p *peer) peerWorker() {
 	for {
-		msg := getMessage(p.conn)
-		b := bytes.NewReader(msg)
 
-		// BGP always has a marker of 128s bits worth of 1s
+		// Grab incoming BGP message and place into a reader.
+		msg, err := getMessage(p.conn)
+		if err != nil {
+			log.Printf("Bad BGP message: %v\n", err)
+			p.conn.Close()
+			return
+
+		}
+		p.buff = bytes.NewReader(msg)
+
+		// marker should be checked and removed via the getMessage function
 		var m marker
-		binary.Read(b, binary.BigEndian, &m)
+		binary.Read(p.buff, binary.BigEndian, &m)
 
-		// What is the incoming packet?
-		var h header
-		binary.Read(b, binary.BigEndian, &h)
+		// Grab the header
+		header, err := p.getHeader()
+		if err != nil {
+			log.Printf("Unable to decode header: %v\n", err)
+		}
 
-		if h.Type == open {
-			fmt.Println("Received Open Message")
-			var o msgOpen
-			binary.Read(b, binary.BigEndian, &o)
-			log.Printf("Version: %v\n", o.Version)
-			log.Printf("ASN: %v\n", o.ASN)
-			log.Printf("Holdtime: %v\n", o.HoldTime)
-			log.Printf("ID: %v\n", o.BGPID.string())
-			log.Printf("Optional Parameters length: %d\n", int(o.ParamLen))
-
-			// Read parameters into buffer
-			pbuffer := make([]byte, int(o.ParamLen))
-			// errors
-			io.ReadFull(b, pbuffer)
-
-			// Decode and assign
-			p.param = decodeOptionalParameters(pbuffer)
-
+		// Do some work
+		switch header.Type {
+		case open:
+			p.HandleOpen()
+			// Not sure if all the below is correct...
 			op := msgOpen{}
 			op.serialize(p.conn)
 			// are there any unsupported parameters?
@@ -163,42 +172,135 @@ func (p *peer) handle() {
 				notify.unsupported(p.conn, p.param.unsupported)
 			}
 
-		}
-		if h.Type == keepalive {
-			log.Println("received keepalive")
-			sendKeepAlive(p.conn)
-			log.Println("sent keepalive")
-		}
+		case keepalive:
+			p.HandleKeepalive()
 
-		if h.Type == update {
-			log.Println("received update message")
-			var u msgUpdate
-			binary.Read(b, binary.BigEndian, &u)
-			// More reading. Seems different address familes are different.
-			if u.Length == 0 && u.Attr == 0 {
-				log.Printf("Received End-Of-RIB marker")
-			}
+		case notification:
+			p.handleNotification()
+			return
 
+		case update:
+			p.handleUpdate()
 		}
 	}
 }
 
-// If BGP session sends notification, we die here
-func getMessage(c net.Conn) []byte {
+// Make this better somehow
+func getMessage(c net.Conn) ([]byte, error) {
 	// 4096 is the max BGP packet size
 	buffer := make([]byte, 4096)
 	// 19 is the minimum size (keepalive)
-	io.ReadFull(c, buffer[:19])
+	_, err := io.ReadFull(c, buffer[:19])
+	if err != nil {
+		return nil, err
+	}
 	log.Println("Read the first 19 bytes")
+
+	// Add a check to ensure the BGP marker is present, else return an error
+	// In fact we could just remove the marker if all good as I don't really care about it!
 
 	// These calculations should go into a function
 	length := int(buffer[16])*256 + int(buffer[17])
 	log.Printf("The total packet length will be %d\n", length)
 
 	// Check for errors on these readfulls
-	io.ReadFull(c, buffer[19:length])
+	_, err = io.ReadFull(c, buffer[19:length])
+	if err != nil {
+		return nil, err
+	}
 
 	// Only the bytes of interest should be returned
-	return buffer[:length]
+	return buffer[:length], nil
+}
+
+func (p *peer) getHeader() (header, error) {
+	var h header
+	binary.Read(p.buff, binary.BigEndian, &h)
+
+	return h, nil
+}
+
+func (p *peer) HandleKeepalive() {
+	p.keepalives++
+	log.Printf("received keepalive #%d\n", p.keepalives)
+	sendKeepAlive(p.conn)
+	log.Println("sent keepalive")
+}
+
+func (p *peer) HandleOpen() {
+	fmt.Println("Received Open Message")
+	var o msgOpen
+	binary.Read(p.buff, binary.BigEndian, &o)
+	log.Printf("Version: %v\n", o.Version)
+	log.Printf("ASN: %v\n", o.ASN)
+	log.Printf("Holdtime: %v\n", o.HoldTime)
+	log.Printf("ID: %v\n", fourByteString(o.BGPID))
+
+	// Read parameters into buffer
+	pbuffer := make([]byte, int(o.ParamLen))
+	// errors
+	io.ReadFull(p.buff, pbuffer)
+
+	// Read in parameters
+	log.Println("Decoding parameters...")
+	p.param = decodeOptionalParameters(pbuffer)
+
+}
+
+func (p *peer) handleNotification() {
+	fmt.Println("Received a notify message")
+	// Handle this better. Minimum is code and subcode. Could be more
+	var n msgNotification
+	binary.Read(p.buff, binary.BigEndian, &n)
+
+	fmt.Printf("Notification code is %d with subcode %d\n", n.Code, n.Subcode)
+	fmt.Println("Closing session")
+	p.conn.Close()
+
+}
+
+func (p *peer) handleUpdate() {
+	var u msgUpdate
+	binary.Read(p.buff, binary.BigEndian, &u)
+	// More reading. Seems different address familes are different.
+	if u.WithdrawLength == 0 && u.AttrLength.toUint16() == 0 {
+		log.Printf("Received End-Of-RIB marker")
+		return
+	}
+
+	log.Println("received update message")
+	log.Printf("Update attribute is %d bytes long\n", u.AttrLength.toUint16())
+
+	log.Println("*** DECODING UPDATES ***")
+	if u.WithdrawLength == 0 {
+		log.Printf("No routes withdrawn with this update")
+	}
+	// drain the attributes for now
+	io.CopyN(ioutil.Discard, p.buff, u.AttrLength.toInt64())
+
+	for {
+		// data can be padded. If less than three it could never be an IP address
+		if p.buff.Len() <= 3 {
+			return
+		}
+		/*
+			This variable length field contains a list of IP address
+			prefixes.  The length, in octets, of the Network Layer
+			Reachability Information is not encoded explicitly, but can be
+			calculated as:
+
+			 UPDATE message Length - 23 - Total Path Attributes Length
+			 - Withdrawn Routes Length
+		*/
+
+		// This should be in a struct
+		var mask uint8
+		var address ipv4Address
+		binary.Read(p.buff, binary.BigEndian, &mask)
+		binary.Read(p.buff, binary.BigEndian, &address)
+
+		fmt.Printf("Received a new prefix: %s\n", fmt.Sprintf("%s/%d", fourByteString(address), mask))
+
+	}
 
 }

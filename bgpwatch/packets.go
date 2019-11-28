@@ -51,8 +51,12 @@ const (
 )
 
 type bgpid [4]byte
+type ipv4Address [4]byte
+type ipv6Address [16]byte
 
-func (b *bgpid) string() string {
+type twoByteLength [2]byte
+
+func fourByteString(b [4]byte) string {
 	return fmt.Sprintf("%v.%v.%v.%v", b[0], b[1], b[2], b[3])
 }
 
@@ -101,7 +105,7 @@ func (o *msgOpen) serialize(wr io.Writer) {
 		open,
 		4,
 		64500,
-		30,
+		300,
 		bgpid{2, 2, 2, 2},
 		8, // plength
 		2,
@@ -138,7 +142,6 @@ func sendKeepAlive(wr io.Writer) {
 		19,
 		keepalive,
 	}
-	log.Printf("Sending a keepalive: %#v\n", k)
 	binary.Write(wr, binary.BigEndian, k)
 }
 
@@ -181,6 +184,14 @@ func (m *msgNotification) unsupported(wr io.Writer, non []uint8) {
 
 // this is just for End-Of-RIB. Needs more work!
 type msgUpdate struct {
-	Length uint16
-	Attr   uint16
+	WithdrawLength uint16
+	AttrLength     twoByteLength
+}
+
+func (t twoByteLength) toUint16() uint16 {
+	return uint16(int(t[0])*256 + int(t[1]))
+}
+
+func (t twoByteLength) toInt64() int64 {
+	return int64(t.toUint16())
 }
