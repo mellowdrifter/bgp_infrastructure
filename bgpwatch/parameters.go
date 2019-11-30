@@ -15,15 +15,17 @@ const (
 
 	// capability codes I support
 	// https://www.iana.org/assignments/capability-codes/capability-codes.xhtml
-	mpbgp    uint8 = 1
-	cap4byte uint8 = 65
+	capMpBgp   uint8 = 1
+	cap4Byte   uint8 = 65
+	capRefresh uint8 = 70 // Only support enhanced refresh
 )
 
 type parameters struct {
-	fourByteASN  uint32
-	addrFamilies []addr
-	supported    []uint8
-	unsupported  []uint8
+	ASN32        uint32
+	Refresh      bool
+	AddrFamilies []addr
+	Supported    []uint8
+	Unsupported  []uint8
 }
 
 type addr struct {
@@ -32,19 +34,19 @@ type addr struct {
 	SAFI uint8
 }
 
-func decodeOptionalParameters(param []byte) parameters {
-	r := bytes.NewReader(param)
+func decodeOptionalParameters(param *[]byte) parameters {
+	r := bytes.NewReader(*param)
 
-	var peerParameters parameters
-	peerParameters.addrFamilies = []addr{}
+	var par parameters
+	par.AddrFamilies = []addr{}
 
 	log.Println("*** DECODING PARAMETERS ***")
-	var par parameterHeader
-	binary.Read(r, binary.BigEndian, &par)
+	var p parameterHeader
+	binary.Read(r, binary.BigEndian, &p)
 
 	// following should be some sort of error check
-	log.Printf("Parameter type: %d\n", par.Type)
-	log.Printf("Parameter length: %d\n", int(par.Length))
+	log.Printf("Parameter type: %d\n", p.Type)
+	log.Printf("Parameter length: %d\n", int(p.Length))
 
 	// keep reading the parameters until the parameter field is empty.
 	for {
@@ -53,33 +55,38 @@ func decodeOptionalParameters(param []byte) parameters {
 		}
 		var cap msgCapability
 		binary.Read(r, binary.BigEndian, &cap)
-		var b []byte
-		t := bytes.NewBuffer(b)
-		switch cap.Code {
-		// Each handled capability should be read in turn.
-		case cap4byte:
-			log.Printf("case cap4byte")
-			io.CopyN(t, r, int64(cap.Length))
-			peerParameters.fourByteASN = decode4OctetAS(t)
-			peerParameters.supported = append(peerParameters.supported, cap.Code)
 
-		case mpbgp:
-			log.Printf("case mpbgp")
-			io.CopyN(t, r, int64(cap.Length))
-			addr := decodeMPBGP(t)
+		// Setting 20 here as a random number which should be big enough for any capability?
+		buf := bytes.NewBuffer(make([]byte, 20))
+		switch cap.Code {
+
+		case cap4Byte:
+			log.Printf("case cap4Byte")
+			io.CopyN(buf, r, int64(cap.Length))
+			par.ASN32 = decode4OctetAS(buf)
+			par.Supported = append(par.Supported, cap.Code)
+
+		case capMpBgp:
+			log.Printf("case capMpBgp")
+			io.CopyN(buf, r, int64(cap.Length))
+			addr := decodeMPBGP(buf)
 			log.Printf("AFI is %d, SAFI is %d\n", addr.AFI, addr.SAFI)
-			peerParameters.addrFamilies = append(peerParameters.addrFamilies, addr)
-			peerParameters.supported = append(peerParameters.supported, cap.Code)
+			par.AddrFamilies = append(par.AddrFamilies, addr)
+			par.Supported = append(par.Supported, cap.Code)
+
+		case capRefresh:
+			log.Printf("case capRefresh")
+			par.Refresh = true
+			par.Supported = append(par.Supported, cap.Code)
 
 		default:
 			log.Printf("unsupported")
-			peerParameters.unsupported = append(peerParameters.unsupported, cap.Code)
+			par.Unsupported = append(par.Unsupported, cap.Code)
 			// As capability is not supported, drop the rest of the parameter message.
 			io.CopyN(ioutil.Discard, r, int64(cap.Length))
 		}
 	}
-
-	return peerParameters
+	return par
 }
 
 // parameter 65 is 4-octet AS support
