@@ -35,15 +35,32 @@ type flagType struct {
 	Code  uint8
 }
 
+type pathAttr struct {
+	origin   uint8
+	aspath   []asnSegment
+	nextHop  string
+	med      uint32
+	lPref    uint32
+	atomic   bool
+	agAS     uint32
+	agOrigin ipv4Address
+}
+
+type prefixAttributes struct {
+	attr     *pathAttr
+	prefixes []v4Addr
+}
+
 func (f *flagType) toString() string {
 	return fmt.Sprintf("%v --- %d", f.Flags, f.Code)
 
 }
 
-func decodeRouteAttributes(attr []byte) {
+func decodeRouteAttributes(attr []byte) *pathAttr {
 	r := bytes.NewReader(attr)
 
 	log.Println("*** DECODING PREFIX ATTRIBUTES ***")
+	var pa pathAttr
 	for {
 		if r.Len() == 0 {
 			break
@@ -57,74 +74,86 @@ func decodeRouteAttributes(attr []byte) {
 		t := bytes.NewBuffer(b)
 		switch a.Type.Code {
 		case tcOrigin:
-			log.Printf("case ORIGIN")
 			io.CopyN(t, r, int64(a.Length))
-			decodeOrigin(t)
+			pa.origin = decodeOrigin(t)
 		case tcASPath:
-			log.Printf("case ASPATH")
 			io.CopyN(t, r, int64(a.Length))
-			fmt.Println("Loads more work needed for AS-PATH")
+			pa.aspath = append(pa.aspath, decodeASPath(t)...)
+			// Could have both AS_SEQ and AS_SET
+			if r.Len() != 0 {
+				pa.aspath = append(pa.aspath, decodeASPath(t)...)
+			}
 		case tcNextHop:
-			log.Printf("case NEXTHOP")
 			io.CopyN(t, r, int64(a.Length))
-			fmt.Printf("The next-hop addres is %s\n", fourByteString(decodeNextHop(t)))
+			pa.nextHop = decodeNextHop(t)
 		case tcMED:
-			log.Printf("case MED")
 			io.CopyN(t, r, int64(a.Length))
-			fmt.Printf("the MED value is %d\n", decodeMED(t))
+			pa.med = decode4ByteNumber(t)
 		case tcLPref:
-			log.Printf("case Local-Pref")
 			io.CopyN(t, r, int64(a.Length))
-			fmt.Printf("the Local Preferece value is %d\n", decodeLPref(t))
+			pa.lPref = decode4ByteNumber(t)
+		case tcAtoAgg:
+			pa.atomic = true
+		case tcAggregator:
+			io.CopyN(t, r, int64(a.Length))
+			pa.agAS, pa.agOrigin = decodeAggregator(t)
 		default:
-			log.Printf("not yet implemented")
+			log.Printf("Type Code %d is not yet implemented", a.Type.Code)
 			io.CopyN(ioutil.Discard, r, int64(a.Length))
-			fmt.Printf("Code is %d\n", a.Type.Code)
 		}
 	}
+	return &pa
 }
 
-func decodeOrigin(b *bytes.Buffer) {
+func decodeOrigin(b *bytes.Buffer) uint8 {
 	var o uint8
 	binary.Read(b, binary.BigEndian, &o)
-	switch o {
-	case 0:
-		fmt.Println("Origin is IGP")
-	case 1:
-		fmt.Println("Origin is EGP")
-	case 2:
-		fmt.Println("Origin is INCOMPLETE")
-	default:
-		fmt.Printf("Origin is unknown, value received: %d\n", o)
-	}
+
+	return o
 }
 
-func decodeNextHop(b *bytes.Buffer) ipv4Address {
+func decodeNextHop(b *bytes.Buffer) string {
 	// Could there ever be more than 1 IP?
 	// Would need to check switch above for v4/v6/dual v6
 	var ip ipv4Address
 	binary.Read(b, binary.BigEndian, &ip)
-	return ip
+	return fourByteString(ip)
 }
 
-func decodeMED(b *bytes.Buffer) uint32 {
-	// won't this be in hex?
-	var med uint32
-	binary.Read(b, binary.BigEndian, &med)
-	return med
+func decode4ByteNumber(b *bytes.Buffer) uint32 {
+	var n uint32
+	binary.Read(b, binary.BigEndian, &n)
+	return n
 }
 
-func decodeLPref(b *bytes.Buffer) uint32 {
-	// won't this be in hex?
-	var pref uint32
-	binary.Read(b, binary.BigEndian, &pref)
-	return pref
+type asnTL struct {
+	Type   uint8
+	Length uint8
 }
 
-func decodeASPath(b *bytes.Buffer) []uint32 {
-	// Probably need a new struct. AS Paths can be part of sets
-	// Also the size really depends on how many ASPATHS are in the list!
-	var path uint32
-	binary.Read(b, binary.BigEndian, &path)
-	return []uint32{path}
+type asnSegment struct {
+	Type uint8
+	ASN  uint32
+}
+
+// If empty, could be iBGP update and so should deal with that
+func decodeASPath(b *bytes.Buffer) []asnSegment {
+	var asnTL asnTL
+	binary.Read(b, binary.BigEndian, &asnTL)
+	var asns = make([]asnSegment, asnTL.Length)
+	for i := uint8(0); i < asnTL.Length; i++ {
+		var asn asnSegment
+		asn.Type = asnTL.Type
+		binary.Read(b, binary.BigEndian, &asn.ASN)
+		asns[i] = asn
+	}
+	return asns
+}
+
+func decodeAggregator(b *bytes.Buffer) (uint32, ipv4Address) {
+	var asn uint32
+	var ip ipv4Address
+	binary.Read(b, binary.BigEndian, &asn)
+	binary.Read(b, binary.BigEndian, &ip)
+	return asn, ip
 }

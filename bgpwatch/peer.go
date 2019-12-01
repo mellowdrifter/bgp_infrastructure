@@ -13,18 +13,20 @@ import (
 )
 
 type peer struct {
-	rasn       uint16 // Need another one for 32bit ASN
-	hold       uint16
-	ip         string
-	conn       net.Conn
-	mutex      sync.RWMutex
-	param      parameters
-	keepalives uint64
-	updates    uint64
-	withdraws  uint64
-	startTime  time.Time
-	in         *bytes.Reader
-	out        *bytes.Buffer
+	rasn          uint16 // Need another one for 32bit ASN
+	hold          uint16
+	ip            string
+	conn          net.Conn
+	mutex         sync.RWMutex
+	param         parameters
+	keepalives    uint64
+	lastKeepalive time.Time
+	updates       uint64
+	withdraws     uint64
+	startTime     time.Time
+	in            *bytes.Reader
+	out           *bytes.Buffer
+	prefixes      []*prefixAttributes
 }
 
 func (p *peer) peerWorker() {
@@ -69,8 +71,12 @@ func (p *peer) peerWorker() {
 		//	p.handleNotification()
 		//	return
 
-		//case update:
-		//	p.handleUpdate()
+		case update:
+			p.handleUpdate()
+
+			// output and dump that update
+			p.currentPrefixes()
+
 		default:
 			io.CopyN(ioutil.Discard, p.in, int64(header.Length))
 		}
@@ -87,11 +93,14 @@ func (p *peer) getHeader() (header, error) {
 func (p *peer) HandleKeepalive() {
 	p.mutex.Lock()
 	p.keepalives++
+	p.lastKeepalive = time.Now()
 	p.mutex.Unlock()
 	log.Printf("received keepalive #%d\n", p.keepalives)
 }
 
 func (p *peer) HandleOpen() {
+	// TODO: I only support 4 byte ASN. If peer does not support. Send a notify and tear down
+	// the session.
 	defer p.mutex.Unlock()
 	fmt.Println("Received Open Message")
 	var o msgOpen
@@ -147,17 +156,21 @@ func (p *peer) handleUpdate() {
 		return
 	}
 
+	var pa prefixAttributes
+
 	// drain the the attributes into a new buffer
-	abuffer := make([]byte, u.AttrLength.toUint16())
-	io.ReadFull(p.in, abuffer)
+	abuf := make([]byte, u.AttrLength.toUint16())
+	io.ReadFull(p.in, abuf)
 
-	//decode attributes
-	decodeRouteAttributes(abuffer)
+	// decode attributes
+	pa.attr = decodeRouteAttributes(abuf)
+	var addrs []v4Addr
 
+	// This should all go into a new function, again!
 	for {
 		// data can be padded. If less than three it could never be an IP address
 		if p.in.Len() <= 3 {
-			return
+			break
 		}
 		/*
 			This variable length field contains a list of IP address
@@ -173,8 +186,28 @@ func (p *peer) handleUpdate() {
 		var addr v4Addr
 		binary.Read(p.in, binary.BigEndian, &addr)
 
-		fmt.Printf("Received a new prefix: %s\n", fmt.Sprintf("%s/%d", fourByteString(addr.Prefix), addr.Mask))
+		addrs = append(addrs, addr)
 
 	}
 
+	pa.prefixes = addrs
+
+	log.Printf("The following prefixes: %+v\n", pa.prefixes)
+	log.Printf("Have the following attribytes: %+v\n", pa.attr)
+
+	p.mutex.Lock()
+	p.prefixes = append(p.prefixes, &pa)
+	p.mutex.Unlock()
+
+}
+
+func (p *peer) currentPrefixes() {
+	p.mutex.RLock()
+	for _, v := range p.prefixes {
+		fmt.Printf("*** Current prefixes: %+v\n", v)
+		fmt.Printf("*** Current attributes: %+v\n", v.attr)
+	}
+	// Empty the slice
+	p.prefixes = p.prefixes[:0]
+	p.mutex.RUnlock()
 }
