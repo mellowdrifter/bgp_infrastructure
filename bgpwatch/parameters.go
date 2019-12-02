@@ -40,13 +40,8 @@ func decodeOptionalParameters(param *[]byte) parameters {
 	var par parameters
 	par.AddrFamilies = []addr{}
 
-	log.Println("*** DECODING PARAMETERS ***")
 	var p parameterHeader
 	binary.Read(r, binary.BigEndian, &p)
-
-	// following should be some sort of error check
-	log.Printf("Parameter type: %d\n", p.Type)
-	log.Printf("Parameter length: %d\n", int(p.Length))
 
 	// keep reading the parameters until the parameter field is empty.
 	for {

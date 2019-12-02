@@ -120,14 +120,12 @@ func getMessage(c net.Conn) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Read the first 19 bytes")
 
 	// Add a check to ensure the BGP marker is present, else return an error
 	// In fact we could just remove the marker if all good as I don't really care about it!
 
 	// These calculations should go into a function
 	length := int(buffer[16])*256 + int(buffer[17])
-	log.Printf("The total packet length will be %d\n", length)
 
 	// Check for errors on these readfulls
 	_, err = io.ReadFull(c, buffer[19:length])

@@ -164,36 +164,11 @@ func (p *peer) handleUpdate() {
 
 	// decode attributes
 	pa.attr = decodeRouteAttributes(abuf)
-	var addrs []v4Addr
 
-	// This should all go into a new function, again!
-	for {
-		// data can be padded. If less than three it could never be an IP address
-		if p.in.Len() <= 3 {
-			break
-		}
-		/*
-			This variable length field contains a list of IP address
-			prefixes.  The length, in octets, of the Network Layer
-			Reachability Information is not encoded explicitly, but can be
-			calculated as:
-
-			 UPDATE message Length - 23 - Total Path Attributes Length
-			 - Withdrawn Routes Length
-		*/
-
-		// This should be in a struct
-		var addr v4Addr
-		binary.Read(p.in, binary.BigEndian, &addr)
-
-		addrs = append(addrs, addr)
-
-	}
-
-	pa.prefixes = addrs
-
-	log.Printf("The following prefixes: %+v\n", pa.prefixes)
-	log.Printf("Have the following attribytes: %+v\n", pa.attr)
+	// dump the rest of the update message into a buffer to use for NLRI
+	// It is possible to work this out as well... needed for a copy.
+	// for now just read the last of the in buffer :(
+	pa.prefixes = decodeNLRI(p.in)
 
 	p.mutex.Lock()
 	p.prefixes = append(p.prefixes, &pa)

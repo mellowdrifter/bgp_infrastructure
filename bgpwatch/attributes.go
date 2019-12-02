@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 )
 
 const (
@@ -43,7 +44,7 @@ type pathAttr struct {
 	lPref    uint32
 	atomic   bool
 	agAS     uint32
-	agOrigin ipv4Address
+	agOrigin net.IP
 }
 
 type prefixAttributes struct {
@@ -59,7 +60,6 @@ func (f *flagType) toString() string {
 func decodeRouteAttributes(attr []byte) *pathAttr {
 	r := bytes.NewReader(attr)
 
-	log.Println("*** DECODING PREFIX ATTRIBUTES ***")
 	var pa pathAttr
 	for {
 		if r.Len() == 0 {
@@ -115,9 +115,9 @@ func decodeOrigin(b *bytes.Buffer) uint8 {
 func decodeNextHop(b *bytes.Buffer) string {
 	// Could there ever be more than 1 IP?
 	// Would need to check switch above for v4/v6/dual v6
-	var ip ipv4Address
-	binary.Read(b, binary.BigEndian, &ip)
-	return fourByteString(ip)
+	ip := bytes.NewBuffer(make([]byte, 0, 4))
+	io.Copy(ip, b)
+	return net.IP(ip.Bytes()).String()
 }
 
 func decode4ByteNumber(b *bytes.Buffer) uint32 {
@@ -150,10 +150,47 @@ func decodeASPath(b *bytes.Buffer) []asnSegment {
 	return asns
 }
 
-func decodeAggregator(b *bytes.Buffer) (uint32, ipv4Address) {
+func decodeAggregator(b *bytes.Buffer) (uint32, net.IP) {
+	ip := bytes.NewBuffer(make([]byte, 0, 4))
 	var asn uint32
-	var ip ipv4Address
 	binary.Read(b, binary.BigEndian, &asn)
-	binary.Read(b, binary.BigEndian, &ip)
-	return asn, ip
+	io.Copy(ip, b)
+	return asn, net.IP(ip.Bytes())
+}
+
+// BGP only encodes the prefix up to the subnet value in bits, and then pads zeros until the end of the octet.
+func decodeNLRI(b *bytes.Reader) []v4Addr {
+	var addrs []v4Addr
+	for {
+		if b.Len() == 0 {
+			break
+		}
+
+		var mask uint8
+		binary.Read(b, binary.BigEndian, &mask)
+
+		addrs = append(addrs, v4Addr{
+			Mask:   mask,
+			Prefix: getPrefix(b, mask),
+		})
+	}
+
+	return addrs
+}
+
+func getPrefix(b *bytes.Reader, mask uint8) net.IP {
+	prefix := bytes.NewBuffer(make([]byte, 0, 4))
+
+	switch {
+	case mask >= 1 && mask <= 8:
+		io.CopyN(prefix, b, 1)
+	case mask >= 9 && mask <= 16:
+		io.CopyN(prefix, b, 2)
+	case mask >= 17 && mask <= 24:
+		io.CopyN(prefix, b, 3)
+	case mask >= 25:
+		io.CopyN(prefix, b, 4)
+	}
+
+	return net.IP(prefix.Bytes())
 }

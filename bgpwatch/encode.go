@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 )
 
 const (
@@ -47,18 +48,23 @@ const (
 )
 
 type bgpid [4]byte
-type ipv4Address [4]byte
-type ipv6Address [16]byte
+type ipv4Address []byte
+type ipv6Address []byte
 
 type twoByteLength [2]byte
 
-func fourByteString(b [4]byte) string {
+func iipByteToString(b []byte) string {
+	if len(b) == 16 {
+		// not yet implemented
+		return ""
+
+	}
 	return fmt.Sprintf("%v.%v.%v.%v", b[0], b[1], b[2], b[3])
 }
 
 type v4Addr struct {
 	Mask   uint8
-	Prefix ipv4Address
+	Prefix net.IP
 }
 
 type marker struct {
