@@ -115,7 +115,6 @@ func (p *peer) HandleOpen() {
 	p.rasn = o.ASN
 	p.hold = o.HoldTime
 
-	log.Println("Decoding parameters...")
 	p.mutex.Lock()
 	p.param = decodeOptionalParameters(&pbuffer)
 
@@ -146,7 +145,6 @@ func (p *peer) handleUpdate() {
 	log.Println("received update message")
 	log.Printf("Update attribute is %d bytes long\n", u.AttrLength.toUint16())
 
-	log.Println("*** DECODING UPDATES ***")
 	if u.WithdrawLength == 0 {
 		log.Printf("No routes withdrawn with this update")
 	}
@@ -180,7 +178,21 @@ func (p *peer) currentPrefixes() {
 	p.mutex.RLock()
 	for _, v := range p.prefixes {
 		fmt.Printf("*** Current prefixes: %+v\n", v)
-		fmt.Printf("*** Current attributes: %+v\n", v.attr)
+		fmt.Println("*** Have the following attributes:")
+		fmt.Printf("Origin is %d\n", v.attr.origin)
+		fmt.Printf("ASPATH is %v\n", v.attr.aspath)
+		if v.attr.atomic {
+			fmt.Printf("Has the atomic aggregates set")
+		}
+		if v.attr.agAS != 0 {
+			fmt.Printf("As aggregate ASN as %v\n", v.attr.agAS)
+		}
+		if len(v.attr.communities) > 0 {
+			fmt.Printf("Has the following communities: %v\n", v.attr.communities)
+		}
+		if len(v.attr.largeCommunities) > 0 {
+			fmt.Printf("Has the following large communities: %v\n", v.attr.largeCommunities)
+		}
 	}
 	// Empty the slice
 	p.prefixes = p.prefixes[:0]

@@ -12,13 +12,15 @@ import (
 
 const (
 	// tc is Type Code
-	tcOrigin     uint8 = 1
-	tcASPath     uint8 = 2
-	tcNextHop    uint8 = 3
-	tcMED        uint8 = 4
-	tcLPref      uint8 = 5
-	tcAtoAgg     uint8 = 6
-	tcAggregator uint8 = 7
+	tcOrigin         uint8 = 1
+	tcASPath         uint8 = 2
+	tcNextHop        uint8 = 3
+	tcMED            uint8 = 4
+	tcLPref          uint8 = 5
+	tcAtoAgg         uint8 = 6
+	tcAggregator     uint8 = 7
+	tcCommunity      uint8 = 8
+	tcLargeCommunity uint8 = 32
 
 	// origin codes
 	igp        uint8 = 0
@@ -37,14 +39,27 @@ type flagType struct {
 }
 
 type pathAttr struct {
-	origin   uint8
-	aspath   []asnSegment
-	nextHop  string
-	med      uint32
-	lPref    uint32
-	atomic   bool
-	agAS     uint32
-	agOrigin net.IP
+	origin           uint8
+	aspath           []asnSegment
+	nextHop          string
+	med              uint32
+	localPref        uint32
+	atomic           bool
+	agAS             uint32
+	agOrigin         net.IP
+	communities      []community
+	largeCommunities []largeCommunity
+}
+
+type community struct {
+	High uint16
+	Low  uint16
+}
+
+type largeCommunity struct {
+	Admin uint32
+	High  uint32
+	Low   uint32
 }
 
 type prefixAttributes struct {
@@ -91,12 +106,19 @@ func decodeRouteAttributes(attr []byte) *pathAttr {
 			pa.med = decode4ByteNumber(t)
 		case tcLPref:
 			io.CopyN(t, r, int64(a.Length))
-			pa.lPref = decode4ByteNumber(t)
+			pa.localPref = decode4ByteNumber(t)
 		case tcAtoAgg:
 			pa.atomic = true
 		case tcAggregator:
 			io.CopyN(t, r, int64(a.Length))
 			pa.agAS, pa.agOrigin = decodeAggregator(t)
+		case tcCommunity:
+			io.CopyN(t, r, int64(a.Length))
+			pa.communities = decodeCommunities(t, a.Length)
+		case tcLargeCommunity:
+			io.CopyN(t, r, int64(a.Length))
+			pa.largeCommunities = decodeLargeCommunities(t, a.Length)
+
 		default:
 			log.Printf("Type Code %d is not yet implemented", a.Type.Code)
 			io.CopyN(ioutil.Discard, r, int64(a.Length))
@@ -156,6 +178,32 @@ func decodeAggregator(b *bytes.Buffer) (uint32, net.IP) {
 	binary.Read(b, binary.BigEndian, &asn)
 	io.Copy(ip, b)
 	return asn, net.IP(ip.Bytes())
+}
+
+func decodeCommunities(b *bytes.Buffer, len uint8) []community {
+	var communities = make([]community, 0, len/4)
+	for {
+		if b.Len() == 0 {
+			break
+		}
+		var comm community
+		binary.Read(b, binary.BigEndian, &comm)
+		communities = append(communities, comm)
+	}
+	return communities
+}
+
+func decodeLargeCommunities(b *bytes.Buffer, len uint8) []largeCommunity {
+	var communities = make([]largeCommunity, 0, len/12)
+	for {
+		if b.Len() == 0 {
+			break
+		}
+		var comm largeCommunity
+		binary.Read(b, binary.BigEndian, &comm)
+		communities = append(communities, comm)
+	}
+	return communities
 }
 
 // BGP only encodes the prefix up to the subnet value in bits, and then pads zeros until the end of the octet.

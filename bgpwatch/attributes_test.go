@@ -157,3 +157,75 @@ func TestDecode4ByteNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeCommunities(t *testing.T) {
+	tests := []struct {
+		desc  string
+		input []byte
+		want  []community
+	}{
+		{
+			desc:  "test1",
+			input: []byte{0x04, 0xf9, 0x35, 0x86, 0x13, 0xe5, 0x00, 0xc3, 0x13, 0xe5, 0x00, 0xc9, 0xe0, 0xd3, 0x00, 0x00},
+			want: []community{
+				community{
+					High: 1273,
+					Low:  13702,
+				},
+				community{
+					High: 5093,
+					Low:  195,
+				},
+				community{
+					High: 5093,
+					Low:  201,
+				},
+				community{
+					High: 57555,
+					Low:  0,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		buf := bytes.NewBuffer(test.input)
+		got := decodeCommunities(buf, uint8(len(test.input)))
+
+		if !cmp.Equal(got, test.want) {
+			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
+		}
+	}
+}
+
+func TestDecodeLargeCommunities(t *testing.T) {
+	tests := []struct {
+		desc  string
+		input []byte
+		want  []largeCommunity
+	}{
+		{
+			desc:  "test1",
+			input: []byte{0x00, 0x00, 0xdf, 0xf7, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0xdf, 0xf7, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x0b, 0xce},
+			want: []largeCommunity{
+				largeCommunity{
+					Admin: 57335,
+					High:  1,
+					Low:   1,
+				},
+				largeCommunity{
+					Admin: 57335,
+					High:  1,
+					Low:   3022,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		buf := bytes.NewBuffer(test.input)
+		got := decodeLargeCommunities(buf, uint8(len(test.input)))
+
+		if !cmp.Equal(got, test.want) {
+			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
+		}
+	}
+}
