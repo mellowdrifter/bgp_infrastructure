@@ -13,7 +13,7 @@ import (
 )
 
 type peer struct {
-	rasn          uint16 // Need another one for 32bit ASN
+	twoASN        uint16
 	hold          uint16
 	ip            string
 	conn          net.Conn
@@ -111,8 +111,8 @@ func (p *peer) HandleOpen() {
 	// errors
 	io.ReadFull(p.in, pbuffer)
 
-	// Grab the ASN and Hold Time. ASN could be 16 or 32 bits.
-	p.rasn = o.ASN
+	// Grab the ASN and Hold Time.
+	p.twoASN = o.ASN
 	p.hold = o.HoldTime
 
 	p.mutex.Lock()

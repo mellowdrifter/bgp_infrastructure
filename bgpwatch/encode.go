@@ -114,13 +114,13 @@ func (p *peer) createKeepAlive() {
 func (p *peer) encodeOutgoing() {
 	// Set size
 	b := p.out.Bytes()
-	setSizeOfOutgoing(&b)
+	setSizeOfMessage(&b)
 	log.Printf("Will encode the following...")
 	log.Printf("%#v\n", b)
 	binary.Write(p.conn, binary.BigEndian, b)
 }
 
-func setSizeOfOutgoing(b *[]byte) {
+func setSizeOfMessage(b *[]byte) {
 	s := uint16ToByte(uint16(len(*b)))
 	(*b)[16] = s[0]
 	(*b)[17] = s[1]
@@ -130,12 +130,12 @@ func (p *peer) createOpen() {
 	getMarker(p.out)
 	// Need to convert both ASN and Holdtime to [2]byte. Another function?
 	p.out.Write([]byte{0, 0, open, bgpVersion})
-	p.out.Write(getOpenASN(p.rasn))
+	p.out.Write(getOpenASN(p.twoASN))
 	p.out.Write(uint16ToByte(p.hold))
 	p.out.Write(rid[:])
 
 	// Add parameters
-	param, len := createParameters(&p.param)
+	param, len := createParameters(&p.param, p.twoASN)
 	p.out.Write([]byte{len})
 	p.out.Write(param)
 
@@ -151,22 +151,35 @@ func getOpenASN(asn uint16) []byte {
 }
 
 func uint16ToByte(i uint16) []byte {
-	// f is first byte, s is second byte
-	f := i / 256
-	s := i % 256
-	return []byte{byte(f), byte(s)}
+	a := i / 256
+	b := i % 256
+	return []byte{byte(a), byte(b)}
+}
+
+func uint32ToByte(i uint32) []byte {
+	a := i / 16777216
+	b := i / 65536
+	c := i / 256
+	d := i % 256
+	return []byte{byte(a), byte(b), byte(c), byte(d)}
 }
 
 // How to look after each parameter in turn?
 // Could be dodgy and encode cap 2 and size in each...
-func createParameters(p *parameters) ([]byte, uint8) {
+func createParameters(p *parameters, asn uint16) ([]byte, uint8) {
 	var param []byte
 
 	// length of parameters are worked out at the end
 	param = append(param, uint8(2), 0)
 
-	if p.Refresh {
-		param = append(param, byte(capRefresh), 0)
+	// Always send refresh and 4byte support
+	param = append(param, byte(capRefresh), 0)
+	param = append(param, byte(cap4Byte), 4)
+	if p.ASN32 != 0 {
+		param = append(param, byte(p.ASN32))
+	} else {
+		param = append(param, 0, 0)
+		param = append(param, uint16ToByte(asn)...)
 	}
 
 	// Need to check which AF the peer is actually using!
