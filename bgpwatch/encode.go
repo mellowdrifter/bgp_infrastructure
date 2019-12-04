@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -52,15 +51,6 @@ type ipv4Address []byte
 type ipv6Address []byte
 
 type twoByteLength [2]byte
-
-func iipByteToString(b []byte) string {
-	if len(b) == 16 {
-		// not yet implemented
-		return ""
-
-	}
-	return fmt.Sprintf("%v.%v.%v.%v", b[0], b[1], b[2], b[3])
-}
 
 type v4Addr struct {
 	Mask   uint8
@@ -184,8 +174,11 @@ func createParameters(p *parameters, asn uint16) ([]byte, uint8) {
 
 	// Need to check which AF the peer is actually using!
 	// AFI 0 SAFI 0 are IPv4, so if not filled in this is what is sent back :/
-	ip := createIPv4Cap()
-	param = append(param, ip...)
+	// This might be fine. Advertise all but we'll negotiate on what the other sends.
+	ip4 := createIPv4Cap()
+	param = append(param, ip4...)
+	ip6 := createIPv6Cap()
+	param = append(param, ip6...)
 
 	// Insert size of parameters. This is the total size minus the parameter type and size bytes
 	param[1] = byte(len(param) - 2)
@@ -197,6 +190,11 @@ func createParameters(p *parameters, asn uint16) ([]byte, uint8) {
 func createIPv4Cap() []byte {
 	// Unknown numbers!
 	return []byte{capMpBgp, 4, 0, 1, 0, 1}
+}
+
+func createIPv6Cap() []byte {
+	// Unknown numbers!
+	return []byte{capMpBgp, 4, 0, 2, 0, 1}
 }
 
 type parameterHeader struct {
