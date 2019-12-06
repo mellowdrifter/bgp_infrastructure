@@ -161,12 +161,19 @@ func (p *peer) handleUpdate() {
 	io.ReadFull(p.in, abuf)
 
 	// decode attributes
-	pa.attr = decodeRouteAttributes(abuf)
+	pa.attr = decodePathAttributes(abuf)
 
-	// dump the rest of the update message into a buffer to use for NLRI
-	// It is possible to work this out as well... needed for a copy.
-	// for now just read the last of the in buffer :(
-	pa.prefixes = decodeNLRI(p.in)
+	// IPv6 updates are done via attributes. Only pass the remainder of the buffer to decodeIPv4NLRI if
+	// there are no IPv6 updates in the attributes.
+	if len(pa.attr.ipv6NLRI) == 0 {
+		// dump the rest of the update message into a buffer to use for NLRI
+		// It is possible to work this out as well... needed for a copy.
+		// for now just read the last of the in buffer :(
+		pa.v4prefixes = decodeIPv4NLRI(p.in)
+	} else {
+		pa.v6prefixes = pa.attr.ipv6NLRI
+		pa.v6NextHops = pa.attr.nextHops
+	}
 
 	p.mutex.Lock()
 	p.prefixes = append(p.prefixes, &pa)

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"log"
 	"net"
 )
@@ -33,17 +32,14 @@ const (
 	fsmError        = 5
 	cease           = 6
 
-	// Open error subcodes
-	unsupportedVersion    uint8 = 1
-	badPeerAS             uint8 = 2
-	badBGPIdentifier      uint8 = 3
-	unsupportedParameter  uint8 = 4
-	badHoldTime           uint8 = 6
-	unsupportedCapability uint8 = 7
-
 	// min and max BGP message size in bytes
 	minMessage = 19
 	maxMessage = 4096
+
+	// AFI/SAFI
+	afiIPv4     uint16 = 1
+	afiIPv6     uint16 = 2
+	safiUnicast uint8  = 1
 )
 
 type bgpid [4]byte
@@ -53,6 +49,11 @@ type ipv6Address []byte
 type twoByteLength [2]byte
 
 type v4Addr struct {
+	Mask   uint8
+	Prefix net.IP
+}
+
+type v6Addr struct {
 	Mask   uint8
 	Prefix net.IP
 }
@@ -219,29 +220,6 @@ type opt4Byte struct {
 type msgNotification struct {
 	Code    uint8
 	Subcode uint8
-}
-
-func (m *msgNotification) unsupported(wr io.Writer, non []uint8) {
-	n := struct {
-		one        uint64
-		two        uint64
-		length     uint16
-		ntype      uint8
-		code       uint8
-		subcode    uint8
-		parameters []uint8
-	}{
-		allOnes,
-		allOnes,
-		20,
-		notification,
-		openError,
-		unsupportedCapability,
-		non,
-	}
-	log.Printf("%#v\n", n)
-	binary.Write(wr, binary.BigEndian, n)
-
 }
 
 // this is just for End-Of-RIB. Needs more work!

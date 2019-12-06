@@ -85,7 +85,7 @@ func TestDecodeNLRI(t *testing.T) {
 	}
 	for _, test := range tests {
 		buf := bytes.NewReader(test.input)
-		got := decodeNLRI(buf)
+		got := decodeIPv4NLRI(buf)
 
 		if !cmp.Equal(got, test.want) {
 			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
@@ -226,6 +226,72 @@ func TestDecodeLargeCommunities(t *testing.T) {
 
 		if !cmp.Equal(got, test.want) {
 			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
+		}
+	}
+}
+
+func TestDecodeMPReachNLRI(t *testing.T) {
+	tests := []struct {
+		desc   string
+		input  []byte
+		wantIP []v6Addr
+		wantNH []string
+	}{
+		{
+			desc: "Two Next Hops. Public then link-local",
+			input: []byte{
+				0x00, 0x02, 0x01, 0x20, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x02, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x02, 0x0b, 0xff,
+				0xfe, 0x7e, 0x00, 0x00, 0x00, 0x40, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x02, 0x00, 0x02, 0x40, 0x20,
+				0x01, 0x0d, 0xb8, 0x00, 0x02, 0x00, 0x01, 0x40, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x02, 0x00, 0x00,
+			},
+			wantIP: []v6Addr{
+				v6Addr{
+					Prefix: net.ParseIP("2001:db8:2:2::"),
+					Mask:   64,
+				},
+				v6Addr{
+					Prefix: net.ParseIP("2001:db8:2:1::"),
+					Mask:   64,
+				},
+				v6Addr{
+					Prefix: net.ParseIP("2001:db8:2::"),
+					Mask:   64,
+				},
+			},
+			wantNH: []string{
+				"2001:db8::2",
+				"fe80::c002:bff:fe7e:0",
+			},
+		},
+		{
+			desc: "Two Next Hops. Link-local is advertised next-hop, therefore first next-hop is ::",
+			input: []byte{
+				0x00, 0x02, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00,
+				0x27, 0xff, 0xfe, 0x3b, 0xbe, 0x83, 0x00, 0x38, 0x20, 0x01, 0x0a, 0x09, 0x98, 0x76, 0x54,
+			},
+			wantIP: []v6Addr{
+				v6Addr{
+					Prefix: net.ParseIP("2001:a09:9876:5400::"),
+					Mask:   56,
+				},
+			},
+			wantNH: []string{
+				"::",
+				"fe80::a00:27ff:fe3b:be83",
+			},
+		},
+	}
+	for _, test := range tests {
+		buf := bytes.NewBuffer(test.input)
+		ip, nh := decodeMPReachNLRI(buf)
+
+		if !cmp.Equal(nh, test.wantNH) {
+			t.Errorf("Test (%s): got %+v, want %+v", test.desc, nh, test.wantNH)
+		}
+		if !cmp.Equal(ip, test.wantIP) {
+			t.Errorf("Test (%s): got %+v, want %+v", test.desc, ip, test.wantIP)
 		}
 	}
 }
