@@ -12,22 +12,22 @@ import (
 
 const (
 	// tc is Type Code
-	tcOrigin         uint8 = 1
-	tcASPath         uint8 = 2
-	tcNextHop        uint8 = 3
-	tcMED            uint8 = 4
-	tcLPref          uint8 = 5
-	tcAtoAgg         uint8 = 6
-	tcAggregator     uint8 = 7
-	tcCommunity      uint8 = 8
-	tcMPReachNLRI    uint8 = 14
-	tcMPUnreachNLRI  uint8 = 15
-	tcLargeCommunity uint8 = 32
+	tcOrigin         = 1
+	tcASPath         = 2
+	tcNextHop        = 3
+	tcMED            = 4
+	tcLPref          = 5
+	tcAtoAgg         = 6
+	tcAggregator     = 7
+	tcCommunity      = 8
+	tcMPReachNLRI    = 14
+	tcMPUnreachNLRI  = 15
+	tcLargeCommunity = 32
 
 	// origin codes
-	igp        uint8 = 0
-	egp        uint8 = 1
-	incomplete uint8 = 2
+	igp        = 0
+	egp        = 1
+	incomplete = 2
 )
 
 type attrHeader struct {
@@ -74,7 +74,6 @@ type prefixAttributes struct {
 
 func (f *flagType) toString() string {
 	return fmt.Sprintf("%v --- %d", f.Flags, f.Code)
-
 }
 
 func decodePathAttributes(attr []byte) *pathAttr {
@@ -85,82 +84,68 @@ func decodePathAttributes(attr []byte) *pathAttr {
 		if r.Len() == 0 {
 			break
 		}
-		// keep reading the attributes until there are none left!
-		// Read in header
 		var ah attrHeader
 		binary.Read(r, binary.BigEndian, &ah)
 
-		var b []byte
-		t := bytes.NewBuffer(b)
-		switch ah.Type.Code {
-		case tcOrigin:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.origin = decodeOrigin(t)
-		case tcASPath:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.aspath = append(pa.aspath, decodeASPath(t)...)
-			// Could have both AS_SEQ and AS_SET
-			if r.Len() != 0 {
-				pa.aspath = append(pa.aspath, decodeASPath(t)...)
-			}
-		case tcNextHop:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.nextHop = decodeIPv4NextHop(t)
-		case tcMED:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.med = decode4ByteNumber(t)
-		case tcLPref:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.localPref = decode4ByteNumber(t)
-		case tcAtoAgg:
-			io.CopyN(ioutil.Discard, r, 1)
-			pa.atomic = true
-		case tcAggregator:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.agAS, pa.agOrigin = decodeAggregator(t)
-		case tcMPReachNLRI:
+		buf := bytes.NewBuffer(make([]byte, 256))
+
+		// Extended length means length field is two bytes, else one
+		// TODO: This should all go into a new function
+		var len int64
+		if isExtended(ah.Type.Flags) {
 			var length uint16
 			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			fmt.Printf("MP-NLRI with length: %d\n", length)
-			pa.ipv6NLRI, pa.nextHops = decodeMPReachNLRI(t)
+			len = int64(length)
+		} else {
+			var length uint8
+			binary.Read(r, binary.BigEndian, &length)
+			len = int64(length)
+		}
+
+		// Copy the entire attribute into a new buffer
+		io.CopyN(buf, r, len)
+
+		switch ah.Type.Code {
+		case tcOrigin:
+			pa.origin = decodeOrigin(buf)
+		case tcASPath:
+			pa.aspath = append(pa.aspath, decodeASPath(buf)...)
+			// Could have both AS_SEQ and AS_SET
+			if r.Len() != 0 {
+				pa.aspath = append(pa.aspath, decodeASPath(buf)...)
+			}
+		case tcNextHop:
+			pa.nextHop = decodeIPv4NextHop(buf)
+		case tcMED:
+			pa.med = decode4ByteNumber(buf)
+		case tcLPref:
+			pa.localPref = decode4ByteNumber(buf)
+		case tcAtoAgg:
+			pa.atomic = true
+		case tcAggregator:
+			pa.agAS, pa.agOrigin = decodeAggregator(buf)
+		case tcMPReachNLRI:
+			pa.ipv6NLRI, pa.nextHops = decodeMPReachNLRI(buf)
 		case tcMPUnreachNLRI:
-			// This one is strange. Why is length a byte, when MPREACH is 2 bytes?
-			// Is this what's used for end of rib?
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
+			// TODO: should have a field for EoR
+			decodeMPUnreachNLRI(buf, len)
 		case tcCommunity:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.communities = decodeCommunities(t, length)
+			pa.communities = decodeCommunities(buf, len)
 		case tcLargeCommunity:
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(t, r, int64(length))
-			pa.largeCommunities = decodeLargeCommunities(t, length)
+			pa.largeCommunities = decodeLargeCommunities(buf, len)
 
 		default:
 			log.Printf("Type Code %d is not yet implemented", ah.Type.Code)
-			var length uint8
-			binary.Read(r, binary.BigEndian, &length)
-			io.CopyN(ioutil.Discard, r, int64(length))
+			io.CopyN(ioutil.Discard, r, len)
 		}
 	}
 	return &pa
+}
+
+// Extended-length means two bytes, else one
+func isExtended(b byte) bool {
+	res := b & 16
+	return res == 16
 }
 
 func decodeOrigin(b *bytes.Buffer) uint8 {
@@ -220,7 +205,7 @@ func decodeAggregator(b *bytes.Buffer) (uint32, net.IP) {
 	return asn, net.IP(ip.Bytes())
 }
 
-func decodeCommunities(b *bytes.Buffer, len uint8) []community {
+func decodeCommunities(b *bytes.Buffer, len int64) []community {
 	var communities = make([]community, 0, len/4)
 	for {
 		if b.Len() == 0 {
@@ -233,7 +218,7 @@ func decodeCommunities(b *bytes.Buffer, len uint8) []community {
 	return communities
 }
 
-func decodeLargeCommunities(b *bytes.Buffer, len uint8) []largeCommunity {
+func decodeLargeCommunities(b *bytes.Buffer, len int64) []largeCommunity {
 	var communities = make([]largeCommunity, 0, len/12)
 	for {
 		if b.Len() == 0 {
@@ -362,6 +347,14 @@ func decodeMPReachNLRI(b *bytes.Buffer) ([]v6Addr, []string) {
 
 	// Pass the remainder of the buffer to be decoded into NLRI
 	return decodeIPv6NLRI(b), nextHops
+
+}
+
+// TODO: finish this off...
+func decodeMPUnreachNLRI(b *bytes.Buffer, len int64) {
+	if len == 3 {
+		log.Println("IPv6 End-of-Rib received")
+	}
 
 }
 

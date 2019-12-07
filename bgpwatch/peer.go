@@ -170,6 +170,7 @@ func (p *peer) handleUpdate() {
 		// It is possible to work this out as well... needed for a copy.
 		// for now just read the last of the in buffer :(
 		pa.v4prefixes = decodeIPv4NLRI(p.in)
+		// TODO: What about withdraws???
 	} else {
 		pa.v6prefixes = pa.attr.ipv6NLRI
 		pa.v6NextHops = pa.attr.nextHops
