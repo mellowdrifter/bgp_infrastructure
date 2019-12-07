@@ -87,7 +87,8 @@ func decodePathAttributes(attr []byte) *pathAttr {
 		var ah attrHeader
 		binary.Read(r, binary.BigEndian, &ah)
 
-		buf := bytes.NewBuffer(make([]byte, 256))
+		// Is this of size 64 by default?
+		buf := new(bytes.Buffer)
 
 		// Extended length means length field is two bytes, else one
 		// TODO: This should all go into a new function
@@ -130,13 +131,12 @@ func decodePathAttributes(attr []byte) *pathAttr {
 			// TODO: should have a field for EoR
 			decodeMPUnreachNLRI(buf, len)
 		case tcCommunity:
-			pa.communities = decodeCommunities(buf, len)
+			pa.communities = decodeCommunities(buf, uint8(len))
 		case tcLargeCommunity:
-			pa.largeCommunities = decodeLargeCommunities(buf, len)
+			pa.largeCommunities = decodeLargeCommunities(buf, uint8(len))
 
 		default:
 			log.Printf("Type Code %d is not yet implemented", ah.Type.Code)
-			io.CopyN(ioutil.Discard, r, len)
 		}
 	}
 	return &pa
@@ -205,7 +205,8 @@ func decodeAggregator(b *bytes.Buffer) (uint32, net.IP) {
 	return asn, net.IP(ip.Bytes())
 }
 
-func decodeCommunities(b *bytes.Buffer, len int64) []community {
+func decodeCommunities(b *bytes.Buffer, len uint8) []community {
+	// Each community takes 4 bytes
 	var communities = make([]community, 0, len/4)
 	for {
 		if b.Len() == 0 {
@@ -218,7 +219,8 @@ func decodeCommunities(b *bytes.Buffer, len int64) []community {
 	return communities
 }
 
-func decodeLargeCommunities(b *bytes.Buffer, len int64) []largeCommunity {
+func decodeLargeCommunities(b *bytes.Buffer, len uint8) []largeCommunity {
+	// Each large community takes 4 bytes
 	var communities = make([]largeCommunity, 0, len/12)
 	for {
 		if b.Len() == 0 {
