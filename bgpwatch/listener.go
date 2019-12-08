@@ -12,8 +12,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
+	"path"
 	"sync"
 	"time"
+
+	"gopkg.in/ini.v1"
 )
 
 const (
@@ -30,7 +34,21 @@ type bgpWatchServer struct {
 	mutex    sync.RWMutex
 }
 
+type config struct {
+	port    string
+	logfile string
+}
+
 func main() {
+
+	// Set up log file
+	conf := getConfig()
+	f, err := os.OpenFile(conf.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("failed to open logfile: %v\n", err)
+	}
+	defer f.Close()
+	log.SetOutput(os.Stdout)
 
 	serv := bgpWatchServer{
 		mutex: sync.RWMutex{},
@@ -39,6 +57,27 @@ func main() {
 
 	serv.start()
 
+}
+
+func getConfig() config {
+	// load in config
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
+	cf, err := ini.Load(path)
+	if err != nil {
+		log.Fatalf("failed to read config file: %v\n", err)
+	}
+
+	var conf config
+
+	// TODO: Error check some of these, Also RID
+	conf.logfile = cf.Section("bgp").Key("logfile").String()
+	conf.port = cf.Section("bgp").Key("port").String()
+
+	return conf
 }
 
 // Start listening

@@ -52,6 +52,7 @@ type pathAttr struct {
 	largeCommunities []largeCommunity
 	nextHops         []string
 	ipv6NLRI         []v6Addr
+	v6EoR            bool
 }
 
 type community struct {
@@ -70,6 +71,8 @@ type prefixAttributes struct {
 	v4prefixes []v4Addr
 	v6prefixes []v6Addr
 	v6NextHops []string
+	v4EoR      bool
+	v6EoR      bool
 }
 
 func (f *flagType) toString() string {
@@ -88,6 +91,7 @@ func decodePathAttributes(attr []byte) *pathAttr {
 		binary.Read(r, binary.BigEndian, &ah)
 
 		// Is this of size 64 by default?
+		// TODO: check
 		buf := new(bytes.Buffer)
 
 		// Extended length means length field is two bytes, else one
@@ -128,12 +132,11 @@ func decodePathAttributes(attr []byte) *pathAttr {
 		case tcMPReachNLRI:
 			pa.ipv6NLRI, pa.nextHops = decodeMPReachNLRI(buf)
 		case tcMPUnreachNLRI:
-			// TODO: should have a field for EoR
-			decodeMPUnreachNLRI(buf, len)
+			pa.v6EoR = decodeMPUnreachNLRI(buf, 3)
 		case tcCommunity:
-			pa.communities = decodeCommunities(buf, uint8(len))
+			pa.communities = decodeCommunities(buf, len)
 		case tcLargeCommunity:
-			pa.largeCommunities = decodeLargeCommunities(buf, uint8(len))
+			pa.largeCommunities = decodeLargeCommunities(buf, len)
 
 		default:
 			log.Printf("Type Code %d is not yet implemented", ah.Type.Code)
@@ -205,7 +208,7 @@ func decodeAggregator(b *bytes.Buffer) (uint32, net.IP) {
 	return asn, net.IP(ip.Bytes())
 }
 
-func decodeCommunities(b *bytes.Buffer, len uint8) []community {
+func decodeCommunities(b *bytes.Buffer, len int64) []community {
 	// Each community takes 4 bytes
 	var communities = make([]community, 0, len/4)
 	for {
@@ -219,7 +222,7 @@ func decodeCommunities(b *bytes.Buffer, len uint8) []community {
 	return communities
 }
 
-func decodeLargeCommunities(b *bytes.Buffer, len uint8) []largeCommunity {
+func decodeLargeCommunities(b *bytes.Buffer, len int64) []largeCommunity {
 	// Each large community takes 4 bytes
 	var communities = make([]largeCommunity, 0, len/12)
 	for {
@@ -233,7 +236,6 @@ func decodeLargeCommunities(b *bytes.Buffer, len uint8) []largeCommunity {
 	return communities
 }
 
-// BGP only encodes the prefix up to the subnet value in bits, and then pads zeros until the end of the octet.
 func decodeIPv4NLRI(b *bytes.Reader) []v4Addr {
 	var addrs []v4Addr
 	for {
@@ -253,6 +255,7 @@ func decodeIPv4NLRI(b *bytes.Reader) []v4Addr {
 	return addrs
 }
 
+// BGP only encodes the prefix up to the subnet value in bits, and then pads zeros until the end of the octet.
 func getIPv4Prefix(b *bytes.Reader, mask uint8) net.IP {
 	prefix := bytes.NewBuffer(make([]byte, 0, 4))
 
@@ -270,6 +273,7 @@ func getIPv4Prefix(b *bytes.Reader, mask uint8) net.IP {
 	return net.IP(prefix.Bytes())
 }
 
+// BGP only encodes the prefix up to the subnet value in bits, and then pads zeros until the end of the octet.
 func getIPv6Prefix(b *bytes.Buffer, mask uint8) net.IP {
 	prefix := bytes.NewBuffer(make([]byte, 0, 16))
 
@@ -353,11 +357,11 @@ func decodeMPReachNLRI(b *bytes.Buffer) ([]v6Addr, []string) {
 }
 
 // TODO: finish this off...
-func decodeMPUnreachNLRI(b *bytes.Buffer, len int64) {
+func decodeMPUnreachNLRI(b *bytes.Buffer, len int64) bool {
 	if len == 3 {
-		log.Println("IPv6 End-of-Rib received")
+		return true
 	}
-
+	return false
 }
 
 // BGP only encodes the prefix up to the subnet value in bits, and then pads zeros until the end of the octet.
@@ -377,4 +381,27 @@ func decodeIPv6NLRI(b *bytes.Buffer) []v6Addr {
 		})
 	}
 	return addrs
+}
+
+// TODO: this is awful. This is the same as decode IPv4 NLRI. Use the same?
+func decodeIPv4Withdraws(wd []byte) *prefixAttributes {
+	r := bytes.NewReader(wd)
+	var pa prefixAttributes
+	var addrs []v4Addr
+	for {
+		if r.Len() == 0 {
+			break
+		}
+
+		var mask uint8
+		binary.Read(r, binary.BigEndian, &mask)
+
+		addrs = append(addrs, v4Addr{
+			Mask:   mask,
+			Prefix: getIPv4Prefix(r, mask),
+		})
+	}
+	pa.v4prefixes = addrs
+
+	return &pa
 }

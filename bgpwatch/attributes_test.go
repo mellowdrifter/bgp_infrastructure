@@ -189,7 +189,7 @@ func TestDecodeCommunities(t *testing.T) {
 	}
 	for _, test := range tests {
 		buf := bytes.NewBuffer(test.input)
-		got := decodeCommunities(buf, uint8(len(test.input)))
+		got := decodeCommunities(buf, int64(len(test.input)))
 
 		if !cmp.Equal(got, test.want) {
 			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
@@ -222,7 +222,7 @@ func TestDecodeLargeCommunities(t *testing.T) {
 	}
 	for _, test := range tests {
 		buf := bytes.NewBuffer(test.input)
-		got := decodeLargeCommunities(buf, uint8(len(test.input)))
+		got := decodeLargeCommunities(buf, int64(len(test.input)))
 
 		if !cmp.Equal(got, test.want) {
 			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
@@ -292,6 +292,83 @@ func TestDecodeMPReachNLRI(t *testing.T) {
 		}
 		if !cmp.Equal(ip, test.wantIP) {
 			t.Errorf("Test (%s): got %+v, want %+v", test.desc, ip, test.wantIP)
+		}
+	}
+}
+
+func TestDecodePathAttributes(t *testing.T) {
+	tests := []struct {
+		desc  string
+		input []byte
+		want  *pathAttr
+	}{
+		{
+			desc: "Single IPv6 prefix with large communities and LP = 100",
+			input: []byte{
+				0x90, 0x0e, 0x00, 0x2d, 0x00, 0x02, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x0a, 0x00, 0x27, 0xff, 0xfe, 0x3b, 0xbe, 0x83, 0x00, 0x38, 0x20, 0x01, 0x0a, 0x09, 0x98, 0x76,
+				0x54, 0x40, 0x01, 0x01, 0x00, 0x40, 0x02, 0x00, 0x40, 0x05, 0x04, 0x00, 0x00, 0x00, 0x64, 0xc0,
+				0x20, 0x18, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1e, 0x00, 0x00,
+				0x00, 0x0a, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x00, 0x00, 0x0a,
+			},
+			want: &pathAttr{
+				localPref: 100,
+				largeCommunities: []largeCommunity{
+					largeCommunity{
+						Admin: 10,
+						High:  20,
+						Low:   30,
+					},
+					largeCommunity{
+						Admin: 10,
+						High:  60,
+						Low:   10,
+					},
+				},
+				nextHops: []string{
+					"::",
+					"fe80::a00:27ff:fe3b:be83",
+				},
+				ipv6NLRI: []v6Addr{
+					v6Addr{
+						Mask:   56,
+						Prefix: net.IP{32, 1, 10, 9, 152, 118, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					},
+				},
+			},
+		},
+		{
+			desc: "IPv4. 1 AS segment type2, lpre & med 100, one community",
+			input: []byte{
+				0x40, 0x01, 0x01, 0x00, 0x40, 0x02, 0x06, 0x02, 0x01, 0x00, 0x00, 0x00, 0x7b, 0x40, 0x03, 0x04,
+				0x0a, 0x14, 0x1e, 0x31, 0x80, 0x04, 0x04, 0x00, 0x00, 0x00, 0x64, 0x40, 0x05, 0x04, 0x00, 0x00,
+				0x00, 0x64, 0xc0, 0x08, 0x04, 0xfd, 0xe8, 0x02, 0x9a,
+			},
+			want: &pathAttr{
+				aspath: []asnSegment{
+					asnSegment{
+						Type: 2,
+						ASN:  123,
+					},
+				},
+				nextHop:   "10.20.30.49",
+				med:       100,
+				localPref: 100,
+				communities: []community{
+					community{
+						High: 65000,
+						Low:  666,
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+
+		got := decodePathAttributes(test.input)
+		if !cmp.Equal(got, test.want, cmp.AllowUnexported(pathAttr{})) {
+			t.Errorf("Test (%s): got %+v, want %+v", test.desc, got, test.want)
 		}
 	}
 }

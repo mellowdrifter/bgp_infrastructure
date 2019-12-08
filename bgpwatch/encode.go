@@ -121,12 +121,12 @@ func (p *peer) createOpen() {
 	getMarker(p.out)
 	// Need to convert both ASN and Holdtime to [2]byte. Another function?
 	p.out.Write([]byte{0, 0, open, bgpVersion})
-	p.out.Write(getOpenASN(p.twoASN))
-	p.out.Write(uint16ToByte(p.hold))
+	p.out.Write(getOpenASN(p.asn))
+	p.out.Write(uint16ToByte(p.holdtime))
 	p.out.Write(rid[:])
 
 	// Add parameters
-	param, len := createParameters(&p.param, p.twoASN)
+	param, len := createParameters(&p.param, p.asn)
 	p.out.Write([]byte{len})
 	p.out.Write(param)
 
@@ -224,8 +224,8 @@ type msgNotification struct {
 
 // this is just for End-Of-RIB. Needs more work!
 type msgUpdate struct {
-	WithdrawLength uint16
-	AttrLength     twoByteLength
+	Withdraws  uint16
+	AttrLength twoByteLength
 }
 
 func (t twoByteLength) toUint16() uint16 {

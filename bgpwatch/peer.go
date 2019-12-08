@@ -3,9 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"sync"
@@ -13,8 +11,8 @@ import (
 )
 
 type peer struct {
-	twoASN        uint16
-	hold          uint16
+	asn           uint16
+	holdtime      uint16
 	ip            string
 	conn          net.Conn
 	mutex         sync.RWMutex
@@ -26,7 +24,7 @@ type peer struct {
 	startTime     time.Time
 	in            *bytes.Reader
 	out           *bytes.Buffer
-	prefixes      []*prefixAttributes
+	prefixes      *prefixAttributes
 }
 
 func (p *peer) peerWorker() {
@@ -54,12 +52,11 @@ func (p *peer) peerWorker() {
 			return
 		}
 
-		// Do some work
 		switch header.Type {
 		case open:
 			p.HandleOpen()
 			p.createOpen()
-			// Following shoudl go outside of the switch statement once the rest are done
+			// Following should go outside of the switch statement once the rest are done
 			p.encodeOutgoing()
 
 		case keepalive:
@@ -67,18 +64,15 @@ func (p *peer) peerWorker() {
 			p.createKeepAlive()
 			p.encodeOutgoing()
 
-		//case notification:
-		//	p.handleNotification()
-		//	return
-
 		case update:
 			p.handleUpdate()
 
 			// output and dump that update
-			p.currentPrefixes()
+			p.logUpdate()
 
 		default:
-			io.CopyN(ioutil.Discard, p.in, int64(header.Length))
+			log.Printf("Unknown BGP message inbound: %#v\n", p.in)
+			//io.CopyN(ioutil.Discard, p.in, int64(header.Length))
 		}
 	}
 }
@@ -99,54 +93,52 @@ func (p *peer) HandleKeepalive() {
 }
 
 func (p *peer) HandleOpen() {
-	// TODO: I only support 4 byte ASN. If peer does not support. Send a notify and tear down
-	// the session.
 	defer p.mutex.Unlock()
-	fmt.Println("Received Open Message")
+	log.Println("Received Open Message")
 	var o msgOpen
 	binary.Read(p.in, binary.BigEndian, &o)
 
 	// Read parameters into new buffer
 	pbuffer := make([]byte, int(o.ParamLen))
-	// errors
+	// TODO: errors
 	io.ReadFull(p.in, pbuffer)
 
 	// Grab the ASN and Hold Time.
-	p.twoASN = o.ASN
-	p.hold = o.HoldTime
+	p.asn = o.ASN
+	p.holdtime = o.HoldTime
 
 	p.mutex.Lock()
 	p.param = decodeOptionalParameters(&pbuffer)
 
 }
 
+// TODO: Still not doing anything with this...
 func (p *peer) handleNotification() {
-	fmt.Println("Received a notify message")
+	log.Println("Received a notify message")
 	// Handle this better. Minimum is code and subcode. Could be more
 	var n msgNotification
 	binary.Read(p.in, binary.BigEndian, &n)
 
-	fmt.Printf("Notification code is %d with subcode %d\n", n.Code, n.Subcode)
-	fmt.Println("Closing session")
+	log.Printf("Notification code is %d with subcode %d\n", n.Code, n.Subcode)
+	log.Println("Closing session")
 	p.conn.Close()
 
 }
 
-// Lots of work needed here
+// Handle update messages. IPv6 updates are encoded in attributes unlike IPv4.
 func (p *peer) handleUpdate() {
+	var pa prefixAttributes
 	var u msgUpdate
 	binary.Read(p.in, binary.BigEndian, &u)
-	// More reading. Seems different address familes are different.
-	if u.WithdrawLength == 0 && u.AttrLength.toUint16() == 0 {
-		log.Printf("Received End-Of-RIB marker")
-		return
-	}
 
 	log.Println("received update message")
-	log.Printf("Update attribute is %d bytes long\n", u.AttrLength.toUint16())
-
-	if u.WithdrawLength == 0 {
-		log.Printf("No routes withdrawn with this update")
+	// If IPv4 EoR, exit early
+	if u.Withdraws == 0 && u.AttrLength.toUint16() == 0 {
+		p.mutex.Lock()
+		pa.v4EoR = true
+		p.prefixes = &pa
+		p.mutex.Unlock()
+		return
 	}
 
 	if u.AttrLength.toUint16() == 0 {
@@ -154,9 +146,17 @@ func (p *peer) handleUpdate() {
 		return
 	}
 
-	var pa prefixAttributes
+	// IPv4 withdraws are done here
+	if u.Withdraws != 0 {
+		wbuf := make([]byte, u.Withdraws)
+		io.ReadFull(p.in, wbuf)
+		p.mutex.Lock()
+		p.prefixes = decodeIPv4Withdraws(wbuf)
+		p.mutex.Unlock()
+		return
+	}
 
-	// drain the the attributes into a new buffer
+	// Drain all path attributes into a new buffer to decode.
 	abuf := make([]byte, u.AttrLength.toUint16())
 	io.ReadFull(p.in, abuf)
 
@@ -165,44 +165,67 @@ func (p *peer) handleUpdate() {
 
 	// IPv6 updates are done via attributes. Only pass the remainder of the buffer to decodeIPv4NLRI if
 	// there are no IPv6 updates in the attributes.
-	if len(pa.attr.ipv6NLRI) == 0 {
+	if len(pa.attr.ipv6NLRI) == 0 && !pa.attr.v6EoR {
 		// dump the rest of the update message into a buffer to use for NLRI
 		// It is possible to work this out as well... needed for a copy.
 		// for now just read the last of the in buffer :(
 		pa.v4prefixes = decodeIPv4NLRI(p.in)
 		// TODO: What about withdraws???
 	} else {
+		// Copy certain attributes over to upper struct
 		pa.v6prefixes = pa.attr.ipv6NLRI
 		pa.v6NextHops = pa.attr.nextHops
+		pa.v6EoR = pa.attr.v6EoR
 	}
 
 	p.mutex.Lock()
-	p.prefixes = append(p.prefixes, &pa)
+	p.prefixes = &pa
 	p.mutex.Unlock()
-
 }
 
-func (p *peer) currentPrefixes() {
+func (p *peer) logUpdate() {
 	p.mutex.RLock()
-	for _, v := range p.prefixes {
-		fmt.Printf("*** Current prefixes: %+v\n", v)
-		fmt.Println("*** Have the following attributes:")
-		fmt.Printf("Origin is %d\n", v.attr.origin)
-		fmt.Printf("ASPATH is %v\n", v.attr.aspath)
-		if v.attr.atomic {
-			fmt.Printf("Has the atomic aggregates set")
+	log.Println("******************************")
+	log.Printf("ATTR: %+v\n", p.prefixes)
+
+	if p.prefixes.attr != nil {
+		log.Printf("Origin is %d\n", p.prefixes.attr.origin)
+		log.Printf("ASPATH is %v\n", p.prefixes.attr.aspath)
+		if p.prefixes.attr.atomic {
+			log.Printf("Has the atomic aggregates set")
 		}
-		if v.attr.agAS != 0 {
-			fmt.Printf("As aggregate ASN as %v\n", v.attr.agAS)
+		if p.prefixes.attr.agAS != 0 {
+			log.Printf("As aggregate ASN as %v\n", p.prefixes.attr.agAS)
 		}
-		if len(v.attr.communities) > 0 {
-			fmt.Printf("Has the following communities: %v\n", v.attr.communities)
+		if len(p.prefixes.attr.communities) > 0 {
+			log.Printf("Has the following communities: %v\n", p.prefixes.attr.communities)
 		}
-		if len(v.attr.largeCommunities) > 0 {
-			fmt.Printf("Has the following large communities: %v\n", v.attr.largeCommunities)
+		if len(p.prefixes.attr.largeCommunities) > 0 {
+			log.Printf("Has the following large communities: %v\n", p.prefixes.attr.largeCommunities)
 		}
 	}
-	// Empty the slice
-	p.prefixes = p.prefixes[:0]
+	if len(p.prefixes.v4prefixes) != 0 {
+		log.Printf("IPv4 prefixes received: %+v\n", p.prefixes.v4prefixes)
+	}
+	if len(p.prefixes.v6prefixes) != 0 {
+		log.Printf("IPv6 prefixes received: %+v\n", p.prefixes.v6prefixes)
+		log.Printf("IPv6 Next-Hops are %+v\n", p.prefixes.v6NextHops)
+	}
+
+	// TODO: prefixes withdrawn
+
+	if p.prefixes.v4EoR {
+		log.Printf("IPv4 End-of-Rib received")
+	}
+	if p.prefixes.v6EoR {
+		log.Printf("IPv6 End-of-Rib received")
+	}
+
 	p.mutex.RUnlock()
+	log.Println("******************************")
+
+	// Empty out the prefixes field
+	p.mutex.Lock()
+	p.prefixes = nil
+	p.mutex.Unlock()
 }
