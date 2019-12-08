@@ -1,6 +1,6 @@
 //watch will speak BGP and output adjustments to the BGP table, maybe output via streaming gRPC?
 // RFC 4271 - BGP4
-// RFC 4893 -- Read 6793 to clarify - 4 byte ASN
+// Read 6793 to clarify - 4 byte ASN
 // RFC 8092 - Large Communities
 // RFC 2858 - MPBGP
 

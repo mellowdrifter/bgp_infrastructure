@@ -40,10 +40,26 @@ func decodeOptionalParameters(param *[]byte) parameters {
 	var par parameters
 	par.AddrFamilies = []addr{}
 
-	var p parameterHeader
-	binary.Read(r, binary.BigEndian, &p)
+	for {
+		// Parameter header contains the optional parameters header and length in total.
+		var p parameterHeader
+		binary.Read(r, binary.BigEndian, &p)
+		if r.Len() == 0 {
+			break
+		}
 
-	// keep reading the parameters until the parameter field is empty.
+		// Pass all capabilties to be decoded. Depending on vendor, there could be 1 or more
+		// capability per optional parameter.
+		c := make([]byte, p.Length)
+		io.ReadFull(r, c)
+		decodeCapability(c, &par)
+	}
+	return par
+}
+
+func decodeCapability(cap []byte, p *parameters) {
+	r := bytes.NewReader(cap)
+	// There may be 1 or more capabilities per call.
 	for {
 		if r.Len() == 0 {
 			break
@@ -58,30 +74,29 @@ func decodeOptionalParameters(param *[]byte) parameters {
 		case cap4Byte:
 			log.Printf("case cap4Byte")
 			io.CopyN(buf, r, int64(cap.Length))
-			par.ASN32 = decode4OctetAS(buf)
-			par.Supported = append(par.Supported, cap.Code)
+			p.ASN32 = decode4OctetAS(buf)
+			p.Supported = append(p.Supported, cap.Code)
 
 		case capMpBgp:
 			log.Printf("case capMpBgp")
 			io.CopyN(buf, r, int64(cap.Length))
 			addr := decodeMPBGP(buf)
 			log.Printf("AFI is %d, SAFI is %d\n", addr.AFI, addr.SAFI)
-			par.AddrFamilies = append(par.AddrFamilies, addr)
-			par.Supported = append(par.Supported, cap.Code)
+			p.AddrFamilies = append(p.AddrFamilies, addr)
+			p.Supported = append(p.Supported, cap.Code)
 
 		case capRefresh:
 			log.Printf("case capRefresh")
-			par.Refresh = true
-			par.Supported = append(par.Supported, cap.Code)
+			p.Refresh = true
+			p.Supported = append(p.Supported, cap.Code)
 
 		default:
 			log.Printf("unsupported")
-			par.Unsupported = append(par.Unsupported, cap.Code)
-			// As capability is not supported, drop the rest of the parameter message.
+			p.Unsupported = append(p.Unsupported, cap.Code)
+			// As capability is not supported, drop the rest of the capability message.
 			io.CopyN(ioutil.Discard, r, int64(cap.Length))
 		}
 	}
-	return par
 }
 
 // parameter 65 is 4-octet AS support

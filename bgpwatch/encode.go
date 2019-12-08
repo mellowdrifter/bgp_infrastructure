@@ -10,9 +10,6 @@ import (
 const (
 	bgpVersion = 4
 
-	// allOnes is max uint64 used for markers
-	allOnes = 18446744073709551615
-
 	// BGP message types
 	open         = 1
 	update       = 2
