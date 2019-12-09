@@ -17,6 +17,7 @@ type peer struct {
 	conn          net.Conn
 	mutex         sync.RWMutex
 	param         parameters
+	rid           bgpid
 	keepalives    uint64
 	lastKeepalive time.Time
 	updates       uint64
@@ -174,7 +175,7 @@ func (p *peer) handleUpdate() {
 	} else {
 		// Copy certain attributes over to upper struct
 		pa.v6prefixes = pa.attr.ipv6NLRI
-		pa.v6NextHops = pa.attr.nextHops
+		pa.v6NextHops = pa.attr.nextHopsv6
 		pa.v6EoR = pa.attr.v6EoR
 	}
 

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -42,7 +41,7 @@ type flagType struct {
 type pathAttr struct {
 	origin           uint8
 	aspath           []asnSegment
-	nextHop          string
+	nextHopv4        string
 	med              uint32
 	localPref        uint32
 	atomic           bool
@@ -50,7 +49,7 @@ type pathAttr struct {
 	agOrigin         net.IP
 	communities      []community
 	largeCommunities []largeCommunity
-	nextHops         []string
+	nextHopsv6       []string
 	ipv6NLRI         []v6Addr
 	v6EoR            bool
 }
@@ -73,10 +72,6 @@ type prefixAttributes struct {
 	v6NextHops []string
 	v4EoR      bool
 	v6EoR      bool
-}
-
-func (f *flagType) toString() string {
-	return fmt.Sprintf("%v --- %d", f.Flags, f.Code)
 }
 
 func decodePathAttributes(attr []byte) *pathAttr {
@@ -120,7 +115,7 @@ func decodePathAttributes(attr []byte) *pathAttr {
 				pa.aspath = append(pa.aspath, decodeASPath(buf)...)
 			}
 		case tcNextHop:
-			pa.nextHop = decodeIPv4NextHop(buf)
+			pa.nextHopv4 = decodeIPv4NextHop(buf)
 		case tcMED:
 			pa.med = decode4ByteNumber(buf)
 		case tcLPref:
@@ -130,7 +125,7 @@ func decodePathAttributes(attr []byte) *pathAttr {
 		case tcAggregator:
 			pa.agAS, pa.agOrigin = decodeAggregator(buf)
 		case tcMPReachNLRI:
-			pa.ipv6NLRI, pa.nextHops = decodeMPReachNLRI(buf)
+			pa.ipv6NLRI, pa.nextHopsv6 = decodeMPReachNLRI(buf)
 		case tcMPUnreachNLRI:
 			pa.v6EoR = decodeMPUnreachNLRI(buf, 3)
 		case tcCommunity:

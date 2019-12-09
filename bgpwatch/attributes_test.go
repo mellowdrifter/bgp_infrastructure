@@ -326,7 +326,7 @@ func TestDecodePathAttributes(t *testing.T) {
 						Low:   10,
 					},
 				},
-				nextHops: []string{
+				nextHopsv6: []string{
 					"::",
 					"fe80::a00:27ff:fe3b:be83",
 				},
@@ -352,7 +352,7 @@ func TestDecodePathAttributes(t *testing.T) {
 						ASN:  123,
 					},
 				},
-				nextHop:   "10.20.30.49",
+				nextHopv4: "10.20.30.49",
 				med:       100,
 				localPref: 100,
 				communities: []community{

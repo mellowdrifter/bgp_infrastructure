@@ -8,24 +8,16 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
-	"path"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"gopkg.in/ini.v1"
-)
-
-const (
-	port uint8 = 179
-)
-
-var (
-	rid = bgpid{0, 0, 0, 1}
 )
 
 type bgpWatchServer struct {
@@ -35,77 +27,97 @@ type bgpWatchServer struct {
 }
 
 type config struct {
-	port    string
+	rid     bgpid
+	port    int
 	logfile string
 }
 
 func main() {
 
-	// Set up log file
-	conf := getConfig()
-	f, err := os.OpenFile(conf.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("failed to open logfile: %v\n", err)
-	}
-	defer f.Close()
-	log.SetOutput(os.Stdout)
+	srid := flag.String("rid", "0.0.0.1", "router id")
+	logs := flag.String("log", "", "log location, stdout if not given")
+	port := flag.Int("port", 179, "listen port")
+	flag.Parse()
+	conf := getConfig(srid, logs, port)
 
+	// Set up log file
+	if conf.logfile != "" {
+		f, err := os.OpenFile(conf.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatalf("failed to open logfile: %v", err)
+		}
+		defer f.Close()
+		log.SetOutput(f)
+	} else {
+		log.SetOutput(os.Stdout)
+	}
+
+	// Start server
 	serv := bgpWatchServer{
 		mutex: sync.RWMutex{},
 	}
-	serv.listen()
-
-	serv.start()
-
+	serv.listen(conf)
+	serv.start(conf.rid)
 }
 
-func getConfig() config {
-	// load in config
-	exe, err := os.Executable()
+func getConfig(srid, logf *string, port *int) config {
+	rid, err := getRid(srid)
 	if err != nil {
-		log.Fatal(err)
-	}
-	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
-	cf, err := ini.Load(path)
-	if err != nil {
-		log.Fatalf("failed to read config file: %v\n", err)
+		log.Fatalf("Unable to convert %s to RID format: %v", *srid, err)
 	}
 
-	var conf config
+	return config{
+		rid:     rid,
+		port:    *port,
+		logfile: *logf,
+	}
+}
 
-	// TODO: Error check some of these, Also RID
-	conf.logfile = cf.Section("bgp").Key("logfile").String()
-	conf.port = cf.Section("bgp").Key("port").String()
+// Convert the string RID to actual RID.
+func getRid(srid *string) (bgpid, error) {
+	s := strings.Split(*srid, ".")
+	var rid bgpid
+	if len(s) != 4 {
+		return rid, fmt.Errorf("RID too short")
+	}
 
-	return conf
+	for i := 0; i < 4; i++ {
+		num, err := strconv.ParseInt(s[i], 10, 16)
+		if err != nil {
+			return rid, nil
+		}
+		rid[i] = byte(uint8(num))
+	}
+
+	return rid, nil
 }
 
 // Start listening
-func (s *bgpWatchServer) listen() {
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func (s *bgpWatchServer) listen(c config) {
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", c.port))
 	if err != nil {
 		log.Fatalf("Unable to start server: %v", err)
 	}
 	s.listener = l
-	log.Printf("Listening on port %d\n", port)
+	log.Printf("Listening on port %d\n", c.port)
 
 }
 
 // start will start the listener as well as start each peer worker.
-func (s *bgpWatchServer) start() {
+func (s *bgpWatchServer) start(rid bgpid) {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			log.Printf("%v\n", err)
 		} else {
-			peer := s.accept(conn)
+			peer := s.accept(conn, rid)
 			go peer.peerWorker()
 		}
 	}
 }
 
 // accept adds a new client to the current list of clients being served.
-func (s *bgpWatchServer) accept(conn net.Conn) *peer {
+func (s *bgpWatchServer) accept(conn net.Conn, rid bgpid) *peer {
 	log.Printf("Connection from %v, total peers: %d\n",
 		conn.RemoteAddr().String(), len(s.peers)+1)
 
@@ -126,6 +138,7 @@ func (s *bgpWatchServer) accept(conn net.Conn) *peer {
 	// 4k per client, so it's not a big deal.
 	peer := &peer{
 		conn:      conn,
+		rid:       rid,
 		ip:        ip,
 		out:       bytes.NewBuffer(make([]byte, 4096)),
 		mutex:     sync.RWMutex{},

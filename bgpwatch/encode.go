@@ -120,13 +120,12 @@ func (p *peer) createOpen() {
 	p.out.Write([]byte{0, 0, open, bgpVersion})
 	p.out.Write(getOpenASN(p.asn))
 	p.out.Write(uint16ToByte(p.holdtime))
-	p.out.Write(rid[:])
+	p.out.Write(p.rid[:])
 
 	// Add parameters
 	param, len := createParameters(&p.param, p.asn)
 	p.out.Write([]byte{len})
 	p.out.Write(param)
-
 }
 
 func getOpenASN(asn uint16) []byte {
