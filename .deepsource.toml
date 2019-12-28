@@ -1,0 +1,9 @@
+  version = 1
+
+  [[analyzers]]
+  name = "go"
+  enabled = true
+  runtime_version = "3.x.x"
+
+  [analyzers.meta]
+  import_path = "github.com/mellowdrifter/bgp_infrastructure"
