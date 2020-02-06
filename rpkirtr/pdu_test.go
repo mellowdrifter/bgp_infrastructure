@@ -274,3 +274,101 @@ func TestIpv6PrefixPDU(t *testing.T) {
 		}
 	}
 }
+
+func TestEndOfDataPDU(t *testing.T) {
+	type eodPDU struct {
+		Version uint8
+		Ptype   uint8
+		Session uint16
+		Length  uint32
+		Serial  uint32
+		Refresh uint32
+		Retry   uint32
+		Expire  uint32
+	}
+	pdus := []struct {
+		desc    string
+		session uint16
+		serial  uint32
+		refresh uint32
+		retry   uint32
+		expire  uint32
+	}{
+		{
+			desc:    "test 1",
+			session: 1,
+			serial:  2,
+			refresh: 3,
+			retry:   4,
+			expire:  5,
+		},
+		{
+			desc: "zero test",
+		},
+	}
+	for _, v := range pdus {
+		// Send data to be encoded
+		var buffer bytes.Buffer
+		pdu := &endOfDataPDU{
+			session: v.session,
+			serial:  v.serial,
+			refresh: v.refresh,
+			retry:   v.retry,
+			expire:  v.expire,
+		}
+		pdu.serialize(&buffer)
+
+		// Read data back that was written
+		buf := bytes.NewReader(buffer.Bytes())
+		var got eodPDU
+		binary.Read(buf, binary.BigEndian, &got)
+
+		// Directly create PDU
+		want := eodPDU{
+			Version: version1,
+			Ptype:   endOfData,
+			Session: v.session,
+			Length:  24,
+			Serial:  v.serial,
+			Refresh: v.refresh,
+			Retry:   v.retry,
+			Expire:  v.expire,
+		}
+
+		// Compare them
+		if !cmp.Equal(got, want) {
+			t.Errorf("PDU encoded is not what was expected. Got %+v, Wanted %+v\n", got, want)
+		}
+	}
+}
+
+func TestCacheResetPDU(t *testing.T) {
+	type cachePDU struct {
+		Version uint8
+		Ptype   uint8
+		Zero16  uint16
+		Length  uint32
+	}
+
+	// Send data to be encoded
+	var buffer bytes.Buffer
+	pdu := &cacheResetPDU{}
+	pdu.serialize(&buffer)
+
+	// Read data back that was written
+	buf := bytes.NewReader(buffer.Bytes())
+	var got cachePDU
+	binary.Read(buf, binary.BigEndian, &got)
+
+	// Directly create PDU
+	want := cachePDU{
+		Version: version1,
+		Ptype:   cacheReset,
+		Length:  8,
+	}
+
+	// Compare them
+	if !cmp.Equal(got, want) {
+		t.Errorf("PDU encoded is not what was expected. Got %+v, Wanted %+v\n", got, want)
+	}
+}

@@ -106,11 +106,18 @@ type serialDiff struct {
 
 func main() {
 	defer profile.Start(profile.MemProfile).Stop()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+}
 
+// run will do the initial set up. Returns error to main.
+func run() error {
 	// set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatal(fmt.Errorf("failed to open logfile: %w", err))
+		return fmt.Errorf("failed to open logfile: %w", err)
 	}
 	defer f.Close()
 	log.SetOutput(f)
@@ -122,11 +129,8 @@ func main() {
 	log.Printf("Downloading %s\n", cacheurl)
 	roas, err := readROAs(cacheurl)
 	if err != nil {
-		log.Fatalf("Unable to download ROAs, aborting: %v", err)
+		return fmt.Errorf("Unable to download ROAs, aborting: %w", err)
 	}
-
-	// https://golangcode.com/print-the-current-memory-usage/
-	go PrintMemUsage()
 
 	// Set up our server with it's initial data.
 	rpki := CacheServer{
@@ -143,9 +147,14 @@ func main() {
 	// Show me the status of the server. Mostly for debugging
 	go rpki.status()
 
+	// profiling
+	go newMonitor(300)
+
 	// I'm listening!
 	defer rpki.close()
 	rpki.start()
+
+	return nil
 
 }
 
@@ -160,14 +169,30 @@ func (s *CacheServer) listen() {
 
 }
 
+// Status is just temporary. I may allow this info to be gathered via RPC or something
 func (s *CacheServer) status() {
 	for {
 		s.mutex.RLock()
+		var v4, v6 int
+		for _, r := range s.roas {
+			if r.IsV4 {
+				v4++
+			} else {
+				v6++
+			}
+
+		}
+		log.Println("*** Status ***")
 		log.Printf("I currently have %d clients connected\n", len(s.clients))
 		log.Printf("Current ROA count is %d\n", len(s.roas))
 		log.Printf("Current serial number is %d\n", s.serial)
 		log.Printf("Last diff is %t\n", s.diff.diff)
 		log.Printf("Current size of diff is %d\n", len(s.diff.addRoa)+len(s.diff.delRoa))
+		log.Printf("There are %d ROAs, roughly size %d bytes, which is an average of %d bytes per ROA\n",
+			len(s.roas), sizeROA(s.roas), sizeROA(s.roas)/len(s.roas))
+		log.Printf("There are %d IPv4 ROAs and %d IPv6 ROAs\n", v4, v6)
+		log.Printf("len=%d cap=%d\n", len(s.roas), cap(s.roas))
+		log.Println("*** eom ***")
 		s.mutex.RUnlock()
 		time.Sleep(5 * time.Minute)
 	}

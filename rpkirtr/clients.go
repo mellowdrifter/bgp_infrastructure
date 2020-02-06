@@ -41,11 +41,11 @@ func (c *client) sendDiff(diff *serialDiff, session uint16) {
 		log.Println("Finished sending all diffs")
 	}
 	epdu := endOfDataPDU{
-		sessionID: uint16(session),
-		serial:    *c.serial,
-		refresh:   uint32(900),
-		retry:     uint32(30),
-		expire:    uint32(171999),
+		session: uint16(session),
+		serial:  *c.serial,
+		refresh: uint32(900),
+		retry:   uint32(30),
+		expire:  uint32(171999),
 	}
 	epdu.serialize(c.conn)
 
@@ -93,11 +93,11 @@ func (c *client) sendEmpty(session uint16) {
 	}
 	cpdu.serialize(c.conn)
 	epdu := endOfDataPDU{
-		sessionID: uint16(session),
-		serial:    *c.serial,
-		refresh:   uint32(900),
-		retry:     uint32(30),
-		expire:    uint32(171999),
+		session: uint16(session),
+		serial:  *c.serial,
+		refresh: uint32(900),
+		retry:   uint32(30),
+		expire:  uint32(171999),
 	}
 	epdu.serialize(c.conn)
 
@@ -117,11 +117,11 @@ func (c *client) sendRoa() {
 	c.mutex.RUnlock()
 	log.Println("Finished sending all prefixes")
 	epdu := endOfDataPDU{
-		sessionID: uint16(session),
-		serial:    *c.serial,
-		refresh:   refresh,
-		retry:     retry,
-		expire:    expire,
+		session: uint16(session),
+		serial:  *c.serial,
+		refresh: refresh,
+		retry:   retry,
+		expire:  expire,
 	}
 	epdu.serialize(c.conn)
 

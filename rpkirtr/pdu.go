@@ -299,11 +299,11 @@ type endOfDataPDU struct {
 	   |                                           |
 	   `-------------------------------------------'
 	*/
-	sessionID uint16
-	serial    uint32
-	refresh   uint32
-	retry     uint32
-	expire    uint32
+	session uint16
+	serial  uint32
+	refresh uint32
+	retry   uint32
+	expire  uint32
 }
 
 func (p *endOfDataPDU) serialize(wr io.Writer) {
@@ -320,7 +320,7 @@ func (p *endOfDataPDU) serialize(wr io.Writer) {
 	}{
 		version1,
 		endOfData,
-		p.sessionID,
+		p.session,
 		uint32(24),
 		p.serial,
 		p.refresh,

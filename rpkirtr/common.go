@@ -12,7 +12,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 )
+
+type monitor struct {
+	Alloc,
+	TotalAlloc,
+	Sys,
+	Mallocs,
+	Frees,
+	LiveObjects,
+	PauseTotalNs uint64
+	NumGC        uint32
+	NumGoroutine int
+}
 
 // stringToInt does inline convertions and logs errors, instead of panicing.
 func stringToInt(s string) int {
@@ -161,23 +174,52 @@ func readROAs(url string) ([]roa, error) {
 
 }
 
-// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
-// of garage collection cycles completed.
-// Taken from https://golangcode.com/print-the-current-memory-usage/
-func PrintMemUsage() {
-	for {
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		// For info on each, see: https://golang.org/pkg/runtime/#MemStats
-		log.Printf("Alloc = %v MiB", bToMb(m.Alloc))
-		log.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
-		log.Printf("\tSys = %v MiB", bToMb(m.Sys))
-		log.Printf("\tNumGC = %v\n", m.NumGC)
-		time.Sleep(1 * time.Minute)
+func sizeROA(r []roa) int {
+	size := 0
+	r = r[:cap(r)]
+	size += cap(r) * int(unsafe.Sizeof(r))
+	for i := range r {
+		size += (&r[i]).size()
 	}
+	return size
 }
 
-// Taken from https://golangcode.com/print-the-current-memory-usage/
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
+func (r *roa) size() int {
+	size := int(unsafe.Sizeof(*r))
+	size += len(r.Prefix)
+	return size
+}
+
+// https://scene-si.org/2018/08/06/basic-monitoring-of-go-apps-with-the-runtime-package/
+func newMonitor(duration int) {
+	var m monitor
+	var rtm runtime.MemStats
+	var interval = time.Duration(duration) * time.Second
+	for {
+		<-time.After(interval)
+
+		// Read full mem stats
+		runtime.ReadMemStats(&rtm)
+
+		// Number of goroutines
+		m.NumGoroutine = runtime.NumGoroutine()
+
+		// Misc memory stats
+		m.Alloc = rtm.Alloc
+		m.TotalAlloc = rtm.TotalAlloc
+		m.Sys = rtm.Sys
+		m.Mallocs = rtm.Mallocs
+		m.Frees = rtm.Frees
+
+		// Live objects = Mallocs - Frees
+		m.LiveObjects = m.Mallocs - m.Frees
+
+		// GC Stats
+		m.PauseTotalNs = rtm.PauseTotalNs
+		m.NumGC = rtm.NumGC
+
+		// Just encode to json and print
+		b, _ := json.Marshal(m)
+		log.Println(string(b))
+	}
 }
