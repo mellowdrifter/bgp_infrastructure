@@ -296,6 +296,7 @@ func getLargeCommunities() *pb.LargeCommunity {
 }
 
 // getROAs returns the amount of RPKI ROAs in VALID, INVALID, and UNKNOWN status.
+// TODO: This only works with bird2
 func getROAs() *pb.Roas {
 	defer c.TimeFunction(time.Now(), "getROAs")
 	var roas []uint32

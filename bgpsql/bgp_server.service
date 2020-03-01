@@ -1,13 +1,13 @@
 [Unit]
-Description=BGP SQL Server
+Description=BGP SQL RPC Server
 Wants=network.target
 After=mysql.service
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/scripts/bgp_infrastructure/server
-ExecStart=/root/scripts/bgp_infrastructure/server/bgpinfo
+User=bgp
+WorkingDirectory=/home/bgp/bgpsql
+ExecStart=/home/bgp/bgpsql/bgpsql
 Restart=always
 RestartSec=20s
 

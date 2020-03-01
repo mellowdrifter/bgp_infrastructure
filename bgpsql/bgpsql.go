@@ -59,7 +59,6 @@ func main() {
 
 	var bgpinfoServer server
 	bgpinfoServer.cfg = readConfig()
-	//createLocalDatabase(bgpinfoServer.cfg.dbname)
 
 	// Set up log file
 	f, err := os.OpenFile(bgpinfoServer.cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

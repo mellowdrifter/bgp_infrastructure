@@ -143,7 +143,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	}, nil
 }
 
-// Route returns the primary active RIB entry for the IP passed.
+// Route returns the primary active RIB entry for the requested IP.
 func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteResponse, error) {
 	log.Printf("Running Route")
 
@@ -215,6 +215,8 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 
 }
 
+// Roa will check the ROA status of a prefix.
+// TODO: bird and bird2 do this completely different :(
 func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, error) {
 	log.Printf("Running Roa")
 
@@ -400,6 +402,8 @@ func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
 
 }
 
+// getRoaFromDaemon will get the ROA status for the requested prefix directly from the BGP daemon.
+// TODO: bird vs bird2 is very different :(
 func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
 
 	// In order to check the ROA, I need the current route.
