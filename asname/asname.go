@@ -59,6 +59,7 @@ func main() {
 	defer conn.Close()
 	c := pb.NewBgpInfoClient(conn)
 
+	// Send update
 	resp, err := c.UpdateAsnames(context.Background(), req)
 	if err != nil {
 		log.Fatalf("Unable to send proto: %s", err)
@@ -79,6 +80,8 @@ func getASNs() (*pb.AsnamesRequest, error) {
 	log.Println("Downloading AS list")
 	for _, url := range urls {
 		resp, err := http.Get(url)
+
+		// There are two URLs to check. If error on the first, try the second.
 		if err != nil {
 			log.Printf("Got error on url(%s): %s\n", url, err)
 			continue

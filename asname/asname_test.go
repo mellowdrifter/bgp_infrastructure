@@ -8,34 +8,7 @@ import (
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
 )
 
-var source = []byte(`
-<html><head><title>AS Names</title>
-<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
-<style>
-<!--
-A:link {text-decoration: none}
-A:visited {text-decoration: none}
-A:active {text-decoration: none}
--->
-</style>
-</head>
-<body>
-<br>
-<HR>
-<PRE>
-<a href="/cgi-bin/as-report?as=AS0&view=2.0">AS0    </a> -Reserved AS-, ZZ
-<a href="/cgi-bin/as-report?as=AS1&view=2.0">AS1    </a> LVLT-1 - Level 3 Parent, LLC, US
-<a href="/cgi-bin/as-report?as=AS2&view=2.0">AS2    </a> UDEL-DCN - University of Delaware, US
-<a href="/cgi-bin/as-report?as=AS3&view=2.0">AS3    </a> MIT-GATEWAYS - Massachusetts Institute of Technology, US
-<a href="/cgi-bin/as-report?as=AS4&view=2.0">AS4    </a> ISI-AS - University of Southern California, US
-<a href="/cgi-bin/as-report?as=AS5&view=2.0">AS5    </a> SYMBOLICS - Symbolics, Inc., US
-</PRE>
-<HR>
-<I>File last modified at Sat Jul 20 13:16:22 2019
- (UTC+1000)</I>
-</body>
-</html>
-`)
+const count = 11
 
 var good = []*pb.AsnName{
 	&pb.AsnName{
@@ -43,36 +16,68 @@ var good = []*pb.AsnName{
 		AsLocale: "ZZ",
 	},
 	&pb.AsnName{
-		AsName:   "LVLT-1 - Level 3 Parent, LLC",
-		AsNumber: 1,
+		AsName:   "US-NATIONAL-INSTITUTE-OF-STANDARDS-AND-TECHNOLOGY",
+		AsNumber: 49,
 		AsLocale: "US",
 	},
 	&pb.AsnName{
-		AsName:   "UDEL-DCN - University of Delaware",
-		AsNumber: 2,
+		AsName:   "DNIC-ASBLK-05120-05376 - DoD Network Information Center",
+		AsNumber: 5218,
 		AsLocale: "US",
 	},
 	&pb.AsnName{
-		AsName:   "MIT-GATEWAYS - Massachusetts Institute of Technology",
-		AsNumber: 3,
+		AsName:   "ARRIS-TECHNOLOGY-SD-NOC - ARRIS Technology, Inc.",
+		AsNumber: 10580,
 		AsLocale: "US",
 	},
 	&pb.AsnName{
-		AsName:   "ISI-AS - University of Southern California",
-		AsNumber: 4,
+		AsName:   "ALTECOM",
+		AsNumber: 16030,
+		AsLocale: "ES",
+	},
+	&pb.AsnName{
+		AsName:   "WARNETCZ-AS Warnet.cz s.r.o.",
+		AsNumber: 47727,
+		AsLocale: "CZ",
+	},
+	&pb.AsnName{
+		AsName:   "COOPERATIVA TELEFONICA Y OTROS SERVICIOS PUBLICOS  ASISTENCIALES, EDUCATIVOS, VIVIENDA, CREDITO Y CONSUMO TILISARAO LIMITADA",
+		AsNumber: 267925,
+		AsLocale: "AR",
+	},
+	&pb.AsnName{
+		AsName:   "VRSN-AC50-340 - VeriSign Global Registry Services",
+		AsNumber: 396632,
 		AsLocale: "US",
 	},
 	&pb.AsnName{
-		AsName:   "SYMBOLICS - Symbolics, Inc.",
-		AsNumber: 5,
-		AsLocale: "US",
+		AsName:   "GSCS - St. Paul's Roman Catholic Separate School Division #20",
+		AsNumber: 397335,
+		AsLocale: "CA",
+	},
+	&pb.AsnName{
+		AsName:   "SAAQ-PROD - Societe de l'Assurance Automobile du Quebec",
+		AsNumber: 397421,
+		AsLocale: "CA",
+	},
+	&pb.AsnName{
+		AsName:   "-Reserved AS-",
+		AsNumber: 397723,
+		AsLocale: "ZZ",
 	},
 }
 
 func TestDecoder(t *testing.T) {
-	output := decoder(source)
-	if !reflect.DeepEqual(output, good) {
-		t.Errorf("%+v\n%+v\n", output, good)
+	data, err := ioutil.ReadFile("autnums.html")
+	if err != nil {
+		panic(err)
+	}
+	output := decoder(data)
+	for i := 0; i < len(output); i++ {
+		if !reflect.DeepEqual(output[i], good[i]) {
+			t.Errorf("No match error. Wanted %v, got %v", good[i], output[i])
+			continue
+		}
 	}
 
 }
@@ -83,8 +88,8 @@ func TestDecoderFull(t *testing.T) {
 		panic(err)
 	}
 	output := decoder(data)
-	if len(output) != 92093 {
-		t.Errorf("Amount of ASs should be 92093, but got %d", len(output))
+	if len(output) != count {
+		t.Errorf("Amount of ASs should be %d, but got %d", count, len(output))
 	}
 	for _, info := range output {
 		if info.GetAsLocale() == "" {
