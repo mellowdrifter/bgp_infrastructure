@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package bgpinfo;
+package bgpsql;
 
 service bgp_info {
     rpc add_latest(values) returns (result);

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ChimeraCoder/anaconda"
-	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
 	"google.golang.org/grpc"
 	"gopkg.in/ini.v1"
@@ -189,6 +189,7 @@ func deltaMessage(h, w int) string {
 
 }
 
+// TODO: Dial both servers and set tweet bit. Log if error.
 func setTweetBit(c bpb.BgpInfoClient, time uint64) error {
 	log.Println("Running setTweetBit")
 

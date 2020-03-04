@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 )
 
 // BgpStat holds the AS information altogether
