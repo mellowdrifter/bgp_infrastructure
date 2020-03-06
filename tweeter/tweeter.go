@@ -25,12 +25,21 @@ type tweet struct {
 	media   []byte
 }
 
-func main() {
+type config struct {
+	log     string
+	grapher string
+	action  *string
+	time    *string
+	servers []string
+	file    *ini.File
+}
 
+// Pull out most of the intial set up into a separate function
+func setup() (config, error) {
 	// load in config
 	exe, err := os.Executable()
 	if err != nil {
-		log.Fatal(err)
+		return config{}, err
 	}
 	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
 	cf, err := ini.Load(path)
@@ -38,43 +47,50 @@ func main() {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
 
-	logfile := cf.Section("log").Key("logfile").String()
-	bgpinfo := cf.Section("bgpinfo").Key("server").String()
-	grapher := cf.Section("grapher").Key("server").String()
+	var config config
+
+	config.file = cf
+
+	config.log = cf.Section("log").Key("log").String()
+	config.grapher = cf.Section("grapher").Key("server").String()
+	config.servers = append(config.servers, cf.Section("bgpinfo").Key("server1").String())
+	config.servers = append(config.servers, cf.Section("bgpinfo").Key("server2").String())
+
+	// What action are we going to do.
+	config.action = flag.String("action", "", "an action to perform")
+	config.time = flag.String("time", "", "a time period")
+	flag.Parse()
+
+	return config, nil
+}
+
+func main() {
+
+	config, err := setup()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Set up log file
-	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(config.log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
 	defer f.Close()
 	log.SetOutput(f)
 
-	// What action are we going to do.
-	action := flag.String("action", "", "an action to perform")
-	time := flag.String("time", "", "a time period")
-	flag.Parse()
-
-	// gRPC dial to the bgpinfo server.
-	conn, err := grpc.Dial(fmt.Sprintf("%s", bgpinfo), grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("Unable to dial gRPC server: %s", err)
-	}
-	defer conn.Close()
-	c := bpb.NewBgpInfoClient(conn)
-
-	// Function called will depend on the action required. We only do one action at a time.
+	// App only does a single action at a time.
 	var tweets []tweet
-	switch *action {
+	switch *config.action {
 	case "current":
-		tweets, err = current(c)
+		tweets, err = current(config)
 	case "subnets":
-		tweets, err = subnets(c, grapher)
+		tweets, err = subnets(config)
 	case "rpki":
-		tweets, err = rpki(c, grapher)
+		tweets, err = rpki(config)
 	case "movement":
 		var period bpb.MovementRequest_TimePeriod
-		switch *time {
+		switch *config.time {
 		case "week":
 			period = bpb.MovementRequest_WEEK
 		case "month":
@@ -86,7 +102,7 @@ func main() {
 		default:
 			log.Fatalf("Movement request requires a time period")
 		}
-		tweets, err = movement(c, grapher, period)
+		tweets, err = movement(config, period)
 	default:
 		log.Fatalf("At least one action must be specified")
 	}
@@ -97,21 +113,35 @@ func main() {
 	// Post tweets.
 	// TODO: Have a dry-run to print and save images locally
 	for _, tweet := range tweets {
-		if err := postTweet(tweet, cf); err != nil {
+		if err := postTweet(tweet, config.file); err != nil {
 			log.Fatal(err)
 		}
-		//if tweet.media != nil {
-		//	img, _ := png.Decode(bytes.NewReader(tweet.media))
-		//	file, _ := os.Create(fmt.Sprintf("%s:%s.png", tweet.account, tweet.message))
-		//	png.Encode(file, img)
-		//	file.Close()
-		//}
 	}
 
 }
 
+// getConnection will return a connection to a gRPC server. Caller should close.
+func getConnection(srv string) (*grpc.ClientConn, error) {
+	conn, err := grpc.Dial(srv, grpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("unable to dial gRPC server: %v", err)
+	}
+	return conn, err
+}
+
+// getLiveServer will return the first live connection it can get. If neither server
+// can be dialed, an error is returned.
+func getLiveServer(c config) (*grpc.ClientConn, error) {
+	for _, v := range c.servers {
+		if conn, err := getConnection(v); err == nil {
+			return conn, nil
+		}
+	}
+	return nil, fmt.Errorf("unable to dial either of the gRPC servers")
+}
+
 // current grabs the current v4 and v6 table count for tweeting.
-func current(c bpb.BgpInfoClient) ([]tweet, error) {
+func current(c config) ([]tweet, error) {
 	log.Println("Running current")
 	counts, err := c.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
@@ -189,7 +219,6 @@ func deltaMessage(h, w int) string {
 
 }
 
-// TODO: Dial both servers and set tweet bit. Log if error.
 func setTweetBit(c bpb.BgpInfoClient, time uint64) error {
 	log.Println("Running setTweetBit")
 
@@ -198,26 +227,33 @@ func setTweetBit(c bpb.BgpInfoClient, time uint64) error {
 	}
 	_, err := c.UpdateTweetBit(context.Background(), timestamp)
 	if err != nil {
-		return fmt.Errorf("Error: received error when trying to set tweet bit.")
+		return fmt.Errorf("error: received error when trying to set tweet bit")
 	}
 	return nil
 
 }
 
-func subnets(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
+func subnets(c config) ([]tweet, error) {
 	log.Println("Running subnets")
-	pieData, err := c.GetPieSubnets(context.Background(), &bpb.Empty{})
+
+	conn, err := getLiveServer(c)
+	defer conn.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	cpb := bpb.NewBgpInfoClient(conn)
+	pieData, err := cpb.GetPieSubnets(context.Background(), &bpb.Empty{})
 	if err != nil {
 		log.Fatalf("Unable to send proto: %s", err)
 	}
 	t := time.Now()
 
-	//fmt.Println(proto.MarshalTextString(pieData))
-
 	v4Colours := []string{"burlywood", "lightgreen", "lightskyblue", "lightcoral", "gold"}
 	v6Colours := []string{"lightgreen", "burlywood", "lightskyblue", "violet", "linen", "lightcoral", "gold"}
 	v4Lables := []string{"/19-/21", "/16-/18", "/22", "/23", "/24"}
 	v6Lables := []string{"/32", "/44", "/40", "/36", "/29", "The Rest", "/48"}
+
 	v4Meta := &gpb.Metadata{
 		Title:   fmt.Sprintf("Current prefix range distribution for IPv4 (%s)", t.Format("02-Jan-2006")),
 		XAxis:   uint32(12),
@@ -261,18 +297,15 @@ func subnets(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 		Copyright: "data by @mellowdrifter | www.mellowd.dev",
 	}
 
-	//fmt.Println(proto.MarshalTextString(req))
-
-	// gRPC dial to the grapher
-	server := fmt.Sprintf("%s", grapher)
-	conn, err := grpc.Dial(server, grpc.WithInsecure())
+	// Dial the grapher to retrive graphs via matplotlib
+	grp, err := getConnection(c.grapher)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	g := gpb.NewGrapherClient(conn)
+	defer grp.Close()
+	gpb := gpb.NewGrapherClient(grp)
 
-	resp, err := g.GetPieChart(context.Background(), req)
+	resp, err := gpb.GetPieChart(context.Background(), req)
 	if err != nil {
 		return nil, err
 	}
@@ -294,10 +327,9 @@ func subnets(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
-
 }
 
-func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
+func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	log.Println("Running movement")
 
 	// Get yesterday's date
@@ -355,9 +387,9 @@ func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePer
 		TotalsTime: tt,
 		Copyright:  "data by @mellowdrifter | www.mellowd.dev",
 	}
-	//fmt.Println(proto.MarshalTextString(graphData))
 
 	// gRPC dial the grapher
+	// TODO: Only the 'active' device should send to grapher.
 	server := fmt.Sprintf("%s", grapher)
 	conn, err := grpc.Dial(server, grpc.WithInsecure())
 	if err != nil {
@@ -376,8 +408,6 @@ func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePer
 		return nil, fmt.Errorf("Less than two images returned")
 	}
 
-	//img, _ := png.Decode(bytes.NewReader(resp.GetImages()[0].GetImage()))
-
 	v4Tweet := tweet{
 		account: "bgp4table",
 		message: message,
@@ -393,7 +423,7 @@ func movement(c bpb.BgpInfoClient, grapher string, p bpb.MovementRequest_TimePer
 
 }
 
-func rpki(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
+func rpki(c config) ([]tweet, error) {
 	log.Println("Running rpki")
 	rpkiData, err := c.GetRpki(context.Background(), &bpb.Empty{})
 	if err != nil {
@@ -430,6 +460,7 @@ func rpki(c bpb.BgpInfoClient, grapher string) ([]tweet, error) {
 	}
 
 	// gRPC dial the grapher
+	// TODO: Only the 'active' device should send to grapher.
 	server := fmt.Sprintf("%s", grapher)
 	conn, err := grpc.Dial(server, grpc.WithInsecure())
 	if err != nil {
@@ -482,7 +513,9 @@ func postTweet(t tweet, cf *ini.File) error {
 	}
 
 	// post it!
-	api.PostTweet(t.message, v)
+	if _, err := api.PostTweet(t.message, v); err != nil {
+		return fmt.Errorf("error: unable to post tweet %v", err)
+	}
 
 	return nil
 
