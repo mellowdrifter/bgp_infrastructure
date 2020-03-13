@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
-	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 	"google.golang.org/grpc"
 	"gopkg.in/ini.v1"
