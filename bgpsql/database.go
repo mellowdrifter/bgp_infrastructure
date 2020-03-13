@@ -9,7 +9,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 )
 
 // add latest BGP update information to database

@@ -13,7 +13,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/mellowdrifter/bgp_infrastructure/common"
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"google.golang.org/grpc"
 	"gopkg.in/ini.v1"
 )

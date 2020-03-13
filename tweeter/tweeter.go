@@ -32,6 +32,7 @@ type config struct {
 	time    *string
 	servers []string
 	file    *ini.File
+	dryRun  bool
 }
 
 // Pull out most of the intial set up into a separate function
@@ -42,7 +43,7 @@ func setup() (config, error) {
 		return config{}, err
 	}
 	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
-	cf, err := ini.Load(path)
+	cf, err := ini.ShadowLoad(path)
 	if err != nil {
 		log.Fatalf("failed to read config file: %v\n", err)
 	}
@@ -53,8 +54,7 @@ func setup() (config, error) {
 
 	config.log = cf.Section("log").Key("log").String()
 	config.grapher = cf.Section("grapher").Key("server").String()
-	config.servers = append(config.servers, cf.Section("bgpinfo").Key("server1").String())
-	config.servers = append(config.servers, cf.Section("bgpinfo").Key("server2").String())
+	config.servers = cf.Section("bgpinfo").Key("server").ValueWithShadows()
 
 	// What action are we going to do.
 	config.action = flag.String("action", "", "an action to perform")
@@ -62,6 +62,7 @@ func setup() (config, error) {
 	flag.Parse()
 
 	return config, nil
+
 }
 
 func main() {
@@ -83,7 +84,7 @@ func main() {
 	var tweets []tweet
 	switch *config.action {
 	case "current":
-		tweets, err = current(config)
+		tweets, err = allCurrent(config)
 	case "subnets":
 		tweets, err = subnets(config)
 	case "rpki":
@@ -117,7 +118,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-
 }
 
 // getConnection will return a connection to a gRPC server. Caller should close.
@@ -127,23 +127,85 @@ func getConnection(srv string) (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("unable to dial gRPC server: %v", err)
 	}
 	return conn, err
+
 }
 
 // getLiveServer will return the first live connection it can get. If neither server
 // can be dialed, an error is returned.
 func getLiveServer(c config) (*grpc.ClientConn, error) {
 	for _, v := range c.servers {
-		if conn, err := getConnection(v); err == nil {
+		conn, err := getConnection(v)
+		if err == nil {
 			return conn, nil
 		}
+		log.Printf("Unable to dial gRPC server: %v", err)
 	}
 	return nil, fmt.Errorf("unable to dial either of the gRPC servers")
+
+}
+
+// TODO: Explain this
+type sConn struct {
+	conn *grpc.ClientConn
+	err  error
+}
+
+func getAllServers(c config) []sConn {
+	var conns []sConn
+	for _, v := range c.servers {
+		log.Printf("Attempting to get connection to %s\n", v)
+		conn, err := getConnection(v)
+		conns = append(conns, sConn{
+			conn: conn,
+			err:  err,
+		})
+	}
+	return conns
+
+}
+
+// allCurrent will attempt to get current values from all servers.
+// Will attempt to set tweet bit on all.
+// End result is that if single error, continue, if all error, error.
+// Hopefully update all, but return a single response from whichever server is live
+func allCurrent(c config) ([]tweet, error) {
+	log.Println("Running allCurrent")
+
+	conns := getAllServers(c)
+
+	type tweetErr struct {
+		tweets []tweet
+		err    error
+	}
+
+	var res []tweetErr
+
+	// Connect to all servers, get current, work out tweets, and update tweet bits
+	for i, v := range conns {
+		if v.err == nil {
+			log.Printf("Connecting to server %d at %v\n", i, v.conn.Target())
+			tw, err := current(bpb.NewBgpInfoClient(v.conn))
+			res = append(res, tweetErr{tweets: tw, err: err})
+		}
+	}
+
+	// Return the first good response. Most of the time this will be the first server in the list.
+	for _, v := range res {
+		if v.err == nil {
+			return v.tweets, v.err
+		}
+	}
+
+	// This should only execute if none if the configured servers actually gave a response.
+	return nil, fmt.Errorf("Neither server gave a response for current")
+
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
-func current(c config) ([]tweet, error) {
+func current(b bpb.BgpInfoClient) ([]tweet, error) {
+
 	log.Println("Running current")
-	counts, err := c.GetPrefixCount(context.Background(), &bpb.Empty{})
+	counts, err := b.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
 		return nil, err
 	}
@@ -177,10 +239,11 @@ func current(c config) ([]tweet, error) {
 		message: v6Update.String(),
 	}
 
-	if err := setTweetBit(c, counts.GetTime()); err != nil {
+	if err := setTweetBit(b, counts.GetTime()); err != nil {
 		log.Printf("Unable to set tweet bit, but continuing on: %v", err)
 	}
 	return []tweet{v4Tweet, v6Tweet}, nil
+
 }
 
 // deltaMessage creates the update message itself. Uses the deltas to formulate the exact message.
@@ -219,13 +282,13 @@ func deltaMessage(h, w int) string {
 
 }
 
-func setTweetBit(c bpb.BgpInfoClient, time uint64) error {
+func setTweetBit(cpb bpb.BgpInfoClient, time uint64) error {
 	log.Println("Running setTweetBit")
 
 	timestamp := &bpb.Timestamp{
 		Time: time,
 	}
-	_, err := c.UpdateTweetBit(context.Background(), timestamp)
+	_, err := cpb.UpdateTweetBit(context.Background(), timestamp)
 	if err != nil {
 		return fmt.Errorf("error: received error when trying to set tweet bit")
 	}
@@ -247,13 +310,13 @@ func subnets(c config) ([]tweet, error) {
 	if err != nil {
 		log.Fatalf("Unable to send proto: %s", err)
 	}
-	t := time.Now()
 
 	v4Colours := []string{"burlywood", "lightgreen", "lightskyblue", "lightcoral", "gold"}
 	v6Colours := []string{"lightgreen", "burlywood", "lightskyblue", "violet", "linen", "lightcoral", "gold"}
 	v4Lables := []string{"/19-/21", "/16-/18", "/22", "/23", "/24"}
 	v6Lables := []string{"/32", "/44", "/40", "/36", "/29", "The Rest", "/48"}
 
+	t := time.Now()
 	v4Meta := &gpb.Metadata{
 		Title:   fmt.Sprintf("Current prefix range distribution for IPv4 (%s)", t.Format("02-Jan-2006")),
 		XAxis:   uint32(12),
@@ -288,6 +351,8 @@ func subnets(c config) ([]tweet, error) {
 		pieData.GetMasks().GetV6_48(),
 	}
 
+	// Dial the grapher to retrive graphs via matplotlib
+	// TODO: IS this not too much stuff in a single function?
 	req := &gpb.PieChartRequest{
 		Metadatas: []*gpb.Metadata{v4Meta, v6Meta},
 		Subnets: &gpb.SubnetFamily{
@@ -296,8 +361,6 @@ func subnets(c config) ([]tweet, error) {
 		},
 		Copyright: "data by @mellowdrifter | www.mellowd.dev",
 	}
-
-	// Dial the grapher to retrive graphs via matplotlib
 	grp, err := getConnection(c.grapher)
 	if err != nil {
 		return nil, err
@@ -327,6 +390,7 @@ func subnets(c config) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
+
 }
 
 func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
@@ -334,7 +398,15 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 
 	// Get yesterday's date
 	y := time.Now().AddDate(0, 0, -1)
-	graphData, err := c.GetMovementTotals(context.Background(), &bpb.MovementRequest{Period: p})
+
+	conn, err := getLiveServer(c)
+	defer conn.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	cpb := bpb.NewBgpInfoClient(conn)
+	graphData, err := cpb.GetMovementTotals(context.Background(), &bpb.MovementRequest{Period: p})
 	if err != nil {
 		return nil, err
 	}
@@ -388,17 +460,16 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 		Copyright:  "data by @mellowdrifter | www.mellowd.dev",
 	}
 
-	// gRPC dial the grapher
-	// TODO: Only the 'active' device should send to grapher.
-	server := fmt.Sprintf("%s", grapher)
-	conn, err := grpc.Dial(server, grpc.WithInsecure())
+	// Dial the grapher to retrive graphs via matplotlib
+	// TODO: seperate this?
+	grp, err := getConnection(c.grapher)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	g := gpb.NewGrapherClient(conn)
+	defer grp.Close()
+	gpb := gpb.NewGrapherClient(grp)
 
-	resp, err := g.GetLineGraph(context.Background(), req)
+	resp, err := gpb.GetLineGraph(context.Background(), req)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +496,15 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 
 func rpki(c config) ([]tweet, error) {
 	log.Println("Running rpki")
-	rpkiData, err := c.GetRpki(context.Background(), &bpb.Empty{})
+
+	conn, err := getLiveServer(c)
+	defer conn.Close()
+	if err != nil {
+		return nil, err
+	}
+	cpb := bpb.NewBgpInfoClient(conn)
+
+	rpkiData, err := cpb.GetRpki(context.Background(), &bpb.Empty{})
 	if err != nil {
 		return nil, err
 	}
@@ -459,17 +538,15 @@ func rpki(c config) ([]tweet, error) {
 		Copyright: "data by @mellowdrifter | www.mellowd.dev",
 	}
 
-	// gRPC dial the grapher
-	// TODO: Only the 'active' device should send to grapher.
-	server := fmt.Sprintf("%s", grapher)
-	conn, err := grpc.Dial(server, grpc.WithInsecure())
+	// Dial the grapher to retrive graphs via matplotlib
+	grp, err := getConnection(c.grapher)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	g := gpb.NewGrapherClient(conn)
+	defer grp.Close()
+	gpb := gpb.NewGrapherClient(grp)
 
-	resp, err := g.GetRPKI(context.Background(), req)
+	resp, err := gpb.GetRPKI(context.Background(), req)
 	if err != nil {
 		return nil, err
 	}
