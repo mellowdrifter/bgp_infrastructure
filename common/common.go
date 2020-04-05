@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -57,7 +58,7 @@ type BgpUpdate struct {
 
 // GetOutput is a helper function to run commands and return outputs to other functions.
 func GetOutput(cmd string) (string, error) {
-	//log.Printf("Running getOutput with cmd %s\n", cmd)
+	log.Printf("Running getOutput with cmd %s\n", cmd)
 	cmdOut, err := exec.Command("bash", "-c", cmd).Output()
 	if err != nil {
 		return string(cmdOut), err
@@ -68,7 +69,9 @@ func GetOutput(cmd string) (string, error) {
 
 // StringToUint32 is a helper function as many times I need to do this conversion.
 func StringToUint32(s string) uint32 {
-	val, err := strconv.Atoi(s)
+	reg := regexp.MustCompile("[^0-9]+")
+	c := reg.ReplaceAllString(s, "")
+	val, err := strconv.Atoi(c)
 	if err != nil {
 		log.Fatalf("Can't convert to integer: %s", err)
 	}
@@ -153,6 +156,7 @@ func ValidateIP(ip string) (net.IP, error) {
 
 // IsPublicIP determines if the IPv4 address is public.
 // Go 1.13 might have a function that does all this for me.
+// TODO: Check functions in latest Go
 func IsPublicIP(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
 		return IsPublicIPv4(ip4)

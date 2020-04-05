@@ -1,6 +1,7 @@
 package clidecode
 
 import (
+	"log"
 	"strings"
 
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
@@ -65,11 +66,11 @@ func (b Bird2Conn) GetPeers() (Peers, error) {
 // as4Only: ASNs originating IPv4 only
 // as6Only: ASNs originaring IPv6 only
 // asBoth:  ASNs originating both IPv4 and IPv6
-func (b Bird2Conn) GetTotalSourceASNs() (SourceASNs, error) {
+func (b Bird2Conn) GetTotalSourceASNs() (ASNs, error) {
 	cmd1 := "/usr/sbin/birdc show route primary table master4 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
 	cmd2 := "/usr/sbin/birdc show route primary table master6 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
 
-	var s SourceASNs
+	var s ASNs
 	as4, err := c.GetOutput(cmd1)
 	if err != nil {
 		return s, err
@@ -109,6 +110,19 @@ func (b Bird2Conn) GetTotalSourceASNs() (SourceASNs, error) {
 
 }
 
+// GetTransitASNs
+// TODO: GetTotalorTransirASNs maybe!
+// Also return list of ASN or amounts?
+/*func (b Bird2Conn) GetTransitASNs() (ASNs, error) {
+	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
+	v4, err := c.GetOutput(cmd)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return c.SetListOfStrings(strings.Fields(v4)), nil
+
+}*/
+
 // GetROAs returns total amount of all ROA states
 func (b Bird2Conn) GetROAs() (Roas, error) {
 	var r Roas
@@ -139,4 +153,60 @@ func (b Bird2Conn) GetROAs() (Roas, error) {
 
 	return r, nil
 
+}
+
+// GetMasks returns the total count of each mask value
+// First item is IPv4, second item is IPv6
+func (b Bird2Conn) GetMasks() ([]map[string]uint32, error) {
+	v6 := make(map[string]uint32)
+	v4 := make(map[string]uint32)
+	var m []map[string]uint32
+
+	cmd := "/usr/sbin/birdc show route primary table master6 | awk {'print $1'} | sed -e '1,2d'"
+	subnetsV6, err := c.GetOutput(cmd)
+	if err != nil {
+		return m, err
+	}
+	for _, s := range strings.Fields(subnetsV6) {
+		mask := strings.Split(s, "::/")[1]
+		v6[mask]++
+	}
+
+	cmd2 := "/usr/sbin/birdc show route primary table master4 | awk {'print $1'} | sed -e '1,2d'"
+	subnetsV4, err := c.GetOutput(cmd2)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, s := range strings.Fields(subnetsV4) {
+		mask := strings.Split(s, "/")[1]
+		v4[mask]++
+	}
+
+	m = append(m, v4)
+	m = append(m, v6)
+
+	return m, nil
+}
+
+// GetLargeCommunities returns the amount of prefixes that have large communities attached (RFC8092)
+// TODO: Not sure this is doing the right thing
+func (b Bird2Conn) GetLargeCommunities() (Large, error) {
+	var l Large
+	var comm []uint32
+	cmds := []string{
+		"/usr/sbin/birdc 'show route primary table master4 where bgp_large_community ~ [(*,*,*)]' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where bgp_large_community ~ [(*,*,*)]' | sed -e '1,2d' | wc -l",
+	}
+
+	for _, cmd := range cmds {
+		out, err := c.GetOutput(cmd)
+		if err != nil {
+			log.Fatal(err)
+		}
+		comm = append(comm, c.StringToUint32(out))
+	}
+	l.V4 = comm[0]
+	l.V6 = comm[1]
+
+	return l, nil
 }
