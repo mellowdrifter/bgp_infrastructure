@@ -113,8 +113,6 @@ message total_transit_response {
 }
 
 message total_asns_response {
-    // Total unique source ASNs
-    uint32 total = 1;
 
     // Total ASNs sourcing IPv4
     uint32 as4 = 2;
@@ -122,7 +120,7 @@ message total_asns_response {
     // Total ASNs sourcing IPv6
     uint32 as6 = 3;
 
-    // Total ASNs sourcing both IPv4 and IPv6
+    // Total ASNs sourcing either IPv4, IPv6, or both
     uint32 as10 = 4;
 
     // Total ASNs sourcing only IPv4
@@ -130,6 +128,9 @@ message total_asns_response {
 
     // Total ASNs sourcing only IPv6
     uint32 as6_only = 6;
+
+    // Total ASNs sourcing both IPv4 and IPv6
+    uint32 as_both = 1;
 }
 
 message roa_request {
