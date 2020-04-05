@@ -10,15 +10,32 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/mellowdrifter/bgp_infrastructure/common"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"gopkg.in/ini.v1"
 )
 
-type server struct{}
+const (
+	maxCache = 100
+	maxAge   = time.Hour * 1
+)
+
+type server struct {
+	cache map[uint32]asnAge
+	mu    *sync.RWMutex
+}
+
+type asnAge struct {
+	name, loc string
+	age       time.Time
+}
 
 func main() {
 	// load in config
@@ -42,6 +59,11 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
+	glassServer := &server{
+		cache: make(map[uint32]asnAge),
+		mu:    &sync.RWMutex{},
+	}
+
 	// set up gRPC server
 	log.Printf("Listening on port %d\n", 7181)
 	lis, err := net.Listen("tcp", ":7181")
@@ -49,10 +71,61 @@ func main() {
 		log.Fatalf("Failed to bind: %v", err)
 	}
 	grpcServer := grpc.NewServer()
-	pb.RegisterLookingGlassServer(grpcServer, &server{})
+	pb.RegisterLookingGlassServer(grpcServer, glassServer)
 
 	grpcServer.Serve(lis)
 
+}
+
+// TODO: Lots of this code is shared with parser. Should create a library which both imports
+// Can then also have different libraries for different vendors.
+func (s *server) TotalAsns(ctx context.Context, e *pb.Empty) (*pb.TotalAsnsResponse, error) {
+
+	cmd1 := "/usr/sbin/birdc show route primary table master4 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
+	cmd2 := "/usr/sbin/birdc show route primary table master6 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
+
+	as4, err := com.GetOutput(cmd1)
+	if err != nil {
+		return nil, err
+	}
+	as6, err := com.GetOutput(cmd2)
+	if err != nil {
+		return nil, err
+	}
+
+	// asNSet is the list of unique source AS numbers in each address family
+	as4Set := com.SetListOfStrings(strings.Fields(as4))
+	as6Set := com.SetListOfStrings(strings.Fields(as6))
+
+	// as10Set is the total number of unique source AS numbers.
+	var as10 []string
+	as10 = append(as10, as4Set...)
+	as10 = append(as10, as6Set...)
+	as10Set := com.SetListOfStrings(as10)
+
+	// as4Only is the set of ASs that only source IPv4
+	as4Only := common.InFirstButNotSecond(as4Set, as6Set)
+
+	// as6Only is the set of ASs that only source IPv6
+	as6Only := common.InFirstButNotSecond(as6Set, as4Set)
+
+	// asBoth is the set of ASs that source both IPv4 and IPv6
+	asBoth := common.Intersection(as4Set, as6Set)
+
+	// TODO: These numbers are weird...
+	return &pb.TotalAsnsResponse{
+		Total:   uint32(len(asBoth)),
+		As4:     uint32(len(as4Set)),
+		As6:     uint32(len(as6Set)),
+		As10:    uint32(len(as10Set)),
+		As4Only: uint32(len(as4Only)),
+		As6Only: uint32(len(as6Only)),
+	}, nil
+
+}
+
+func (s *server) TotalTransit(ctx context.Context, r *pb.TotalTransitRequest) (*pb.TotalTransitResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 }
 
 // Origin will return the origin ASN for the active route.
@@ -174,11 +247,69 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 	}, nil
 }
 
+// checkASNCache will check the local cache.
+// Only returns the cache entry if it's within the maxAge timer.
+func (s *server) checkASNCache(asn uint32) (string, string, bool) {
+	defer s.mu.RUnlock()
+	s.mu.RLock()
+	log.Printf("Check cache for AS%d", asn)
+
+	val, ok := s.cache[asn]
+
+	// Only return cache value if it's within the max age
+	if ok {
+		log.Printf("Cache entry exists for AS%d", asn)
+		if time.Since(val.age) < maxAge {
+			log.Printf("Cache entry timer is still valid for AS%d", asn)
+			return val.name, val.loc, ok
+		}
+		log.Printf("Cache entry timer is too old for AS%d", asn)
+
+	}
+
+	if !ok {
+		log.Printf("No cache entry found")
+	}
+
+	return "", "", false
+}
+
+// updateCache will add a new cache entry.
+// It'll also purge the cache if we hit the maximum entries.
+func (s *server) updateCache(n, l string, as uint32) {
+	defer s.mu.Unlock()
+	s.mu.Lock()
+
+	// Only store the maxCache entries to prevent a DOS.
+	if len(s.cache) > maxCache {
+		log.Printf("Max cache entries reached. Purging")
+		s.cache = make(map[uint32]asnAge)
+	}
+
+	log.Printf("Adding AS%d: %s to the cache", as, n)
+	s.cache[as] = asnAge{
+		name: n,
+		loc:  l,
+		age:  time.Now(),
+	}
+
+}
+
 // Asname will return the registered name of the ASN. As this isn't in bird directly, will need
-// to speak to bgpinfo to get information from the database.
+// to speak to bgpsql to get information from the database.
 func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
 	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Printf("Running Asname")
+
+	// check local cache first
+	n, l, ok := s.checkASNCache(r.GetAsNumber())
+	if ok {
+		return &pb.AsnameResponse{
+			AsName: n,
+			Locale: l,
+			Exists: true,
+		}, nil
+	}
 
 	// load in config
 	exe, err := os.Executable()
@@ -193,7 +324,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 
 	number := bpb.GetAsnameRequest{AsNumber: r.GetAsNumber()}
 
-	// gRPC dial the grapher
+	// gRPC dial the bgpsql server
 	bgpinfo := cf.Section("bgpinfo").Key("server").String()
 	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
 	if err != nil {
@@ -206,6 +337,9 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	if err != nil {
 		return &pb.AsnameResponse{}, err
 	}
+
+	// Cache the result for next time
+	s.updateCache(name.GetAsName(), name.GetAsLocale(), r.GetAsNumber())
 
 	return &pb.AsnameResponse{
 		AsName: name.GetAsName(),
@@ -261,7 +395,6 @@ func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
 	log.Printf("Running getSourcedFromDaemon")
 
 	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master6 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", as)
-	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return &pb.SourceResponse{}, err
@@ -279,7 +412,6 @@ func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
 	v6Count := len(prefixes)
 
 	cmd = fmt.Sprintf("/usr/sbin/birdc 'show route primary table master4 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", as)
-	log.Printf(cmd)
 	out, err = com.GetOutput(cmd)
 	if err != nil {
 		return &pb.SourceResponse{}, err
@@ -313,7 +445,6 @@ func getOriginFromDaemon(ip net.IP) (int, bool, error) {
 	log.Printf("Running getOriginFromDaemon")
 
 	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}' | tr -d '[]ASie?'", ip.String())
-	//log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return 0, false, err
@@ -341,7 +472,6 @@ func getASPathFromDaemon(ip net.IP) ([]*pb.Asn, []*pb.Asn, bool, error) {
 	var asns, asSet []*pb.Asn
 
 	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep as_path | awk '{$1=\"\"; print $0}'", ip.String())
-	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return nil, nil, false, err
@@ -423,13 +553,10 @@ func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
 		"200": pb.RoaResponse_VALID,
 	}
 	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route all primary for %s' | grep local_pref", prefix.String())
-	log.Printf(cmd)
 	out, err := com.GetOutput(cmd)
 	if err != nil {
 		return &pb.RoaResponse{}, err
 	}
-
-	log.Printf(out)
 
 	// Get the local preference
 	pref := strings.Fields(out)
