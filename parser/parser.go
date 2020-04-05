@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/mellowdrifter/bgp_infrastructure/common"
+	cli "github.com/mellowdrifter/bgp_infrastructure/clidecode"
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"google.golang.org/grpc"
@@ -42,16 +42,17 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	//getPrivateASLeak(as)
+	// TODO: For now daemon is always bird2, but will put the option in to choose others
+	var router cli.Bird2Conn
 
 	current := &pb.Values{
 		Time:           uint64(time.Now().Unix()),
-		PrefixCount:    getTableTotal(),
-		Peers:          getPeers(),
-		AsCount:        getAS(),
+		PrefixCount:    getTableTotal(router),
+		Peers:          getPeers(router),
+		AsCount:        getAS(router),
 		Masks:          getMasks(),
 		LargeCommunity: getLargeCommunities(),
-		Roas:           getROAs(),
+		Roas:           getROAs(router),
 	}
 
 	log.Printf("%v\n", current)
@@ -75,94 +76,56 @@ func main() {
 }
 
 // getTableTotal returns the complete RIB and FIB counts.
-func getTableTotal() *pb.PrefixCount {
+func getTableTotal(d cli.Decoder) *pb.PrefixCount {
 	defer c.TimeFunction(time.Now(), "getTableTotal")
-	cmd := "/usr/sbin/birdc show route count | grep routes | awk {'print $3, $6'}"
 
-	out, err := c.GetOutput(cmd)
+	tot, err := d.GetBGPTotal()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
-	numbers := strings.Fields(out)
 
 	return &pb.PrefixCount{
-		Total_4:  c.StringToUint32(numbers[0]),
-		Active_4: c.StringToUint32(numbers[1]),
-		Total_6:  c.StringToUint32(numbers[2]),
-		Active_6: c.StringToUint32(numbers[3]),
+		Total_4:  tot.V4Rib,
+		Active_4: tot.V4Fib,
+		Total_6:  tot.V6Rib,
+		Active_6: tot.V6Fib,
 	}
 }
 
 // getPeers returns how many peers are configured, and how many are established.
-func getPeers() *pb.PeerCount {
+func getPeers(d cli.Decoder) *pb.PeerCount {
 	defer c.TimeFunction(time.Now(), "getPeers")
-	var peers []uint32
-	cmds := []string{
-		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep _v4 | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
-		"/usr/sbin/birdc show protocols | awk {'print $1 $6'} | grep _v4 | grep Estab | wc -l",
-		"/usr/sbin/birdc show protocols | awk {'print $1'} | grep _v6 | grep -Ev 'BIRD|device1|name|info|kernel1' | wc -l",
-		"/usr/sbin/birdc show protocols | awk {'print $1 $6'} | grep _v6 | grep Estab | wc -l",
-	}
 
-	for _, cmd := range cmds {
-		out, err := c.GetOutput(cmd)
-		if err != nil {
-			log.Fatal(err)
-		}
-		peers = append(peers, c.StringToUint32(out))
+	peers, err := d.GetPeers()
+	if err != nil {
+		log.Println(err)
 	}
 
 	return &pb.PeerCount{
-		PeerCount_4: peers[0],
-		PeerUp_4:    peers[1],
-		PeerCount_6: peers[2],
-		PeerUp_6:    peers[3],
+		PeerCount_4: peers.V4c,
+		PeerUp_4:    peers.V4e,
+		PeerCount_6: peers.V6c,
+		PeerUp_6:    peers.V6e,
 	}
 
 }
 
 // getAS returns a unique slice of all source ASs seen.
-// TODO: add transit ASs as well and pack into same struct.
-func getAS() *pb.AsCount {
+func getAS(d cli.Decoder) *pb.AsCount {
 	defer c.TimeFunction(time.Now(), "getAS")
-	cmd1 := "/usr/sbin/birdc show route primary table master4 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
-	cmd2 := "/usr/sbin/birdc show route primary table master6 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
 
-	as4, err := c.GetOutput(cmd1)
+	as, err := d.GetTotalSourceASNs()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
-	as6, err := c.GetOutput(cmd2)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// asNSet is the list of unique source AS numbers in each address family
-	as4Set := c.SetListOfStrings(strings.Fields(as4))
-	as6Set := c.SetListOfStrings(strings.Fields(as6))
-
-	// as10Set is the total number of unique source AS numbers.
-	var as10 []string
-	as10 = append(as10, as4Set...)
-	as10 = append(as10, as6Set...)
-	as10Set := c.SetListOfStrings(as10)
-
-	// as4Only is the set of ASs that only source IPv4
-	as4Only := common.InFirstButNotSecond(as4Set, as6Set)
-
-	// as6Only is the set of ASs that only source IPv6
-	as6Only := common.InFirstButNotSecond(as6Set, as4Set)
-
-	// asBoth is the set of ASs that source both IPv4 and IPv6
-	asBoth := common.Intersection(as4Set, as6Set)
 
 	return &pb.AsCount{
-		As4:     uint32(len(as4Set)),
-		As6:     uint32(len(as6Set)),
-		As10:    uint32(len(as10Set)),
-		As4Only: uint32(len(as4Only)),
-		As6Only: uint32(len(as6Only)),
-		AsBoth:  uint32(len(asBoth)),
+		As4:     as.As4,
+		As6:     as.As6,
+		As10:    as.As10,
+		As4Only: as.As4Only,
+		As6Only: as.As6Only,
+		AsBoth:  as.AsBoth,
 	}
 
 }
@@ -296,33 +259,21 @@ func getLargeCommunities() *pb.LargeCommunity {
 }
 
 // getROAs returns the amount of RPKI ROAs in VALID, INVALID, and UNKNOWN status.
-// TODO: This only works with bird2
-func getROAs() *pb.Roas {
+func getROAs(d cli.Decoder) *pb.Roas {
 	defer c.TimeFunction(time.Now(), "getROAs")
-	var roas []uint32
-	cmds := []string{
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_VALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_INVALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_VALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_INVALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
+
+	r, err := d.GetROAs()
+	if err != nil {
+		log.Println(err)
 	}
 
-	for _, cmd := range cmds {
-		out, err := c.GetOutput(cmd)
-		if err != nil {
-			log.Fatal(err)
-		}
-		roas = append(roas, c.StringToUint32(out))
-	}
 	return &pb.Roas{
-		V4Valid:   roas[0],
-		V4Invalid: roas[1],
-		V4Unknown: roas[2],
-		V6Valid:   roas[3],
-		V6Invalid: roas[4],
-		V6Unknown: roas[5],
+		V4Valid:   r.V4v,
+		V4Invalid: r.V4i,
+		V4Unknown: r.V4u,
+		V6Valid:   r.V6v,
+		V6Invalid: r.V6i,
+		V6Unknown: r.V6u,
 	}
 
 }
