@@ -1,7 +1,8 @@
 package clidecode
 
 import (
-	"log"
+	"fmt"
+	"net"
 	"strings"
 
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
@@ -110,19 +111,6 @@ func (b Bird2Conn) GetTotalSourceASNs() (ASNs, error) {
 
 }
 
-// GetTransitASNs
-// TODO: GetTotalorTransirASNs maybe!
-// Also return list of ASN or amounts?
-/*func (b Bird2Conn) GetTransitASNs() (ASNs, error) {
-	cmd := "/usr/sbin/birdc show route all primary | grep BGP.as_path | awk '{$1=$2=$NF=\"\"; print}'"
-	v4, err := c.GetOutput(cmd)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return c.SetListOfStrings(strings.Fields(v4)), nil
-
-}*/
-
 // GetROAs returns total amount of all ROA states
 func (b Bird2Conn) GetROAs() (Roas, error) {
 	var r Roas
@@ -175,7 +163,7 @@ func (b Bird2Conn) GetMasks() ([]map[string]uint32, error) {
 	cmd2 := "/usr/sbin/birdc show route primary table master4 | awk {'print $1'} | sed -e '1,2d'"
 	subnetsV4, err := c.GetOutput(cmd2)
 	if err != nil {
-		log.Fatal(err)
+		return m, err
 	}
 	for _, s := range strings.Fields(subnetsV4) {
 		mask := strings.Split(s, "/")[1]
@@ -201,7 +189,7 @@ func (b Bird2Conn) GetLargeCommunities() (Large, error) {
 	for _, cmd := range cmds {
 		out, err := c.GetOutput(cmd)
 		if err != nil {
-			log.Fatal(err)
+			return l, err
 		}
 		comm = append(comm, c.StringToUint32(out))
 	}
@@ -209,4 +197,42 @@ func (b Bird2Conn) GetLargeCommunities() (Large, error) {
 	l.V6 = comm[1]
 
 	return l, nil
+}
+
+// GetIPv4FromSource returns all the IPv4 networks sourced from a source ASN.
+func (b Bird2Conn) GetIPv4FromSource(asn uint32) ([]*net.IPNet, error) {
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master4 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", asn)
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return []*net.IPNet{}, err
+	}
+
+	var ips []*net.IPNet
+
+	for _, address := range strings.Fields(out) {
+		_, net, _ := net.ParseCIDR(address)
+		ips = append(ips, net)
+	}
+
+	return ips, nil
+}
+
+// GetIPv6FromSource returns all the IPv6 networks sourced from a source ASN.
+func (b Bird2Conn) GetIPv6FromSource(asn uint32) ([]*net.IPNet, error) {
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master6 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", asn)
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return []*net.IPNet{}, err
+	}
+
+	var ips []*net.IPNet
+
+	for _, address := range strings.Fields(out) {
+		_, net, _ := net.ParseCIDR(address)
+		ips = append(ips, net)
+	}
+
+	return ips, nil
 }

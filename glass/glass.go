@@ -13,23 +13,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mellowdrifter/bgp_infrastructure/common"
+	cli "github.com/mellowdrifter/bgp_infrastructure/clidecode"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"gopkg.in/ini.v1"
 )
 
 const (
 	maxCache = 100
-	maxAge   = time.Hour * 1
+	maxAge   = time.Hour * 6
 )
 
 type server struct {
-	cache map[uint32]asnAge
-	mu    *sync.RWMutex
+	router cli.Decoder
+	cache  map[uint32]asnAge
+	mu     *sync.RWMutex
 }
 
 type asnAge struct {
@@ -59,9 +59,13 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
+	// TODO: Bird2 for now. Could change
+	var router cli.Bird2Conn
+
 	glassServer := &server{
-		cache: make(map[uint32]asnAge),
-		mu:    &sync.RWMutex{},
+		router: router,
+		cache:  make(map[uint32]asnAge),
+		mu:     &sync.RWMutex{},
 	}
 
 	// set up gRPC server
@@ -77,55 +81,25 @@ func main() {
 
 }
 
-// TODO: Lots of this code is shared with parser. Should create a library which both imports
-// Can then also have different libraries for different vendors.
+// TotalAsns will return the total number of course ASNs.
 func (s *server) TotalAsns(ctx context.Context, e *pb.Empty) (*pb.TotalAsnsResponse, error) {
+	log.Printf("Running TotalAsns")
 
-	cmd1 := "/usr/sbin/birdc show route primary table master4 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
-	cmd2 := "/usr/sbin/birdc show route primary table master6 | awk '{print $NF}' | tr -d '[]ASie?' | sed -e '1,2d'"
-
-	as4, err := com.GetOutput(cmd1)
+	as, err := s.router.GetTotalSourceASNs()
 	if err != nil {
-		return nil, err
-	}
-	as6, err := com.GetOutput(cmd2)
-	if err != nil {
+		log.Printf("Error: %v", err)
 		return nil, err
 	}
 
-	// asNSet is the list of unique source AS numbers in each address family
-	as4Set := com.SetListOfStrings(strings.Fields(as4))
-	as6Set := com.SetListOfStrings(strings.Fields(as6))
-
-	// as10Set is the total number of unique source AS numbers.
-	var as10 []string
-	as10 = append(as10, as4Set...)
-	as10 = append(as10, as6Set...)
-	as10Set := com.SetListOfStrings(as10)
-
-	// as4Only is the set of ASs that only source IPv4
-	as4Only := common.InFirstButNotSecond(as4Set, as6Set)
-
-	// as6Only is the set of ASs that only source IPv6
-	as6Only := common.InFirstButNotSecond(as6Set, as4Set)
-
-	// asBoth is the set of ASs that source both IPv4 and IPv6
-	asBoth := common.Intersection(as4Set, as6Set)
-
-	// TODO: These numbers are weird...
 	return &pb.TotalAsnsResponse{
-		Total:   uint32(len(asBoth)),
-		As4:     uint32(len(as4Set)),
-		As6:     uint32(len(as6Set)),
-		As10:    uint32(len(as10Set)),
-		As4Only: uint32(len(as4Only)),
-		As6Only: uint32(len(as6Only)),
+		As4:     as.As4,
+		As6:     as.As6,
+		As10:    as.As10,
+		As4Only: as.As4Only,
+		As6Only: as.As6Only,
+		AsBoth:  as.AsBoth,
 	}, nil
 
-}
-
-func (s *server) TotalTransit(ctx context.Context, r *pb.TotalTransitRequest) (*pb.TotalTransitResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 }
 
 // Origin will return the origin ASN for the active route.
@@ -275,15 +249,19 @@ func (s *server) checkASNCache(asn uint32) (string, string, bool) {
 }
 
 // updateCache will add a new cache entry.
-// It'll also purge the cache if we hit the maximum entries.
+// It'll also clean the cache if we hit the maximum entries.
 func (s *server) updateCache(n, l string, as uint32) {
 	defer s.mu.Unlock()
 	s.mu.Lock()
 
 	// Only store the maxCache entries to prevent a DOS.
-	if len(s.cache) > maxCache {
-		log.Printf("Max cache entries reached. Purging")
-		s.cache = make(map[uint32]asnAge)
+	if len(s.cache) >= maxCache {
+		log.Printf("Max cache entries reached. Purging Old entries")
+		for key, val := range s.cache {
+			if time.Since(val.age) > maxAge {
+				delete(s.cache, key)
+			}
+		}
 	}
 
 	log.Printf("Adding AS%d: %s to the cache", as, n)
@@ -372,72 +350,50 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 
 func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceResponse, error) {
 	log.Printf("Running Sourced")
+	defer com.TimeFunction(time.Now(), "Sourced")
 
 	if !com.ValidateASN(r.GetAsNumber()) {
 		return nil, errors.New("Invalid AS number")
 	}
 
-	subnets, err := getSourcedFromDaemon(r.GetAsNumber())
+	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
-		log.Printf("Error: %v", err)
 		return nil, err
 	}
 
-	if !subnets.Exists {
+	var prefixes = make([]*pb.IpAddress, 0, len(v4))
+	for _, v := range v4 {
+		mask, _ := v.Mask.Size()
+		prefixes = append(prefixes, &pb.IpAddress{
+			Address: v.IP.String(),
+			Mask:    uint32(mask),
+		})
+	}
+
+	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range v6 {
+		mask, _ := v.Mask.Size()
+		prefixes = append(prefixes, &pb.IpAddress{
+			Address: v.IP.String(),
+			Mask:    uint32(mask),
+		})
+	}
+
+	// No prefixes will return empty, but no error
+	if len(prefixes) == 0 {
 		return &pb.SourceResponse{}, nil
 	}
 
-	return subnets, nil
-}
-
-// getSourcedFromDaemon will get all the IPv4 and IPv6 routes sourced from an ASN.
-func getSourcedFromDaemon(as uint32) (*pb.SourceResponse, error) {
-	log.Printf("Running getSourcedFromDaemon")
-
-	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master6 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", as)
-	out, err := com.GetOutput(cmd)
-	if err != nil {
-		return &pb.SourceResponse{}, err
-	}
-	var prefixes []*pb.IpAddress
-	for _, address := range strings.Fields(out) {
-		addrMask := strings.Split(address, "/")
-		fmt.Printf("%s\n", addrMask)
-		prefixes = append(prefixes, &pb.IpAddress{
-			Address: addrMask[0],
-			Mask:    com.StringToUint32(addrMask[1]),
-		})
-	}
-
-	v6Count := len(prefixes)
-
-	cmd = fmt.Sprintf("/usr/sbin/birdc 'show route primary table master4 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", as)
-	out, err = com.GetOutput(cmd)
-	if err != nil {
-		return &pb.SourceResponse{}, err
-	}
-
-	for _, address := range strings.Fields(out) {
-		addrMask := strings.Split(address, "/")
-		prefixes = append(prefixes, &pb.IpAddress{
-			Address: addrMask[0],
-			Mask:    com.StringToUint32(addrMask[1]),
-		})
-	}
-
-	v4Count := len(prefixes) - v6Count
-
-	if out == "" {
-		return &pb.SourceResponse{}, err
-
-	}
 	return &pb.SourceResponse{
-		Exists:    true,
 		IpAddress: prefixes,
-		V4Count:   uint32(v4Count),
-		V6Count:   uint32(v6Count),
-	}, err
-
+		Exists:    true,
+		V4Count:   uint32(len(v4)),
+		V6Count:   uint32(len(v6)),
+	}, nil
 }
 
 // getOriginFromDaemon will get the origin ASN for the passed in IP directly from the BGP daemon.

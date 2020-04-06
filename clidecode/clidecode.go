@@ -1,5 +1,7 @@
 package clidecode
 
+import "net"
+
 // Decoder is an interface that represents a router to interigate
 type Decoder interface {
 	// GetBGPTotal returns rib, fib ipv4. rib, fib ipv6
@@ -11,9 +13,6 @@ type Decoder interface {
 	// GetTotalSourceASNs returns total amount of unique ASNs
 	GetTotalSourceASNs() (ASNs, error)
 
-	// GetTransirASNs returns total mount of unique transit ASNs
-	//GetTransitASNs() (ASNs, error)
-
 	// GetMasks returns the total count of each mask value
 	// First item is IPv4, second item is IPv6
 	GetMasks() ([]map[string]uint32, error)
@@ -23,6 +22,12 @@ type Decoder interface {
 
 	// GetLargeCommunities returns the amount of prefixes that have large communities attached (RFC8092)
 	GetLargeCommunities() (Large, error)
+
+	// GetIPv4FromSource returns all the IPv4 networks sourced from a source ASN.
+	GetIPv4FromSource(uint32) ([]*net.IPNet, error)
+
+	// GetIPv6FromSource returns all the IPv6 networks sourced from a source ASN.
+	GetIPv6FromSource(uint32) ([]*net.IPNet, error)
 }
 
 // Totals holds the total BGP route count.
