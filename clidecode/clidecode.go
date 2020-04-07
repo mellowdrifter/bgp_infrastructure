@@ -28,6 +28,12 @@ type Decoder interface {
 
 	// GetIPv6FromSource returns all the IPv6 networks sourced from a source ASN.
 	GetIPv6FromSource(uint32) ([]*net.IPNet, error)
+
+	// GetOriginFromIP will return the origin ASN from a source IP.
+	GetOriginFromIP(net.IP) (uint32, bool, error)
+
+	// GetASPathFromIP will return the AS path, as well as as-set if any from a source IP.
+	GetASPathFromIP(net.IP) (ASPath, bool, error)
 }
 
 // Totals holds the total BGP route count.
@@ -69,4 +75,10 @@ type Roas struct {
 // Large contains the amount of prefixes with large communities.
 type Large struct {
 	V4, V6 uint32
+}
+
+// ASPath contains a regular AS path and an AS Set, if it exists.
+type ASPath struct {
+	Path []uint32
+	Set  []uint32
 }

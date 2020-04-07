@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +29,7 @@ type server struct {
 	router cli.Decoder
 	cache  map[uint32]asnAge
 	mu     *sync.RWMutex
+	cfg    *ini.File
 }
 
 type asnAge struct {
@@ -66,6 +66,7 @@ func main() {
 		router: router,
 		cache:  make(map[uint32]asnAge),
 		mu:     &sync.RWMutex{},
+		cfg:    cf,
 	}
 
 	// set up gRPC server
@@ -79,6 +80,13 @@ func main() {
 
 	grpcServer.Serve(lis)
 
+}
+
+// getGRPC returns a connection to a gRPC server. The caller must close the connection.
+func (s *server) getGRPC(server string) (*grpc.ClientConn, error) {
+	srv := s.cfg.Section(server).Key("server").String()
+
+	return grpc.Dial(srv, grpc.WithInsecure())
 }
 
 // TotalAsns will return the total number of course ASNs.
@@ -112,39 +120,41 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 		return nil, err
 	}
 
-	asn, exists, err := getOriginFromDaemon(ip)
+	origin, exists, err := s.router.GetOriginFromIP(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
 	if !exists {
-		return &pb.OriginResponse{}, nil
+		return nil, nil
 	}
 
 	return &pb.OriginResponse{
-		OriginAsn: uint32(asn),
+		OriginAsn: origin,
 		Exists:    exists,
 	}, nil
 
 }
 
+// Totals will return the current IPv4 and IPv6 FIB.
+// Grabs from database as it's updated every 5 minutes.
 func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, error) {
 	log.Printf("Running Totals")
 
 	// load in config
 	exe, err := os.Executable()
 	if err != nil {
-		return &pb.TotalResponse{}, errors.New("Unable to load config in Totals")
+		return nil, errors.New("Unable to load config in Totals")
 	}
 	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
 	cf, err := ini.Load(path)
 	if err != nil {
-		return &pb.TotalResponse{}, fmt.Errorf("failed to read config file: %v", err)
+		return nil, fmt.Errorf("failed to read config file: %v", err)
 	}
 
-	// gRPC dial the grapher
-	bgpinfo := cf.Section("bgpinfo").Key("server").String()
-	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
+	// gRPC dial the bgpsql server
+	bgpsql := cf.Section("bgpsql").Key("server").String()
+	conn, err := grpc.Dial(bgpsql, grpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +163,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 
 	totals, err := b.GetPrefixCount(ctx, &bpb.Empty{})
 	if err != nil {
-		return &pb.TotalResponse{}, err
+		return nil, err
 	}
 
 	return &pb.TotalResponse{
@@ -174,18 +184,39 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 		return nil, err
 	}
 
-	asns, sets, exists, err := getASPathFromDaemon(ip)
+	paths, exists, err := s.router.GetASPathFromIP(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
+
+	// IP route may not exist. Return no error, but not existing either.
 	if !exists {
-		return &pb.AspathResponse{}, nil
+		return nil, nil
+	}
+
+	// Repackage into proto
+	var p = make([]*pb.Asn, 0, len(paths.Path))
+	for _, v := range paths.Path {
+		p = append(p, &pb.Asn{
+			Asplain: v,
+			Asdot:   com.ASPlainToASDot(v),
+		})
+	}
+
+	var set = make([]*pb.Asn, 0, len(paths.Set))
+	if len(set) > 0 {
+		for _, v := range paths.Set {
+			set = append(set, &pb.Asn{
+				Asplain: v,
+				Asdot:   com.ASPlainToASDot(v),
+			})
+		}
 	}
 
 	return &pb.AspathResponse{
-		Asn:    asns,
-		Set:    sets,
+		Asn:    p,
+		Set:    set,
 		Exists: exists,
 	}, nil
 }
@@ -264,6 +295,13 @@ func (s *server) updateCache(n, l string, as uint32) {
 		}
 	}
 
+	// Could get DOS'd if too many queries not in cache. If cache is still
+	// full after removing old entries, purge all.
+	if len(s.cache) >= maxCache {
+		log.Printf("Still too many entries. Removing all")
+		s.cache = make(map[uint32]asnAge)
+	}
+
 	log.Printf("Adding AS%d: %s to the cache", as, n)
 	s.cache[as] = asnAge{
 		name: n,
@@ -289,27 +327,15 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 		}, nil
 	}
 
-	// load in config
-	exe, err := os.Executable()
-	if err != nil {
-		return &pb.AsnameResponse{}, errors.New("Unable to load config in Asname")
-	}
-	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
-	cf, err := ini.Load(path)
-	if err != nil {
-		return &pb.AsnameResponse{}, fmt.Errorf("failed to read config file: %v", err)
-	}
-
 	number := bpb.GetAsnameRequest{AsNumber: r.GetAsNumber()}
 
 	// gRPC dial the bgpsql server
-	bgpinfo := cf.Section("bgpinfo").Key("server").String()
-	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
+	bgpsql, err := s.getGRPC("bgpsql")
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	b := bpb.NewBgpInfoClient(conn)
+	defer bgpsql.Close()
+	b := bpb.NewBgpInfoClient(bgpsql)
 
 	name, err := b.GetAsname(ctx, &number)
 	if err != nil {
@@ -328,7 +354,6 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 }
 
 // Roa will check the ROA status of a prefix.
-// TODO: bird and bird2 do this completely different :(
 func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, error) {
 	log.Printf("Running Roa")
 
@@ -394,78 +419,6 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 		V4Count:   uint32(len(v4)),
 		V6Count:   uint32(len(v6)),
 	}, nil
-}
-
-// getOriginFromDaemon will get the origin ASN for the passed in IP directly from the BGP daemon.
-func getOriginFromDaemon(ip net.IP) (int, bool, error) {
-	log.Printf("Running getOriginFromDaemon")
-
-	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}' | tr -d '[]ASie?'", ip.String())
-	out, err := com.GetOutput(cmd)
-	if err != nil {
-		return 0, false, err
-	}
-
-	log.Printf(out)
-
-	if strings.Contains("not in table", out) {
-		return 0, false, nil
-	}
-
-	source, err := strconv.Atoi(out)
-	if err != nil {
-		return 0, true, err
-	}
-
-	return source, true, nil
-
-}
-
-// getASPathFromDaemon will get the ASN list for the passed in IP directly from the BGP daemon.
-func getASPathFromDaemon(ip net.IP) ([]*pb.Asn, []*pb.Asn, bool, error) {
-	log.Printf("Running getASPathFromDaemon")
-
-	var asns, asSet []*pb.Asn
-
-	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep as_path | awk '{$1=\"\"; print $0}'", ip.String())
-	out, err := com.GetOutput(cmd)
-	if err != nil {
-		return nil, nil, false, err
-	}
-
-	log.Printf(out)
-
-	if out == "" {
-		return nil, nil, false, nil
-
-	}
-
-	aspath := strings.Fields(out)
-
-	// Need to separate as-set
-	var set bool
-	for _, as := range aspath {
-		if strings.ContainsAny(as, "{}") {
-			set = true
-			continue
-		}
-
-		switch {
-		case set == false:
-			asns = append(asns, &pb.Asn{
-				Asplain: com.StringToUint32(as),
-				Asdot:   com.ASPlainToASDot(com.StringToUint32(as)),
-			})
-		case set == true:
-			asns = append(asns, &pb.Asn{
-				Asplain: com.StringToUint32(as),
-				Asdot:   com.ASPlainToASDot(com.StringToUint32(as)),
-			})
-		}
-	}
-
-	return asns, asSet, true, nil
-
 }
 
 // getRouteFromDaemon will get the prefix for the passed in IP directly from the BGP daemon.

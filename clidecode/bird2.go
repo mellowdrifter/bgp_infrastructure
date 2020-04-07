@@ -3,6 +3,7 @@ package clidecode
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	c "github.com/mellowdrifter/bgp_infrastructure/common"
@@ -224,7 +225,7 @@ func (b Bird2Conn) GetIPv6FromSource(asn uint32) ([]*net.IPNet, error) {
 	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master6 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", asn)
 	out, err := c.GetOutput(cmd)
 	if err != nil {
-		return []*net.IPNet{}, err
+		return nil, err
 	}
 
 	var ips []*net.IPNet
@@ -235,4 +236,67 @@ func (b Bird2Conn) GetIPv6FromSource(asn uint32) ([]*net.IPNet, error) {
 	}
 
 	return ips, nil
+}
+
+// GetOriginFromIP will return the origin ASN from a source IP.
+func (b Bird2Conn) GetOriginFromIP(ip net.IP) (uint32, bool, error) {
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}' | tr -d '[]ASie?'", ip.String())
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return 0, false, err
+	}
+
+	if strings.Contains("not in table", out) {
+		return 0, false, nil
+	}
+
+	source, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, true, err
+	}
+
+	return uint32(source), true, nil
+
+}
+
+// GetASPathFromIP will return the AS path, as well as as-set if any from a source IP.
+func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
+	var aspath ASPath
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep as_path | awk '{$1=\"\"; print $0}'", ip.String())
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return aspath, false, err
+	}
+
+	// If no route exists, no as-path will exist
+	if out == "" {
+		return aspath, false, nil
+	}
+
+	paths := strings.Fields(out)
+	var path, set []uint32
+
+	// Need to separate as-set
+	var isSet bool
+	for _, as := range paths {
+		if strings.ContainsAny(as, "{}") {
+			isSet = true
+			continue
+		}
+
+		switch {
+		case isSet == false:
+			path = append(path, c.StringToUint32(as))
+		case isSet == true:
+			set = append(set, c.StringToUint32(as))
+		}
+	}
+
+	aspath.Path = path
+	aspath.Set = set
+
+	return aspath, true, nil
+
 }
