@@ -10,19 +10,17 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"time"
 
 	"golang.org/x/text/encoding/charmap"
 	"gopkg.in/ini.v1"
 
 	"github.com/golang/protobuf/proto"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpinfo"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	defer com.TimeFunction(time.Now(), "main")
 
 	// load in config
 	exe, err := os.Executable()
