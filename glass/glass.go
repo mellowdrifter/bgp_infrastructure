@@ -8,9 +8,10 @@ import (
 	"net"
 	"os"
 	"path"
-	"strings"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc/keepalive"
 
 	cli "github.com/mellowdrifter/bgp_infrastructure/clidecode"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
@@ -20,21 +21,11 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-const (
-	maxCache = 100
-	maxAge   = time.Hour * 6
-)
-
 type server struct {
 	router cli.Decoder
-	cache  map[uint32]asnAge
 	mu     *sync.RWMutex
-	cfg    *ini.File
-}
-
-type asnAge struct {
-	name, loc string
-	age       time.Time
+	bsql   *grpc.ClientConn
+	cache
 }
 
 func main() {
@@ -62,11 +53,16 @@ func main() {
 	// TODO: Bird2 for now. Could change
 	var router cli.Bird2Conn
 
+	conn, err := dialGRPC(cf.Section("bgpsql").Key("server").String())
+	if err != nil {
+		log.Fatalf("Unable to dial gRPC server: %v", err)
+	}
+
 	glassServer := &server{
 		router: router,
-		cache:  make(map[uint32]asnAge),
 		mu:     &sync.RWMutex{},
-		cfg:    cf,
+		bsql:   conn,
+		cache:  getNewCache(),
 	}
 
 	// set up gRPC server
@@ -78,15 +74,26 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterLookingGlassServer(grpcServer, glassServer)
 
+	go glassServer.clearCache()
+
 	grpcServer.Serve(lis)
 
 }
 
-// getGRPC returns a connection to a gRPC server. The caller must close the connection.
-func (s *server) getGRPC(server string) (*grpc.ClientConn, error) {
-	srv := s.cfg.Section(server).Key("server").String()
+func dialGRPC(srv string) (*grpc.ClientConn, error) {
+	// Set keepalive on the client
+	var kacp = keepalive.ClientParameters{
+		Time:    10 * time.Second, // send pings every 10 seconds if there is no activity
+		Timeout: 3 * time.Second,  // wait 3 seconds for ping ack before considering the connection dead
+	}
 
-	return grpc.Dial(srv, grpc.WithInsecure())
+	log.Printf("Dialling %s\n", srv)
+	return grpc.Dial(
+		srv,
+		grpc.WithInsecure(),
+		grpc.WithKeepaliveParams(kacp),
+		grpc.WithBlock(),
+	)
 }
 
 // TotalAsns will return the total number of course ASNs.
@@ -141,30 +148,25 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, error) {
 	log.Printf("Running Totals")
 
-	// load in config
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, errors.New("Unable to load config in Totals")
-	}
-	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
-	cf, err := ini.Load(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
+	// check local cache first
+	if s.checkTotalCache() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return &pb.TotalResponse{
+			Active_4: s.totalCache.v4,
+			Active_6: s.totalCache.v6,
+			Time:     s.totalCache.time,
+		}, nil
 	}
 
-	// gRPC dial the bgpsql server
-	bgpsql := cf.Section("bgpsql").Key("server").String()
-	conn, err := grpc.Dial(bgpsql, grpc.WithInsecure())
+	stub := bpb.NewBgpInfoClient(s.bsql)
+	totals, err := stub.GetPrefixCount(ctx, &bpb.Empty{})
 	if err != nil {
+		log.Printf("No connection to bgpsql RPC server")
 		return nil, err
 	}
-	defer conn.Close()
-	b := bpb.NewBgpInfoClient(conn)
 
-	totals, err := b.GetPrefixCount(ctx, &bpb.Empty{})
-	if err != nil {
-		return nil, err
-	}
+	s.updateTotalCache(totals)
 
 	return &pb.TotalResponse{
 		Active_4: totals.GetActive_4(),
@@ -230,14 +232,14 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 		return nil, errors.New("Unable to validate IP")
 	}
 
-	ipnet, exists, err := getRouteFromDaemon(ip)
+	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
 
 	if !exists {
-		return &pb.RouteResponse{}, nil
+		return nil, nil
 	}
 
 	mask, _ := ipnet.Mask.Size()
@@ -250,65 +252,6 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 		IpAddress: ipaddr,
 		Exists:    exists,
 	}, nil
-}
-
-// checkASNCache will check the local cache.
-// Only returns the cache entry if it's within the maxAge timer.
-func (s *server) checkASNCache(asn uint32) (string, string, bool) {
-	defer s.mu.RUnlock()
-	s.mu.RLock()
-	log.Printf("Check cache for AS%d", asn)
-
-	val, ok := s.cache[asn]
-
-	// Only return cache value if it's within the max age
-	if ok {
-		log.Printf("Cache entry exists for AS%d", asn)
-		if time.Since(val.age) < maxAge {
-			log.Printf("Cache entry timer is still valid for AS%d", asn)
-			return val.name, val.loc, ok
-		}
-		log.Printf("Cache entry timer is too old for AS%d", asn)
-
-	}
-
-	if !ok {
-		log.Printf("No cache entry found")
-	}
-
-	return "", "", false
-}
-
-// updateCache will add a new cache entry.
-// It'll also clean the cache if we hit the maximum entries.
-func (s *server) updateCache(n, l string, as uint32) {
-	defer s.mu.Unlock()
-	s.mu.Lock()
-
-	// Only store the maxCache entries to prevent a DOS.
-	if len(s.cache) >= maxCache {
-		log.Printf("Max cache entries reached. Purging Old entries")
-		for key, val := range s.cache {
-			if time.Since(val.age) > maxAge {
-				delete(s.cache, key)
-			}
-		}
-	}
-
-	// Could get DOS'd if too many queries not in cache. If cache is still
-	// full after removing old entries, purge all.
-	if len(s.cache) >= maxCache {
-		log.Printf("Still too many entries. Removing all")
-		s.cache = make(map[uint32]asnAge)
-	}
-
-	log.Printf("Adding AS%d: %s to the cache", as, n)
-	s.cache[as] = asnAge{
-		name: n,
-		loc:  l,
-		age:  time.Now(),
-	}
-
 }
 
 // Asname will return the registered name of the ASN. As this isn't in bird directly, will need
@@ -329,21 +272,15 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 
 	number := bpb.GetAsnameRequest{AsNumber: r.GetAsNumber()}
 
-	// gRPC dial the bgpsql server
-	bgpsql, err := s.getGRPC("bgpsql")
+	stub := bpb.NewBgpInfoClient(s.bsql)
+	name, err := stub.GetAsname(ctx, &number)
 	if err != nil {
+		log.Printf("No connection to bgpsql RPC server")
 		return nil, err
-	}
-	defer bgpsql.Close()
-	b := bpb.NewBgpInfoClient(bgpsql)
-
-	name, err := b.GetAsname(ctx, &number)
-	if err != nil {
-		return &pb.AsnameResponse{}, err
 	}
 
 	// Cache the result for next time
-	s.updateCache(name.GetAsName(), name.GetAsLocale(), r.GetAsNumber())
+	s.updateASNCache(name.GetAsName(), name.GetAsLocale(), r.GetAsNumber())
 
 	return &pb.AsnameResponse{
 		AsName: name.GetAsName(),
@@ -363,13 +300,43 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 		return nil, err
 	}
 
-	status, err := getRoaFromDaemon(ip)
+	// In oder to check ROA, I first need the FIB entry for the IP address.
+	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
 
-	return status, nil
+	if !exists {
+		return nil, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
+	}
+
+	status, exists, err := s.router.GetROA(ipnet)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
+	// Check for an existing ROA
+	// I've set local preference on all routes to make this easier to determine:
+	// 200 = ROA_VALID
+	// 100 = ROA_UNKNOWN
+	//  50 = ROA_INVALID
+	statuses := map[int]pb.RoaResponse_ROAStatus{
+		cli.RUnknown: pb.RoaResponse_UNKNOWN,
+		cli.RInvalid: pb.RoaResponse_INVALID,
+		cli.RValid:   pb.RoaResponse_VALID,
+	}
+
+	mask, _ := ipnet.Mask.Size()
+	return &pb.RoaResponse{
+		IpAddress: &pb.IpAddress{
+			Address: ipnet.IP.String(),
+			Mask:    uint32(mask),
+		},
+		Status: statuses[status],
+		Exists: exists,
+	}, nil
 
 }
 
@@ -378,12 +345,23 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 	defer com.TimeFunction(time.Now(), "Sourced")
 
 	if !com.ValidateASN(r.GetAsNumber()) {
-		return nil, errors.New("Invalid AS number")
+		return nil, fmt.Errorf("Invalid AS number")
+	}
+
+	// check local cache first
+	p, ok := s.checkSourcedCache(r.GetAsNumber())
+	if ok {
+		return &pb.SourceResponse{
+			IpAddress: p.prefixes,
+			Exists:    true,
+			V4Count:   p.v4,
+			V6Count:   p.v6,
+		}, nil
 	}
 
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error on getting IPv4 from source: %w", err)
 	}
 
 	var prefixes = make([]*pb.IpAddress, 0, len(v4))
@@ -397,7 +375,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 
 	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error on getting IPv6 from source: %w", err)
 	}
 
 	for _, v := range v6 {
@@ -407,6 +385,9 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 			Mask:    uint32(mask),
 		})
 	}
+
+	// Update the local cache
+	s.updateSourcedCache(prefixes, uint32(len(v4)), uint32(len(v6)), r.GetAsNumber())
 
 	// No prefixes will return empty, but no error
 	if len(prefixes) == 0 {
@@ -419,65 +400,4 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 		V4Count:   uint32(len(v4)),
 		V6Count:   uint32(len(v6)),
 	}, nil
-}
-
-// getRouteFromDaemon will get the prefix for the passed in IP directly from the BGP daemon.
-// If network not found, returns false but no error.
-func getRouteFromDaemon(ip net.IP) (*net.IPNet, bool, error) {
-	log.Printf("Running getRouteFromDaemon")
-
-	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}' | tr -d '[]ASie?'", ip.String())
-	out, err := com.GetOutput(cmd)
-	if err != nil {
-		return nil, false, err
-	}
-
-	_, net, err := net.ParseCIDR(out)
-	if err != nil {
-		return nil, false, nil
-	}
-
-	return net, true, nil
-
-}
-
-// getRoaFromDaemon will get the ROA status for the requested prefix directly from the BGP daemon.
-// TODO: bird vs bird2 is very different :(
-func getRoaFromDaemon(ip net.IP) (*pb.RoaResponse, error) {
-
-	// In order to check the ROA, I need the current route.
-	prefix, exists, err := getRouteFromDaemon(ip)
-	if err != nil || !exists {
-		return &pb.RoaResponse{}, err
-	}
-
-	// Check for an existing ROA
-	// I've set local preference on all routes to make this easier to determine:
-	// 200 = ROA_VALID
-	// 100 = ROA_UNKNOWN
-	//  50 = ROA_INVALID
-	statuses := map[string]pb.RoaResponse_ROAStatus{
-		"100": pb.RoaResponse_UNKNOWN,
-		"50":  pb.RoaResponse_INVALID,
-		"200": pb.RoaResponse_VALID,
-	}
-	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route all primary for %s' | grep local_pref", prefix.String())
-	out, err := com.GetOutput(cmd)
-	if err != nil {
-		return &pb.RoaResponse{}, err
-	}
-
-	// Get the local preference
-	pref := strings.Fields(out)
-
-	mask, _ := prefix.Mask.Size()
-	return &pb.RoaResponse{
-		IpAddress: &pb.IpAddress{
-			Address: prefix.IP.String(),
-			Mask:    uint32(mask),
-		},
-		Status: statuses[pref[len(pref)-1]],
-		Exists: exists,
-	}, nil
-
 }
