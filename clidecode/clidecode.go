@@ -34,6 +34,12 @@ type Decoder interface {
 
 	// GetASPathFromIP will return the AS path, as well as as-set if any from a source IP.
 	GetASPathFromIP(net.IP) (ASPath, bool, error)
+
+	// GetRoute will return the current FIB entry, if any, from a source IP.
+	GetRoute(net.IP) (*net.IPNet, bool, error)
+
+	// GetROA will return the ROA status, if any, from a source IP.
+	GetROA(*net.IPNet) (int, bool, error)
 }
 
 // Totals holds the total BGP route count.
@@ -82,3 +88,12 @@ type ASPath struct {
 	Path []uint32
 	Set  []uint32
 }
+
+const (
+	// RUnknown = ROA Unknown
+	RUnknown = iota
+	// RValid = ROA Valid
+	RValid
+	// RInvalid = ROA Invalid
+	RInvalid
+)

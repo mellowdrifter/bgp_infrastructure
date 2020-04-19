@@ -300,3 +300,53 @@ func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 	return aspath, true, nil
 
 }
+
+// GetRoute will return the current FIB entry, if any, from a source IP.
+func (b Bird2Conn) GetRoute(ip net.IP) (*net.IPNet, bool, error) {
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}' | tr -d '[]ASie?'", ip.String())
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+
+	_, net, err := net.ParseCIDR(out)
+	if err != nil {
+		return nil, false, nil
+	}
+
+	return net, true, nil
+
+}
+
+// GetROA will return the ROA status, if any, from a source IP.
+// TODO: Once upgraded to bird 2.0.7 fix what we're looking for!
+// http://trubka.network.cz/pipermail/bird-users/2019-October/013923.html
+func (b Bird2Conn) GetROA(prefix *net.IPNet) (int, bool, error) {
+	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route all primary for %s' | grep local_pref", prefix.String())
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return 0, false, err
+	}
+
+	// If no route exists, no ROA will exist.
+	if out == "" {
+		return 0, false, nil
+	}
+
+	// Get the local preference
+	pref := strings.Fields(out)
+
+	// Check for an existing ROA
+	// I've set local preference on all routes to make this easier to determine:
+	// 200 = ROA_VALID
+	// 100 = ROA_UNKNOWN
+	//  50 = ROA_INVALID
+	statuses := map[string]int{
+		"100": RUnknown,
+		"50":  RInvalid,
+		"200": RValid,
+	}
+
+	return statuses[pref[len(pref)-1]], true, nil
+
+}
