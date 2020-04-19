@@ -140,6 +140,12 @@ func TestIntersection(t *testing.T) {
 	}
 }
 
+func BenchmarkIntersection(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		Intersection([]string{"29435", "15169", "2257"}, []string{"15169", "3357", "1"})
+	}
+}
+
 func TestIsPublicIP(t *testing.T) {
 	var ips = []struct {
 		name   string

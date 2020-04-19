@@ -141,9 +141,15 @@ func TimeFunction(start time.Time, name string) {
 func ValidateIP(ip string) (net.IP, error) {
 	log.Printf("Running validateIP")
 
-	parsed := net.ParseIP(ip)
+	var parsed net.IP
+
+	if strings.Contains(ip, "/") {
+		parsed, _, _ = net.ParseCIDR(ip)
+	} else {
+		parsed = net.ParseIP(ip)
+	}
 	if parsed == nil {
-		return nil, fmt.Errorf("Unable to parse IP")
+		return nil, fmt.Errorf("Unable to parse IP: %s", ip)
 	}
 
 	if !IsPublicIP(parsed) {
