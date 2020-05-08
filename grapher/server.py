@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use('Agg')
 
 
-_ONE_DAY_IN_SECONDS = 60 * 60 * 24
+_PORT = os.environ["PORT"]
 
 # Load config
 config = configparser.ConfigParser()
@@ -205,7 +205,9 @@ def get_rpki(
     return RPKICharts
 
 
-if __name__ == "__main__":
+# Start running as a GCP Cloud Run service
+def _serve(port: Text):
+    bind_address = f"[::]:{port}"
     grpcserver = grpc.server(
         futures.ThreadPoolExecutor(max_workers=1),
         maximum_concurrent_rpcs=3,
@@ -213,16 +215,12 @@ if __name__ == "__main__":
     grapher_pb2_grpc.add_GrapherServicer_to_server(
         GrapherServicer(), grpcserver
     )
-
-    logging.info('Listening on port {}.'.format(server))
-    grpcserver.add_insecure_port("{}".format(server))
+    grpcserver.add_insecure_port(bind_address)
     grpcserver.start()
+    logging.info("Listening on %s.", bind_address)
+    grpcserver.wait_for_termination()
 
-    # since grpcserver.start() will not block,
-    # a sleep-loop is added to keep alive
-    try:
-        while True:
-            time.sleep(_ONE_DAY_IN_SECONDS)
-    except KeyboardInterrupt:
-        print('Keyboard interrupted. Stopping server.')
-        grpcserver.stop(0)
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    _serve(_PORT)
