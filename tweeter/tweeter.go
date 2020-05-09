@@ -19,6 +19,13 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+const (
+	// If I see IPv4 and IPv6 values less than these values, there is an issue.
+	// This value can be revised once every 6 months or so.
+	minV4 = 780000
+	minV6 = 78000
+)
+
 type tweet struct {
 	account string
 	message string
@@ -35,7 +42,7 @@ type config struct {
 	dryRun  bool
 }
 
-// Pull out most of the intial set up into a separate function
+// Pull out most of the initial set up into a separate function
 func setup() (config, error) {
 	// load in config
 	exe, err := os.Executable()
@@ -75,7 +82,7 @@ func main() {
 	// Set up log file
 	f, err := os.OpenFile(config.log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatalf("failed to open logfile: %v\n", err)
+		log.Fatalf("failed to open logfile: %v", err)
 	}
 	defer f.Close()
 	log.SetOutput(f)
@@ -127,7 +134,6 @@ func getConnection(srv string) (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("unable to dial gRPC server: %v", err)
 	}
 	return conn, err
-
 }
 
 // getLiveServer will return the first live connection it can get. If neither server
@@ -141,7 +147,6 @@ func getLiveServer(c config) (*grpc.ClientConn, error) {
 		log.Printf("Unable to dial gRPC server: %v", err)
 	}
 	return nil, fmt.Errorf("unable to dial either of the gRPC servers")
-
 }
 
 // TODO: Explain this
@@ -151,17 +156,16 @@ type sConn struct {
 }
 
 func getAllServers(c config) []sConn {
-	var conns []sConn
+	var connections []sConn
 	for _, v := range c.servers {
 		log.Printf("Attempting to get connection to %s\n", v)
 		conn, err := getConnection(v)
-		conns = append(conns, sConn{
+		connections = append(connections, sConn{
 			conn: conn,
 			err:  err,
 		})
 	}
-	return conns
-
+	return connections
 }
 
 // allCurrent will attempt to get current values from all servers.
@@ -171,7 +175,7 @@ func getAllServers(c config) []sConn {
 func allCurrent(c config) ([]tweet, error) {
 	log.Println("Running allCurrent")
 
-	conns := getAllServers(c)
+	connections := getAllServers(c)
 
 	type tweetErr struct {
 		tweets []tweet
@@ -181,9 +185,9 @@ func allCurrent(c config) ([]tweet, error) {
 	var res []tweetErr
 
 	// Connect to all servers, get current, work out tweets, and update tweet bits
-	for i, v := range conns {
+	for i, v := range connections {
 		if v.err == nil {
-			log.Printf("Connecting to server %d at %v\n", i, v.conn.Target())
+			log.Printf("Connecting to server %d at %v\n", i+1, v.conn.Target())
 			tw, err := current(bpb.NewBgpInfoClient(v.conn))
 			res = append(res, tweetErr{tweets: tw, err: err})
 		}
@@ -197,8 +201,7 @@ func allCurrent(c config) ([]tweet, error) {
 	}
 
 	// This should only execute if none if the configured servers actually gave a response.
-	return nil, fmt.Errorf("Neither server gave a response for current")
-
+	return nil, fmt.Errorf("either server gave a response for current")
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
@@ -208,6 +211,16 @@ func current(b bpb.BgpInfoClient) ([]tweet, error) {
 	counts, err := b.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
 		return nil, err
+	}
+
+	// Check for sane IP values
+	if counts.GetActive_4() < minV4 {
+		return nil, fmt.Errorf("IPv4 count is %d, which is less than the minimum sane value of %d",
+			counts.GetActive_4(), minV4)
+	}
+	if counts.GetActive_6() < minV6 {
+		return nil, fmt.Errorf("IPv6 count is %d, which is less than the minimum sane value of %d",
+			counts.GetActive_6(), minV6)
 	}
 
 	// Calculate deltas.
@@ -313,8 +326,8 @@ func subnets(c config) ([]tweet, error) {
 
 	v4Colours := []string{"burlywood", "lightgreen", "lightskyblue", "lightcoral", "gold"}
 	v6Colours := []string{"lightgreen", "burlywood", "lightskyblue", "violet", "linen", "lightcoral", "gold"}
-	v4Lables := []string{"/19-/21", "/16-/18", "/22", "/23", "/24"}
-	v6Lables := []string{"/32", "/44", "/40", "/36", "/29", "The Rest", "/48"}
+	v4Labels := []string{"/19-/21", "/16-/18", "/22", "/23", "/24"}
+	v6Labels := []string{"/32", "/44", "/40", "/36", "/29", "The Rest", "/48"}
 
 	t := time.Now()
 	v4Meta := &gpb.Metadata{
@@ -322,14 +335,14 @@ func subnets(c config) ([]tweet, error) {
 		XAxis:   uint32(12),
 		YAxis:   uint32(10),
 		Colours: v4Colours,
-		Labels:  v4Lables,
+		Labels:  v4Labels,
 	}
 	v6Meta := &gpb.Metadata{
 		Title:   fmt.Sprintf("Current prefix range distribution for IPv6 (%s)", t.Format("02-Jan-2006")),
 		XAxis:   uint32(12),
 		YAxis:   uint32(10),
 		Colours: v6Colours,
-		Labels:  v6Lables,
+		Labels:  v6Labels,
 	}
 
 	v4Subnets := []uint32{
@@ -351,7 +364,7 @@ func subnets(c config) ([]tweet, error) {
 		pieData.GetMasks().GetV6_48(),
 	}
 
-	// Dial the grapher to retrive graphs via matplotlib
+	// Dial the grapher to retrieve graphs via matplotlib
 	// TODO: IS this not too much stuff in a single function?
 	req := &gpb.PieChartRequest{
 		Metadatas: []*gpb.Metadata{v4Meta, v6Meta},
