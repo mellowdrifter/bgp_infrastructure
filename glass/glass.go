@@ -48,6 +48,7 @@ func main() {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
 	defer f.Close()
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(f)
 
 	// TODO: Bird2 for now. Could change
@@ -127,6 +128,15 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 		return nil, err
 	}
 
+	// check local cache
+	origin, ok := s.checkOriginCache(ip.String())
+	if ok {
+		return &pb.OriginResponse{
+			OriginAsn: origin,
+			Exists:    true,
+		}, nil
+	}
+
 	origin, exists, err := s.router.GetOriginFromIP(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
@@ -136,11 +146,12 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 		return nil, nil
 	}
 
+	s.updateOriginCache(ip, origin)
+
 	return &pb.OriginResponse{
 		OriginAsn: origin,
 		Exists:    exists,
 	}, nil
-
 }
 
 // Totals will return the current IPv4 and IPv6 FIB.
@@ -186,6 +197,16 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 		return nil, err
 	}
 
+	// check local cache
+	a, st, ok := s.checkASPathCache(ip.String())
+	if ok {
+		return &pb.AspathResponse{
+			Asn:    a,
+			Set:    st,
+			Exists: true,
+		}, nil
+	}
+
 	paths, exists, err := s.router.GetASPathFromIP(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
@@ -216,6 +237,9 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 		}
 	}
 
+	// update the cache
+	s.updateASPathCache(ip, p, set)
+
 	return &pb.AspathResponse{
 		Asn:    p,
 		Set:    set,
@@ -232,12 +256,20 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 		return nil, errors.New("Unable to validate IP")
 	}
 
+	// check local cache first
+	ipnetcache, ok := s.checkRouteCache(ip.String())
+	if ok {
+		return &pb.RouteResponse{
+			IpAddress: &ipnetcache,
+			Exists:    true,
+		}, nil
+	}
+
 	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
-
 	if !exists {
 		return nil, nil
 	}
@@ -247,6 +279,9 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 		Address: ipnet.IP.String(),
 		Mask:    uint32(mask),
 	}
+
+	// cache the result
+	s.updateRouteCache(ip, ipaddr)
 
 	return &pb.RouteResponse{
 		IpAddress: ipaddr,
@@ -306,9 +341,16 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
-
+	// TODO: Not sure if I should check cache before?
+	// or getroute should be cached itself
 	if !exists {
 		return nil, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
+	}
+
+	// check local cache
+	roa, ok := s.checkROACache(ipnet)
+	if ok {
+		return roa, nil
 	}
 
 	status, exists, err := s.router.GetROA(ipnet)
@@ -329,15 +371,18 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	}
 
 	mask, _ := ipnet.Mask.Size()
-	return &pb.RoaResponse{
+	resp := &pb.RoaResponse{
 		IpAddress: &pb.IpAddress{
 			Address: ipnet.IP.String(),
 			Mask:    uint32(mask),
 		},
 		Status: statuses[status],
 		Exists: exists,
-	}, nil
+	}
+	// update cache
+	s.updateROACache(ipnet, resp)
 
+	return resp, nil
 }
 
 func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceResponse, error) {
