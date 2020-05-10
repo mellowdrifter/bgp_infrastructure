@@ -335,12 +335,18 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 		return nil, err
 	}
 
-	// In oder to check ROA, I first need the FIB entry for the IP address.
+	// In oder to check ROA, I first need the FIB entry as well as the current source ASN.
 	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
 	}
+	origin, err := s.Origin(ctx, &pb.OriginRequest{IpAddress: r.IpAddress})
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return nil, err
+	}
+
 	// TODO: Not sure if I should check cache before?
 	// or getroute should be cached itself
 	if !exists {
@@ -353,7 +359,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 		return roa, nil
 	}
 
-	status, exists, err := s.router.GetROA(ipnet)
+	status, exists, err := s.router.GetROA(ipnet, origin.GetOriginAsn())
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return nil, err
