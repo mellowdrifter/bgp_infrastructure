@@ -2,7 +2,7 @@ package clidecode
 
 import "net"
 
-// Decoder is an interface that represents a router to interigate
+// Decoder is an interface that represents a router to interrogate
 type Decoder interface {
 	// GetBGPTotal returns rib, fib ipv4. rib, fib ipv6
 	GetBGPTotal() (Totals, error)
@@ -38,8 +38,8 @@ type Decoder interface {
 	// GetRoute will return the current FIB entry, if any, from a source IP.
 	GetRoute(net.IP) (*net.IPNet, bool, error)
 
-	// GetROA will return the ROA status, if any, from a source IP.
-	GetROA(*net.IPNet) (int, bool, error)
+	// GetROA will return the ROA status, if any, from a source IP and ASN.
+	GetROA(*net.IPNet, uint32) (int, bool, error)
 }
 
 // Totals holds the total BGP route count.
@@ -61,7 +61,7 @@ type Peers struct {
 // as6:     ASNs originating IPv6
 // as10:    ASNs originating either v4, v6, or both
 // as4Only: ASNs originating IPv4 only
-// as6Only: ASNs originaring IPv6 only
+// as6Only: ASNs originating IPv6 only
 // asBoth:  ASNs originating both IPv4 and IPv6
 type ASNs struct {
 	As4, As6, As10   uint32

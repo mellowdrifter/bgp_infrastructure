@@ -318,35 +318,35 @@ func (b Bird2Conn) GetRoute(ip net.IP) (*net.IPNet, bool, error) {
 
 }
 
-// GetROA will return the ROA status, if any, from a source IP.
-// TODO: Once upgraded to bird 2.0.7 fix what we're looking for!
-// http://trubka.network.cz/pipermail/bird-users/2019-October/013923.html
-func (b Bird2Conn) GetROA(prefix *net.IPNet) (int, bool, error) {
-	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route all primary for %s' | grep local_pref", prefix.String())
+// GetROA will return the ROA status from a prefix and ASN.
+// This function does not check for the existance of the prefix in the table.
+func (b Bird2Conn) GetROA(prefix *net.IPNet, asn uint32) (int, bool, error) {
+	var table string
+	if strings.Contains(prefix.String(), ":") {
+		table = "roa_v6"
+	} else {
+		table = "roa_v4"
+	}
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc 'eval roa_check(%s, %s, %d)'", table, prefix, asn)
 	out, err := c.GetOutput(cmd)
 	if err != nil {
 		return 0, false, err
 	}
 
-	// If no route exists, no ROA will exist.
-	if out == "" {
-		return 0, false, nil
-	}
-
-	// Get the local preference
-	pref := strings.Fields(out)
+	// Get the enum value
+	// example output - (enum 35)1
+	val := out[len(out)-1:]
 
 	// Check for an existing ROA
-	// I've set local preference on all routes to make this easier to determine:
-	// 200 = ROA_VALID
-	// 100 = ROA_UNKNOWN
-	//  50 = ROA_INVALID
+	// 0 = ROA_UNKNOWN
+	// 1 = ROA_VALID
+	// 2 = ROA_INVALID
 	statuses := map[string]int{
-		"100": RUnknown,
-		"50":  RInvalid,
-		"200": RValid,
+		"0": RUnknown,
+		"2": RInvalid,
+		"1": RValid,
 	}
 
-	return statuses[pref[len(pref)-1]], true, nil
-
+	return statuses[val], true, nil
 }

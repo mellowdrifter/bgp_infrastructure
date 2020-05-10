@@ -64,6 +64,6 @@ func (f FakeConn) GetRoute(net.IP) (*net.IPNet, bool, error) {
 }
 
 // GetROA will return the ROA status, if any, from a source IP.
-func (f FakeConn) GetROA(*net.IPNet) (int, bool, error) {
+func (f FakeConn) GetROA(*net.IPNet, uint32) (int, bool, error) {
 	return 0, false, nil
 }
