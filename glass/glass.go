@@ -11,7 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 
 	cli "github.com/mellowdrifter/bgp_infrastructure/clidecode"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
@@ -25,6 +28,7 @@ type server struct {
 	router cli.Decoder
 	mu     *sync.RWMutex
 	bsql   *grpc.ClientConn
+	bgprpc string
 	cache
 }
 
@@ -51,18 +55,28 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(f)
 
-	// TODO: Bird2 for now. Could change
-	var router cli.Bird2Conn
+	daemon := cf.Section("local").Key("daemon").String()
 
-	conn, err := dialGRPC(cf.Section("bgpsql").Key("server").String())
+	var router cli.Decoder
+	switch daemon {
+	case "bird2":
+		router = cli.Bird2Conn{}
+	default:
+		log.Fatalf("daemon type must be specified")
+	}
+
+	bgprpc := cf.Section("bgpsql").Key("server").String()
+	conn, err := dialGRPC(bgprpc)
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %v", err)
 	}
+	defer conn.Close()
 
 	glassServer := &server{
 		router: router,
 		mu:     &sync.RWMutex{},
 		bsql:   conn,
+		bgprpc: bgprpc,
 		cache:  getNewCache(),
 	}
 
@@ -93,7 +107,6 @@ func dialGRPC(srv string) (*grpc.ClientConn, error) {
 		srv,
 		grpc.WithInsecure(),
 		grpc.WithKeepaliveParams(kacp),
-		grpc.WithBlock(),
 	)
 }
 
@@ -173,7 +186,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	stub := bpb.NewBgpInfoClient(s.bsql)
 	totals, err := stub.GetPrefixCount(ctx, &bpb.Empty{})
 	if err != nil {
-		log.Printf("No connection to bgpsql RPC server")
+		s.handleUnavailableRPC(err)
 		return nil, err
 	}
 
@@ -310,7 +323,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	stub := bpb.NewBgpInfoClient(s.bsql)
 	name, err := stub.GetAsname(ctx, &number)
 	if err != nil {
-		log.Printf("No connection to bgpsql RPC server")
+		s.handleUnavailableRPC(err)
 		return nil, err
 	}
 
@@ -451,4 +464,23 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 		V4Count:   uint32(len(v4)),
 		V6Count:   uint32(len(v6)),
 	}, nil
+}
+
+// bgpsql server might go offline, if so we should attempt to reconnect.
+func (s *server) handleUnavailableRPC(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := status.FromError(err)
+	if !ok {
+		log.Println("RPC error, but not a status code")
+		log.Printf("Error is: %+v\n", err)
+	}
+	if st.Code() == codes.Unavailable {
+		log.Printf("Server not available")
+		conn, err := dialGRPC(s.bgprpc)
+		if err != nil {
+			log.Printf("Still unable to reconnect to gRPC server: %v", err)
+		}
+		s.bsql = conn
+	}
 }

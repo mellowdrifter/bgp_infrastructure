@@ -9,3 +9,5 @@ proto/*/*.py
 glass/glass
 bgpsql/bgpsql
 asname/asname
+bgpstuff_tester/tester
+collector/collector
