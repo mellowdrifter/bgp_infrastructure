@@ -117,12 +117,12 @@ func (b Bird2Conn) GetROAs() (Roas, error) {
 	var r Roas
 	var roas []uint32
 	cmds := []string{
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_VALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_INVALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_VALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_INVALID' | sed -e '1,2d' | wc -l",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_VALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_VALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | wc -l",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_UNKNOWN' | sed -e '1,2d' | wc -l",
 	}
 
 	for _, cmd := range cmds {

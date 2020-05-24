@@ -106,7 +106,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	err := addLatestHelper(update, s.db)
 	if err != nil {
 		log.Printf("Got error in AddLatest: %s with update %q\n", err, proto.MarshalTextString(v))
-		return &pb.Result{}, err
+		return nil, err
 	}
 
 	return &pb.Result{
@@ -121,7 +121,7 @@ func (s *server) GetPrefixCount(ctx context.Context, e *pb.Empty) (*pb.PrefixCou
 	res, err := getPrefixCountHelper(s.db)
 	if err != nil {
 		log.Printf("Got error in GetPrefixCount: %s\n", err)
-		return &pb.PrefixCountResponse{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -134,7 +134,7 @@ func (s *server) GetPieSubnets(ctx context.Context, e *pb.Empty) (*pb.PieSubnets
 	res, err := getPieSubnetsHelper(s.db)
 	if err != nil {
 		log.Printf("Got error in GetPieSubnets: %s\n", err)
-		return &pb.PieSubnetsResponse{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -147,7 +147,7 @@ func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (
 	res, err := getMovementTotalsHelper(t, s.db)
 	if err != nil {
 		log.Printf("Got error in GetMovementTotals: %s\n", err)
-		return &pb.MovementTotalsResponse{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -159,7 +159,7 @@ func (s *server) UpdateTweetBit(ctx context.Context, t *pb.Timestamp) (*pb.Resul
 	res, err := updateTweetBitHelper(t.GetTime(), s.db)
 	if err != nil {
 		log.Printf("Got error in updateTweetBitHelper: %s\n", err)
-		return &pb.Result{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -173,7 +173,7 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 	res, err := getRPKIHelper(s.db)
 	if err != nil {
 		log.Printf("Got error in GetRPKI: %s\n", err)
-		return &pb.Roas{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -186,7 +186,7 @@ func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.Get
 	res, err := getAsnameHelper(a, s.db)
 	if err != nil {
 		log.Printf("Got error in GetAsname: %s\n", err)
-		return &pb.GetAsnameResponse{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -201,7 +201,7 @@ func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb
 	res, err := updateASNHelper(asn, s.db)
 	if err != nil {
 		log.Printf("Got error in UpdateAsnnames: %s\n", err)
-		return &pb.Result{}, err
+		return nil, err
 	}
 
 	return res, nil

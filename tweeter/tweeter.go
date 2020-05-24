@@ -201,7 +201,7 @@ func allCurrent(c config) ([]tweet, error) {
 	}
 
 	// This should only execute if none if the configured servers actually gave a response.
-	return nil, fmt.Errorf("either server gave a response for current")
+	return nil, fmt.Errorf("Neither server gave a response for current")
 }
 
 // current grabs the current v4 and v6 table count for tweeting.

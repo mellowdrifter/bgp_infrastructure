@@ -6,3 +6,6 @@
 */*_pb2_grpc.py
 proto/*/*.go
 proto/*/*.py
+glass/glass
+bgpsql/bgpsql
+asname/asname

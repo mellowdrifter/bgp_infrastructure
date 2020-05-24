@@ -68,12 +68,22 @@ func GetOutput(cmd string) (string, error) {
 }
 
 // StringToUint32 is a helper function as many times I need to do this conversion.
+// TODO: I really should be returning an error here...
 func StringToUint32(s string) uint32 {
 	reg := regexp.MustCompile("[^0-9]+")
 	c := reg.ReplaceAllString(s, "")
-	val, err := strconv.Atoi(c)
+	if len(c) > 10 {
+		log.Printf("%s is too big for a uint32", c)
+		return 0
+	}
+	val, err := strconv.ParseUint(c, 10, 64)
 	if err != nil {
-		log.Fatalf("Can't convert to integer: %s", err)
+		log.Printf("Can't convert to integer: %s", err)
+		return 0
+	}
+	if val > 4294967295 {
+		log.Printf("%d will overflow a uint32", val)
+		return 0
 	}
 	return uint32(val)
 }
@@ -153,7 +163,7 @@ func ValidateIP(ip string) (net.IP, error) {
 	}
 
 	if !IsPublicIP(parsed) {
-		return nil, fmt.Errorf("IP is not public")
+		return nil, fmt.Errorf("%s is not a public IP", ip)
 	}
 
 	return parsed, nil

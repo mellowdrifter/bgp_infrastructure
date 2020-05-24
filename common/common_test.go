@@ -64,6 +64,36 @@ func TestUint32ToString(t *testing.T) {
 
 }
 
+func TestValidateIP(t *testing.T) {
+	var tests = []struct {
+		name    string
+		in      string
+		out     string
+		wantErr bool
+	}{
+		{
+			name: "Normal IP",
+			in:   "8.8.8.8",
+			out:  "8.8.8.8",
+		},
+		{
+			name: "IP with subnet",
+			in:   "8.8.8.8/32",
+			out:  "8.8.8.8",
+		},
+	}
+
+	for _, tt := range tests {
+		ip, err := ValidateIP(tt.in)
+		if tt.wantErr && err != nil {
+			t.Errorf("wanted error on %s, but no error received: %v", tt.name, err)
+		}
+		if ip.String() != tt.out {
+			t.Errorf("error on %s. Want: %s, Got: %s", tt.name, tt.out, ip.String())
+		}
+	}
+}
+
 func TestInFirstButNotSecond(t *testing.T) {
 	var tests = []struct {
 		name   string

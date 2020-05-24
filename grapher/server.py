@@ -206,7 +206,7 @@ def get_rpki(
 
 
 # Start running as a GCP Cloud Run service
-def _serve(port: Text):
+def _serve(port):
     bind_address = f"[::]:{port}"
     grpcserver = grpc.server(
         futures.ThreadPoolExecutor(max_workers=1),

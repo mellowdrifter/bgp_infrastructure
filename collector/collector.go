@@ -31,6 +31,7 @@ func main() {
 	logfile := cf.Section("grpc").Key("logfile").String()
 	server := cf.Section("grpc").Key("server").String()
 	port := cf.Section("grpc").Key("port").String()
+	daemon := cf.Section("local").Key("daemon").String()
 
 	// Set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -40,8 +41,13 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	// TODO: For now daemon is always bird2, but will put the option in to choose others
-	var router cli.Bird2Conn
+	var router cli.Decoder
+	switch daemon {
+	case "bird2":
+		router = cli.Bird2Conn{}
+	default:
+		log.Fatalf("daemon type must be specified")
+	}
 
 	current := &pb.Values{
 		Time:           uint64(time.Now().Unix()),

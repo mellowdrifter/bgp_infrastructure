@@ -243,13 +243,11 @@ func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse,
 	switch {
 	// No result returned, so does not exist.
 	case err == sql.ErrNoRows:
-		log.Printf("NO ROWS")
 		n.Exists = false
 		return &n, nil
 	case err != nil:
 		return nil, err
 	default:
-		log.Printf("A ROW")
 		// Else it exists and we can return
 		n.Exists = true
 		return &n, nil
