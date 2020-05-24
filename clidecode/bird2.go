@@ -3,6 +3,7 @@ package clidecode
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -238,28 +239,6 @@ func (b Bird2Conn) GetIPv6FromSource(asn uint32) ([]*net.IPNet, error) {
 	return ips, nil
 }
 
-// GetOriginFromIP will return the origin ASN from a source IP.
-func (b Bird2Conn) GetOriginFromIP(ip net.IP) (uint32, bool, error) {
-
-	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}' | tr -d '[]ASie?'", ip.String())
-	out, err := c.GetOutput(cmd)
-	if err != nil {
-		return 0, false, err
-	}
-
-	if strings.Contains("not in table", out) {
-		return 0, false, nil
-	}
-
-	source, err := strconv.Atoi(out)
-	if err != nil {
-		return 0, true, err
-	}
-
-	return uint32(source), true, nil
-
-}
-
 // GetASPathFromIP will return the AS path, as well as as-set if any from a source IP.
 func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 	var aspath ASPath
@@ -303,7 +282,7 @@ func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 
 // GetRoute will return the current FIB entry, if any, from a source IP.
 func (b Bird2Conn) GetRoute(ip net.IP) (*net.IPNet, bool, error) {
-	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}' | tr -d '[]ASie?'", ip.String())
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", ip.String())
 	out, err := c.GetOutput(cmd)
 	if err != nil {
 		return nil, false, err
@@ -315,6 +294,30 @@ func (b Bird2Conn) GetRoute(ip net.IP) (*net.IPNet, bool, error) {
 	}
 
 	return net, true, nil
+
+}
+
+// GetOriginFromIP will return the origin ASN from a source IP.
+func (b Bird2Conn) GetOriginFromIP(ip net.IP) (uint32, bool, error) {
+
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}'", ip.String())
+	out, err := c.GetOutput(cmd)
+	if err != nil {
+		return 0, false, err
+	}
+
+	num := regexp.MustCompile("[0-9]+")
+	o := num.FindString(out)
+	if o == "" {
+		return 0, false, nil
+	}
+
+	source, err := strconv.Atoi(o)
+	if err != nil {
+		return 0, true, err
+	}
+
+	return uint32(source), true, nil
 
 }
 

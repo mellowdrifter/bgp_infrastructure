@@ -117,7 +117,7 @@ func (s *server) TotalAsns(ctx context.Context, e *pb.Empty) (*pb.TotalAsnsRespo
 	as, err := s.router.GetTotalSourceASNs()
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.TotalAsnsResponse{}, err
 	}
 
 	return &pb.TotalAsnsResponse{
@@ -138,7 +138,7 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.OriginResponse{}, err
 	}
 
 	// check local cache
@@ -153,10 +153,10 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	origin, exists, err := s.router.GetOriginFromIP(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.OriginResponse{}, err
 	}
 	if !exists {
-		return nil, nil
+		return &pb.OriginResponse{}, err
 	}
 
 	s.updateOriginCache(ip, origin)
@@ -187,7 +187,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	totals, err := stub.GetPrefixCount(ctx, &bpb.Empty{})
 	if err != nil {
 		s.handleUnavailableRPC(err)
-		return nil, err
+		return &pb.TotalResponse{}, err
 	}
 
 	s.updateTotalCache(totals)
@@ -207,7 +207,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.AspathResponse{}, err
 	}
 
 	// check local cache
@@ -223,12 +223,12 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	paths, exists, err := s.router.GetASPathFromIP(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.AspathResponse{}, err
 	}
 
 	// IP route may not exist. Return no error, but not existing either.
 	if !exists {
-		return nil, nil
+		return &pb.AspathResponse{}, nil
 	}
 
 	// Repackage into proto
@@ -266,7 +266,7 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
-		return nil, errors.New("Unable to validate IP")
+		return &pb.RouteResponse{}, errors.New("Unable to validate IP")
 	}
 
 	// check local cache first
@@ -281,10 +281,10 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.RouteResponse{}, err
 	}
 	if !exists {
-		return nil, nil
+		return &pb.RouteResponse{}, nil
 	}
 
 	mask, _ := ipnet.Mask.Size()
@@ -324,7 +324,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	name, err := stub.GetAsname(ctx, &number)
 	if err != nil {
 		s.handleUnavailableRPC(err)
-		return nil, err
+		return &pb.AsnameResponse{}, err
 	}
 
 	// Cache the result for next time
@@ -345,25 +345,25 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.RoaResponse{}, err
 	}
 
 	// In oder to check ROA, I first need the FIB entry as well as the current source ASN.
 	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.RoaResponse{}, err
 	}
 	origin, err := s.Origin(ctx, &pb.OriginRequest{IpAddress: r.IpAddress})
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.RoaResponse{}, err
 	}
 
 	// TODO: Not sure if I should check cache before?
 	// or getroute should be cached itself
 	if !exists {
-		return nil, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
+		return &pb.RoaResponse{}, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
 	}
 
 	// check local cache
@@ -375,7 +375,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	status, exists, err := s.router.GetROA(ipnet, origin.GetOriginAsn())
 	if err != nil {
 		log.Printf("Error: %v", err)
-		return nil, err
+		return &pb.RoaResponse{}, err
 	}
 
 	// Check for an existing ROA
@@ -409,7 +409,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 	defer com.TimeFunction(time.Now(), "Sourced")
 
 	if !com.ValidateASN(r.GetAsNumber()) {
-		return nil, fmt.Errorf("Invalid AS number")
+		return &pb.SourceResponse{}, fmt.Errorf("Invalid AS number")
 	}
 
 	// check local cache first
@@ -425,7 +425,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
-		return nil, fmt.Errorf("Error on getting IPv4 from source: %w", err)
+		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv4 from source: %w", err)
 	}
 
 	var prefixes = make([]*pb.IpAddress, 0, len(v4))
@@ -439,7 +439,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 
 	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
 	if err != nil {
-		return nil, fmt.Errorf("Error on getting IPv6 from source: %w", err)
+		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv6 from source: %w", err)
 	}
 
 	for _, v := range v6 {
