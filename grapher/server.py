@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 
 from typing import List
-import time
-import sys
 import os
-from matplotlib import dates as mdates
-from matplotlib import pyplot as plt
 from concurrent import futures
 import configparser
 import grapher_pb2 as pb
@@ -74,11 +70,11 @@ def get_line_graph(
 
         #print(title, x, y, labels, colours, explode)
         image = io.BytesIO()
-        plt.figure(figsize=(x, y))
-        ax = plt.subplot(111)
-        xfmt = mdates.DateFormatter('%Y-%m-%d')
+        matplotlib.pyplot.figure(figsize=(x, y))
+        ax = matplotlib.pyplot.subplot(111)
+        xfmt = matplotlib.dates.DateFormatter('%Y-%m-%d')
         ax.xaxis.set_major_formatter(xfmt)
-        plt.suptitle(title, fontsize=17)
+        matplotlib.pyplot.suptitle(title, fontsize=17)
         ax.grid(True)
         ax.spines["top"].set_visible(False)
         ax.spines["bottom"].set_visible(False)
@@ -86,21 +82,23 @@ def get_line_graph(
         ax.spines["left"].set_visible(False)
         ax.get_xaxis().tick_bottom()
         ax.get_yaxis().tick_left()
-        plt.xticks(fontsize=12, rotation=12)
-        plt.yticks(fontsize=12)
-        plt.ticklabel_format(axis='y', style='plain', useOffset=False)
-        plt.tick_params(axis="both", which="both", bottom=False, top=False,
-                        labelbottom=True, left=False, right=False, labelleft=True)
-        plt.plot(dates, totals[j], 'o-', lw=1, alpha=0.4, color=colour)
-        plt.figtext(0.5, 0.93, request.copyright,
-                    fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+        matplotlib.pyplot.xticks(fontsize=12, rotation=12)
+        matplotlib.pyplot.yticks(fontsize=12)
+        matplotlib.pyplot.ticklabel_format(
+            axis='y', style='plain', useOffset=False)
+        matplotlib.pyplot.tick_params(axis="both", which="both", bottom=False, top=False,
+                                      labelbottom=True, left=False, right=False, labelleft=True)
+        matplotlib.pyplot.plot(
+            dates, totals[j], 'o-', lw=1, alpha=0.4, color=colour)
+        matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                  fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
-        plt.savefig(image, format='png')
+        matplotlib.pyplot.savefig(image, format='png')
         image.seek(0)
         graph = graphs.images.add()
         graph.image = image.read()
         graph.title = title
-        plt.close()
+        matplotlib.pyplot.close()
         j += 1
 
     logging.info("Returning line graphs")
@@ -132,19 +130,20 @@ def get_pie_chart(
 
         # Start with something
         image = io.BytesIO()
-        plt.figure(figsize=(x, y))
-        plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
-        plt.suptitle(title, fontsize=17)
-        plt.pie(subnets[j], labels=labels, colors=colours, explode=explode,
-                autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
-        plt.figtext(0.5, 0.93, request.copyright,
-                    fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
-        plt.savefig(image, format='png')
+        matplotlib.pyplot.figure(figsize=(x, y))
+        matplotlib.pyplot.subplots_adjust(
+            top=1, bottom=0, left=0, right=1, wspace=0)
+        matplotlib.pyplot.suptitle(title, fontsize=17)
+        matplotlib.pyplot.pie(subnets[j], labels=labels, colors=colours, explode=explode,
+                              autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
+        matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                  fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+        matplotlib.pyplot.savefig(image, format='png')
         image.seek(0)
         pie = pieCharts.images.add()
         pie.image = image.read()
         pie.title = title
-        plt.close()
+        matplotlib.pyplot.close()
         j += 1
 
     logging.info("Returning pie charts")
@@ -185,20 +184,21 @@ def get_rpki(
 
         # Start with something
         image = io.BytesIO()
-        plt.figure(figsize=(x, y))
-        plt.subplots_adjust(top=1, bottom=0, left=0, right=1, wspace=0)
-        plt.suptitle(title, fontsize=17)
-        plt.pie(rpkis[j], labels=labels, colors=colours,
-                autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
-        plt.figtext(0.5, 0.93, request.copyright,
-                    fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+        matplotlib.pyplot.figure(figsize=(x, y))
+        matplotlib.pyplot.subplots_adjust(
+            top=1, bottom=0, left=0, right=1, wspace=0)
+        matplotlib.pyplot.suptitle(title, fontsize=17)
+        matplotlib.pyplot.pie(rpkis[j], labels=labels, colors=colours,
+                              autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
+        matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                  fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
-        plt.savefig(image, format='png')
+        matplotlib.pyplot.savefig(image, format='png')
         image.seek(0)
         rpki = RPKICharts.images.add()
         rpki.image = image.read()
         rpki.title = title
-        plt.close()
+        matplotlib.pyplot.close()
         j += 1
 
     logging.info("Returning rpki charts")
