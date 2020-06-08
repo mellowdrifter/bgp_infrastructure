@@ -28,6 +28,9 @@ service looking_glass {
     // Total number of ASNs
     rpc total_asns(empty) returns (total_asns_response);
 
+    // location will return the city, country, and lat/long co-ordinates of an airport
+    rpc location(location_request) returns (location_response);
+
 }
 
 message ip_address {
@@ -147,4 +150,15 @@ message roa_response {
     ROAStatus status = 2;
     bool exists = 3;
 
+}
+
+message location_request {
+    string airport = 1;
+}
+
+message location_response {
+    string city = 1;
+    string country = 2;
+    string lat = 3;
+    string long = 4;
 }

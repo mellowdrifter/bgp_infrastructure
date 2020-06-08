@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
@@ -25,10 +26,12 @@ import (
 )
 
 type server struct {
-	router cli.Decoder
-	mu     *sync.RWMutex
-	bsql   *grpc.ClientConn
-	bgprpc string
+	router  cli.Decoder
+	mu      *sync.RWMutex
+	bsql    *grpc.ClientConn
+	bgprpc  string
+	airFile string
+	mapi    string
 	cache
 }
 
@@ -38,6 +41,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	airFile := fmt.Sprintf("%s/airports/airports.dat", path.Dir(exe))
 	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
 	cf, err := ini.Load(path)
 	if err != nil {
@@ -45,6 +49,7 @@ func main() {
 	}
 
 	logfile := cf.Section("log").Key("logfile").String()
+	mapi := cf.Section("server").Key("mapsAPI").String()
 
 	// Set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -73,11 +78,13 @@ func main() {
 	defer conn.Close()
 
 	glassServer := &server{
-		router: router,
-		mu:     &sync.RWMutex{},
-		bsql:   conn,
-		bgprpc: bgprpc,
-		cache:  getNewCache(),
+		router:  router,
+		mu:      &sync.RWMutex{},
+		bsql:    conn,
+		bgprpc:  bgprpc,
+		airFile: airFile,
+		mapi:    mapi,
+		cache:   getNewCache(),
 	}
 
 	// set up gRPC server
@@ -90,6 +97,8 @@ func main() {
 	pb.RegisterLookingGlassServer(grpcServer, glassServer)
 
 	go glassServer.clearCache()
+
+	glassServer.warmLocationCache()
 
 	grpcServer.Serve(lis)
 
@@ -483,4 +492,74 @@ func (s *server) handleUnavailableRPC(err error) {
 		}
 		s.bsql = conn
 	}
+}
+
+// Location will attempt to return the city, country, and lat/long co-ordinates from an airport code.
+func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.LocationResponse, error) {
+	log.Printf("Running Location")
+	defer com.TimeFunction(time.Now(), "Location")
+
+	// check local cache first
+	cloc, ok := s.checkLocationCache(r.GetAirport())
+	if ok {
+		return &cloc, nil
+	}
+
+	f, err := os.Open(s.airFile)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to open airports data file: %v", err)
+	}
+	defer f.Close()
+
+	loc, err := getLocation(r.GetAirport(), f)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to determine location: %v", err)
+	}
+
+	// update cache
+	s.updateLocationCache(r.GetAirport(), *loc)
+
+	return loc, nil
+}
+
+func getLocation(loc string, file *os.File) (*pb.LocationResponse, error) {
+	records, err := csv.NewReader(file).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse csv file: %v", err)
+	}
+
+	for _, row := range records {
+		if row[4] == loc {
+			return &pb.LocationResponse{
+				City:    row[2],
+				Country: row[3],
+				Lat:     row[6],
+				Long:    row[7],
+			}, nil
+		}
+
+	}
+	return nil, fmt.Errorf("unable to find airport code %s in the records", loc)
+}
+
+// warmLocationCache will fill the cache with the most common ingress points.
+func (s *server) warmLocationCache() {
+	log.Printf("Warming up the location cache")
+	// commonPops are the most used ingress points.
+	commonPops := []string{
+		"AMS",
+		"CDG",
+		"FRA",
+		"IAD",
+		"LHR",
+		"ORD",
+		"SEA",
+	}
+
+	for _, loc := range commonPops {
+		s.Location(context.Background(), &pb.LocationRequest{
+			Airport: loc,
+		})
+	}
+	log.Println("Location cache filled")
 }

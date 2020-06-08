@@ -12,3 +12,4 @@ asname/asname
 bgpstuff_tester/tester
 collector/collector
 bgpsql/testdata/annual.pb
+glass/airports/airports.dat

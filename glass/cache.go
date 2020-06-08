@@ -10,30 +10,33 @@ import (
 )
 
 const (
-	iasn     = 1
-	isourced = 2
-	iroute   = 3
-	iorigin  = 4
-	iaspath  = 5
-	iroa     = 6
+	iasn      = 1
+	isourced  = 2
+	iroute    = 3
+	iorigin   = 4
+	iaspath   = 5
+	iroa      = 6
+	ilocation = 7
 )
 
 var (
 	maxAge = map[int]time.Duration{
-		iasn:     time.Hour * 6,
-		isourced: time.Minute * 10,
-		iroute:   time.Minute * 1,
-		iorigin:  time.Minute * 5,
-		iaspath:  time.Minute * 5,
-		iroa:     time.Hour * 1,
+		iasn:      time.Hour * 6,
+		isourced:  time.Minute * 10,
+		iroute:    time.Minute * 1,
+		iorigin:   time.Minute * 5,
+		iaspath:   time.Minute * 5,
+		iroa:      time.Hour * 1,
+		ilocation: time.Hour * 24 * 14,
 	}
 	maxCache = map[int]int{
-		iasn:     100,
-		isourced: 100,
-		iroute:   100,
-		iorigin:  100,
-		iaspath:  100,
-		iroa:     100,
+		iasn:      100,
+		isourced:  100,
+		iroute:    100,
+		iorigin:   100,
+		iaspath:   100,
+		iroa:      100,
+		ilocation: 100,
 	}
 )
 
@@ -45,6 +48,7 @@ type cache struct {
 	originCache  map[string]originAge
 	aspathCache  map[string]aspathAge
 	roaCache     map[string]roaAge
+	locCache     map[string]locAge
 }
 
 type asnAge struct {
@@ -86,6 +90,11 @@ type sourcedAge struct {
 	age      time.Time
 }
 
+type locAge struct {
+	loc pb.LocationResponse
+	age time.Time
+}
+
 func getNewCache() cache {
 	return cache{
 		totalCache:   totalsAge{},
@@ -95,6 +104,7 @@ func getNewCache() cache {
 		originCache:  make(map[string]originAge),
 		aspathCache:  make(map[string]aspathAge),
 		roaCache:     make(map[string]roaAge),
+		locCache:     make(map[string]locAge),
 	}
 }
 
@@ -263,6 +273,19 @@ func (s *server) checkRouteCache(ip string) (pb.IpAddress, bool) {
 	return pb.IpAddress{}, false
 }
 
+func (s *server) updateLocationCache(airport string, loc pb.LocationResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	log.Printf("adding %s to the location cache", airport)
+
+	s.locCache[airport] = locAge{
+		loc: loc,
+		age: time.Now(),
+	}
+
+}
+
 func (s *server) updateRouteCache(ip net.IP, subnet *pb.IpAddress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -273,6 +296,29 @@ func (s *server) updateRouteCache(ip net.IP, subnet *pb.IpAddress) {
 		subnet: *subnet,
 		age:    time.Now(),
 	}
+}
+
+func (s *server) checkLocationCache(airport string) (pb.LocationResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	log.Printf("Check location cache for %s", airport)
+
+	val, ok := s.locCache[airport]
+
+	// only return cache entry if it's within the max age
+	if ok {
+		log.Printf("cache entry exists for %s", airport)
+		if time.Since(val.age) < maxAge[iroute] {
+			log.Printf("cache hit for route entry for %s", airport)
+			return val.loc, ok
+		}
+		log.Printf("cache miss for location %s", airport)
+	}
+	if !ok {
+		log.Printf("cache miss for location %s", airport)
+	}
+
+	return pb.LocationResponse{}, false
 }
 
 // checkASNCache will check the local cache.
@@ -423,6 +469,17 @@ func (s *server) clearCache() {
 		if len(s.roaCache) > maxCache[iroa] {
 			log.Printf("roa cache full, purging...")
 			s.roaCache = make(map[string]roaAge)
+		}
+
+		// location cache
+		for key, val := range s.locCache {
+			if time.Since(val.age) > maxAge[ilocation] {
+				delete(s.locCache, key)
+			}
+		}
+		if len(s.locCache) > maxCache[ilocation] {
+			log.Printf("location cache full, puring...")
+			s.locCache = make(map[string]locAge)
 		}
 
 		s.mu.Unlock()
