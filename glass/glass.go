@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"image/png"
 	"log"
 	"net"
 	"os"
@@ -13,6 +16,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"googlemaps.github.io/maps"
 
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
@@ -35,6 +39,19 @@ type server struct {
 	cache
 }
 
+var (
+	// commonPops are the most used ingress points.
+	commonPops = []string{
+		"AMS",
+		"CDG",
+		"FRA",
+		"IAD",
+		"LHR",
+		"ORD",
+		"SEA",
+	}
+)
+
 func main() {
 	// load in config
 	exe, err := os.Executable()
@@ -49,7 +66,7 @@ func main() {
 	}
 
 	logfile := cf.Section("log").Key("logfile").String()
-	mapi := cf.Section("server").Key("mapsAPI").String()
+	mapi := cf.Section("local").Key("mapsAPI").String()
 
 	// Set up log file
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -98,7 +115,7 @@ func main() {
 
 	go glassServer.clearCache()
 
-	glassServer.warmLocationCache()
+	glassServer.warmCache()
 
 	grpcServer.Serve(lis)
 
@@ -542,24 +559,53 @@ func getLocation(loc string, file *os.File) (*pb.LocationResponse, error) {
 	return nil, fmt.Errorf("unable to find airport code %s in the records", loc)
 }
 
-// warmLocationCache will fill the cache with the most common ingress points.
-func (s *server) warmLocationCache() {
-	log.Printf("Warming up the location cache")
-	// commonPops are the most used ingress points.
-	commonPops := []string{
-		"AMS",
-		"CDG",
-		"FRA",
-		"IAD",
-		"LHR",
-		"ORD",
-		"SEA",
-	}
+// warmCache will fill the cache with the most common ingress points.
+func (s *server) warmCache() {
+	log.Printf("Warming up the cache")
 
 	for _, loc := range commonPops {
 		s.Location(context.Background(), &pb.LocationRequest{
 			Airport: loc,
 		})
 	}
-	log.Println("Location cache filled")
+	log.Println("Cache filled")
+}
+
+func (s *server) Map(ctx context.Context, r *pb.MapRequest) (*pb.MapResponse, error) {
+	log.Printf("Running Map")
+	defer com.TimeFunction(time.Now(), "Map")
+
+	// check local cache first
+	imap, ok := s.checkMapCache(r.GetLat(), r.GetLong())
+	if ok {
+		return &imap, nil
+	}
+
+	// get the map and encode
+	c, err := maps.NewClient(maps.WithAPIKey(s.mapi))
+	if err != nil {
+		return &pb.MapResponse{}, err
+	}
+	req := maps.StaticMapRequest{
+		Center: fmt.Sprintf("%s,%s", r.GetLat(), r.GetLong()),
+		Zoom:   9,
+		Size:   "500x500",
+		Format: maps.Format("png"),
+	}
+	img, err := c.StaticMap(ctx, &req)
+	if err != nil {
+		return &pb.MapResponse{}, err
+	}
+	buffer := new(bytes.Buffer)
+	png.Encode(buffer, img)
+	str := base64.StdEncoding.EncodeToString(buffer.Bytes())
+
+	imapr := &pb.MapResponse{
+		Image: str,
+	}
+
+	// update cache
+	s.updateMapCache(r.GetLat(), r.GetLong(), *imapr)
+
+	return imapr, nil
 }

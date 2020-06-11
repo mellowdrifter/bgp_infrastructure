@@ -28,8 +28,11 @@ service looking_glass {
     // Total number of ASNs
     rpc total_asns(empty) returns (total_asns_response);
 
-    // location will return the city, country, and lat/long co-ordinates of an airport
+    // location will return the city, country, and lat/long co-ordinates of an airport.
     rpc location(location_request) returns (location_response);
+
+    // map will return a google maps image for the airport location specified.
+    rpc map(map_request) returns (map_response);
 
 }
 
@@ -161,4 +164,13 @@ message location_response {
     string country = 2;
     string lat = 3;
     string long = 4;
+}
+
+message map_request {
+    string lat = 1;
+    string long = 2;
+}
+
+message map_response {
+    string image = 1;
 }

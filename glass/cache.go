@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -17,6 +18,7 @@ const (
 	iaspath   = 5
 	iroa      = 6
 	ilocation = 7
+	imap      = 8
 )
 
 var (
@@ -28,6 +30,7 @@ var (
 		iaspath:   time.Minute * 5,
 		iroa:      time.Hour * 1,
 		ilocation: time.Hour * 24 * 14,
+		imap:      time.Hour * 24 * 14,
 	}
 	maxCache = map[int]int{
 		iasn:      100,
@@ -37,6 +40,7 @@ var (
 		iaspath:   100,
 		iroa:      100,
 		ilocation: 100,
+		imap:      30,
 	}
 )
 
@@ -49,6 +53,7 @@ type cache struct {
 	aspathCache  map[string]aspathAge
 	roaCache     map[string]roaAge
 	locCache     map[string]locAge
+	mapCache     map[string]mapAge
 }
 
 type asnAge struct {
@@ -95,6 +100,11 @@ type locAge struct {
 	age time.Time
 }
 
+type mapAge struct {
+	imap pb.MapResponse
+	age  time.Time
+}
+
 func getNewCache() cache {
 	return cache{
 		totalCache:   totalsAge{},
@@ -105,6 +115,7 @@ func getNewCache() cache {
 		aspathCache:  make(map[string]aspathAge),
 		roaCache:     make(map[string]roaAge),
 		locCache:     make(map[string]locAge),
+		mapCache:     make(map[string]mapAge),
 	}
 }
 
@@ -273,19 +284,6 @@ func (s *server) checkRouteCache(ip string) (pb.IpAddress, bool) {
 	return pb.IpAddress{}, false
 }
 
-func (s *server) updateLocationCache(airport string, loc pb.LocationResponse) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	log.Printf("adding %s to the location cache", airport)
-
-	s.locCache[airport] = locAge{
-		loc: loc,
-		age: time.Now(),
-	}
-
-}
-
 func (s *server) updateRouteCache(ip net.IP, subnet *pb.IpAddress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -319,6 +317,53 @@ func (s *server) checkLocationCache(airport string) (pb.LocationResponse, bool) 
 	}
 
 	return pb.LocationResponse{}, false
+}
+
+func (s *server) updateLocationCache(airport string, loc pb.LocationResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	log.Printf("adding %s to the location cache", airport)
+
+	s.locCache[airport] = locAge{
+		loc: loc,
+		age: time.Now(),
+	}
+}
+
+func (s *server) checkMapCache(lat, long string) (pb.MapResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	log.Printf("Check map cache for %s, %s", lat, long)
+
+	val, ok := s.mapCache[fmt.Sprintf("%s%s", lat, long)]
+
+	// only return cache entry if it's within the max age
+	if ok {
+		log.Printf("cache entry exists for %s, %s", lat, long)
+		if time.Since(val.age) < maxAge[iroute] {
+			log.Printf("cache hit for route entry for %s, %s", lat, long)
+			return val.imap, ok
+		}
+		log.Printf("cache miss for location %s, %s", lat, long)
+	}
+	if !ok {
+		log.Printf("cache miss for location %s, %s", lat, long)
+	}
+
+	return pb.MapResponse{}, false
+}
+
+func (s *server) updateMapCache(lat, long string, imap pb.MapResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	log.Printf("adding %s, %s to the map cache", lat, long)
+
+	s.mapCache[fmt.Sprintf("%s%s", lat, long)] = mapAge{
+		imap: imap,
+		age:  time.Now(),
+	}
 }
 
 // checkASNCache will check the local cache.
