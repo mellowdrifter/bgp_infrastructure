@@ -168,12 +168,9 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	}
 
 	// check local cache
-	origin, ok := s.checkOriginCache(ip.String())
+	cache, ok := s.checkOriginCache(r)
 	if ok {
-		return &pb.OriginResponse{
-			OriginAsn: origin,
-			Exists:    true,
-		}, nil
+		return cache, nil
 	}
 
 	origin, exists, err := s.router.GetOriginFromIP(ip)
@@ -185,12 +182,15 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 		return &pb.OriginResponse{}, err
 	}
 
-	s.updateOriginCache(ip, origin)
-
-	return &pb.OriginResponse{
+	resp := &pb.OriginResponse{
 		OriginAsn: origin,
 		Exists:    exists,
-	}, nil
+	}
+
+	// update the local cache
+	s.updateOriginCache(r, resp)
+
+	return resp, nil
 }
 
 // Totals will return the current IPv4 and IPv6 FIB.
@@ -202,11 +202,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	if s.checkTotalCache() {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
-		return &pb.TotalResponse{
-			Active_4: s.totalCache.v4,
-			Active_6: s.totalCache.v6,
-			Time:     s.totalCache.time,
-		}, nil
+		return &s.totalCache.tot, nil
 	}
 
 	stub := bpb.NewBgpInfoClient(s.bsql)
@@ -216,14 +212,16 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 		return &pb.TotalResponse{}, err
 	}
 
-	s.updateTotalCache(totals)
-
-	return &pb.TotalResponse{
+	tot := &pb.TotalResponse{
 		Active_4: totals.GetActive_4(),
 		Active_6: totals.GetActive_6(),
 		Time:     totals.GetTime(),
-	}, nil
+	}
 
+	// update local cache
+	s.updateTotalCache(tot)
+
+	return tot, nil
 }
 
 // Aspath returns a list of ASNs for an IP address.

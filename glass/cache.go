@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"reflect"
 	"time"
 
-	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 )
 
@@ -19,6 +19,7 @@ const (
 	iroa      = 6
 	ilocation = 7
 	imap      = 8
+	itotal    = 9
 )
 
 var (
@@ -31,6 +32,7 @@ var (
 		iroa:      time.Hour * 1,
 		ilocation: time.Hour * 24 * 14,
 		imap:      time.Hour * 24 * 14,
+		itotal:    time.Minute * 10,
 	}
 	maxCache = map[int]int{
 		iasn:      100,
@@ -62,9 +64,8 @@ type asnAge struct {
 }
 
 type totalsAge struct {
-	v4, v6 uint32
-	time   uint64
-	age    time.Time
+	tot pb.TotalResponse
+	age time.Time
 }
 
 type roaAge struct {
@@ -84,7 +85,7 @@ type routeAge struct {
 }
 
 type originAge struct {
-	origin uint32
+	origin pb.OriginResponse
 	age    time.Time
 }
 
@@ -120,39 +121,37 @@ func getNewCache() cache {
 }
 
 // checkTotalCache will check the local cache.
-// Only returns the cache entry if it's within 5 minutes
 func (s *server) checkTotalCache() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("Check cache for Totals")
 
 	// If cache entry exists, return true only if the cache entry is still valid.
-	if (s.totalCache != totalsAge{}) {
+	if !reflect.DeepEqual(s.totalCache, totalsAge{}) {
 		log.Printf("Returning cache total if timers is still valid")
-		return time.Since(s.totalCache.age) < 5*time.Minute
+		return time.Since(s.totalCache.age) < maxAge[itotal]
 	}
 
 	return false
 }
 
 // updateTotalCache will update the local cache.
-func (s *server) updateTotalCache(t *bpb.PrefixCountResponse) {
+func (s *server) updateTotalCache(t *pb.TotalResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	log.Printf("Updating cache for Totals")
 	s.totalCache = totalsAge{
-		v4:   t.GetActive_4(),
-		v6:   t.GetActive_6(),
-		time: t.GetTime(),
-		age:  time.Now(),
+		tot: *t,
+		age: time.Now(),
 	}
 }
 
 // checkOriginCache will return an origin uint32 that matches a previous origin check
 // if it's still within maxAge.
-func (s *server) checkOriginCache(ip string) (uint32, bool) {
+func (s *server) checkOriginCache(r *pb.OriginRequest) (*pb.OriginResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	ip := r.GetIpAddress().GetAddress()
 	log.Printf("Check origin cache for %s", ip)
 
 	val, ok := s.originCache[ip]
@@ -162,26 +161,28 @@ func (s *server) checkOriginCache(ip string) (uint32, bool) {
 		log.Printf("cache entry exists for %s", ip)
 		if time.Since(val.age) < maxAge[iorigin] {
 			log.Printf("cache hit for origin entry for %s", ip)
-			return val.origin, ok
+			return &val.origin, ok
 		}
 		log.Printf("cache miss for origin %s", ip)
 	}
 	if !ok {
 		log.Printf("cache miss for origin %s", ip)
 	}
-	return 0, false
+	return nil, false
 }
 
 // TODO: ideally origin cache should contain the entire subnet, not just IP.
 // Will need to re-do how I have this data
-func (s *server) updateOriginCache(ip net.IP, origin uint32) {
+func (s *server) updateOriginCache(req *pb.OriginRequest, res *pb.OriginResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("Adding %s to the origin cache", ip.String())
+	ip := req.GetIpAddress().GetAddress()
 
-	s.originCache[ip.String()] = originAge{
-		origin: origin,
+	log.Printf("Adding %s to the origin cache", ip)
+
+	s.originCache[ip] = originAge{
+		origin: *res,
 		age:    time.Now(),
 	}
 }
@@ -306,7 +307,7 @@ func (s *server) checkLocationCache(airport string) (pb.LocationResponse, bool) 
 	// only return cache entry if it's within the max age
 	if ok {
 		log.Printf("cache entry exists for %s", airport)
-		if time.Since(val.age) < maxAge[iroute] {
+		if time.Since(val.age) < maxAge[ilocation] {
 			log.Printf("cache hit for route entry for %s", airport)
 			return val.loc, ok
 		}
@@ -341,7 +342,7 @@ func (s *server) checkMapCache(lat, long string) (pb.MapResponse, bool) {
 	// only return cache entry if it's within the max age
 	if ok {
 		log.Printf("cache entry exists for %s, %s", lat, long)
-		if time.Since(val.age) < maxAge[iroute] {
+		if time.Since(val.age) < maxAge[imap] {
 			log.Printf("cache hit for route entry for %s, %s", lat, long)
 			return val.imap, ok
 		}
