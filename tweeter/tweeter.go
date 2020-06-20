@@ -2,34 +2,54 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
+	bpb "github.com/mellowdrifter/bgp_infrastructure/tweeter/proto/bgpsql"
+	gpb "github.com/mellowdrifter/bgp_infrastructure/tweeter/proto/grapher"
+
 	"github.com/ChimeraCoder/anaconda"
-	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
-	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"gopkg.in/ini.v1"
 )
 
 const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
-	minV4 = 780000
-	minV6 = 78000
+	minV4 = 800000
+	minV6 = 80000
 )
 
 type tweet struct {
 	account string
 	message string
 	media   []byte
+}
+
+type toTweet struct {
+	// tableSize tweets the size and delta every 6 hours.
+	tableSize bool
+
+	// graph will plot the changes over various time ranges.
+	weekGraph     bool
+	monthGraph    bool
+	sixMonthGraph bool
+	annualGraph   bool
+
+	subnetPie bool
+
+	rpkiPie bool
 }
 
 type config struct {
@@ -42,8 +62,14 @@ type config struct {
 	dryRun  bool
 }
 
+type tweeter struct {
+	mux *http.ServeMux
+	mu  sync.Mutex
+	cfg config
+}
+
 // Pull out most of the initial set up into a separate function
-func setup() (config, error) {
+func setup(dryrun bool) (config, error) {
 	// load in config
 	exe, err := os.Executable()
 	if err != nil {
@@ -59,81 +85,238 @@ func setup() (config, error) {
 
 	config.file = cf
 
-	config.log = cf.Section("log").Key("log").String()
 	config.grapher = cf.Section("grapher").Key("server").String()
 	config.servers = cf.Section("bgpinfo").Key("server").ValueWithShadows()
 
-	// What action are we going to do.
-	config.action = flag.String("action", "", "an action to perform")
-	config.time = flag.String("time", "", "a time period")
+	// When dry-run is set, do not tweet, and do not set tweet bit.
+	config.dryRun = dryrun
+
 	flag.Parse()
 
 	return config, nil
 
 }
 
+// Cloud Run should use this.
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	config, err := setup()
+	// true while testing...
+	cfg, err := setup(true)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("unable to set things up: %v", err)
 	}
 
-	// Set up log file
-	f, err := os.OpenFile(config.log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("failed to open logfile: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
+	var srv tweeter
+	srv.mux = http.NewServeMux()
+	srv.cfg = cfg
 
-	// App only does a single action at a time.
-	var tweets []tweet
-	switch *config.action {
-	case "current":
-		tweets, err = allCurrent(config)
-	case "subnets":
-		tweets, err = subnets(config)
-	case "rpki":
-		tweets, err = rpki(config)
-	case "movement":
-		var period bpb.MovementRequest_TimePeriod
-		switch *config.time {
-		case "week":
-			period = bpb.MovementRequest_WEEK
-		case "month":
-			period = bpb.MovementRequest_MONTH
-		case "month6":
-			period = bpb.MovementRequest_SIXMONTH
-		case "annual":
-			period = bpb.MovementRequest_ANNUAL
-		default:
-			log.Fatalf("Movement request requires a time period")
+	// srv.mux.HandleFunc("/post", srv.post())
+	srv.mux.HandleFunc("/", srv.index())
+	srv.mux.HandleFunc("/favicon.ico", faviconHandler)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("*** Service Started on Port %s ***\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, srv.mux))
+
+}
+
+// Required to implement the interface.
+func (t *tweeter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	t.mux.ServeHTTP(w, r)
+}
+
+// ignore the request to favicon when I'm calling through a browser.
+func faviconHandler(w http.ResponseWriter, r *http.Request) {
+	return
+}
+
+// Basic index for now.
+func (t *tweeter) index() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("This is the full request: %#v\n", r)
+		log.Printf("url is %v\n", r.RequestURI)
+		t.mu.Lock()
+		defer t.mu.Unlock()
+
+		todo := whatToTweet(time.Now())
+		//TEMP
+		todo.rpkiPie = true
+		todo.subnetPie = true
+		todo.weekGraph = true
+		todo.monthGraph = true
+		todo.sixMonthGraph = true
+		todo.annualGraph = true
+		// TEMP
+
+		tweetList, err := getTweets(todo, t.cfg)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "unable to get tweets: %v", err)
+			return
 		}
-		tweets, err = movement(config, period)
-	default:
-		log.Fatalf("At least one action must be specified")
-	}
-	if err != nil {
-		log.Fatalf("Error: %s", err)
-	}
 
-	// Post tweets.
-	// TODO: Have a dry-run to print and save images locally
-	for _, tweet := range tweets {
-		if err := postTweet(tweet, config.file); err != nil {
-			log.Fatal(err)
+		fmt.Fprintf(w, "<h1>What will I tweet?</h1>")
+		fmt.Fprintf(w, "<p>If I were to run now, this is what I would tweet: %#v</p>\n", todo)
+		fmt.Fprintf(w, "<p>The time is now %v</p>\n", time.Now())
+
+		for i, tweet := range tweetList {
+			fmt.Fprintf(w, "tweet %d: %s\n", i, tweet.message)
+			if len(tweet.media) > 0 {
+				image64 := base64.StdEncoding.EncodeToString(tweet.media)
+				fmt.Fprintf(w, fmt.Sprintf(`<img src="data:image/png;base64,%s">`, image64))
+			}
 		}
 	}
 }
 
+// getTweets will compile all tweets as according to the todo list of tweets.
+func getTweets(todo toTweet, cfg config) ([]tweet, error) {
+	var listOfTweets []tweet
+
+	if todo.tableSize {
+		tweets, err := allCurrent(cfg)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to gather table size info: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+
+	if todo.weekGraph {
+		tweets, err := movement(cfg, bpb.MovementRequest_WEEK)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to gather weekly graph info: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+	if todo.monthGraph {
+		tweets, err := movement(cfg, bpb.MovementRequest_MONTH)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to gather monthly graph info: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+	if todo.sixMonthGraph {
+		tweets, err := movement(cfg, bpb.MovementRequest_SIXMONTH)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to gather six monthly graph info: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+	if todo.annualGraph {
+		tweets, err := movement(cfg, bpb.MovementRequest_ANNUAL)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to gather six monthly graph info: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+
+	if todo.rpkiPie {
+		tweets, err := rpki(cfg)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to generate RPKI tweets: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+
+	if todo.subnetPie {
+		tweets, err := subnets(cfg)
+		if err != nil {
+			return listOfTweets, fmt.Errorf("Unable to generate subnet pie tweets: %v", err)
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
+
+	return listOfTweets, nil
+
+}
+
+// whatToTweet will determine exactly what information should be tweeted. This
+// is all determined by the time and day on which it's called.
+func whatToTweet(now time.Time) toTweet {
+
+	var todo toTweet
+
+	// Only tweet items if called in valid hours.
+	validHours := map[int]bool{
+		2:  true,
+		8:  true,
+		14: true,
+		20: true,
+	}
+	if !validHours[now.Hour()] {
+		return todo
+	}
+
+	// Table size is tweeted every 6 hours, every day.
+	todo.tableSize = true
+
+	// I only set the rest at 20:00 UTC, any other time we should return immidiately.
+	if now.Hour() != 20 {
+		return todo
+	}
+
+	// Weekly growth graph every Monday.
+	todo.weekGraph = (now.Weekday() == time.Monday)
+
+	// Monthly graphs on the first day of the month.
+	todo.monthGraph = (now.Day() == 1)
+
+	// 1st of July also tweet a 6 month growth graph.
+	todo.monthGraph = (now.Day() == 1 && now.Month() == time.July)
+
+	// Annual graph. Post on 3rd of January as no-one is around 1st and 2nd.
+	todo.annualGraph = (now.Day() == 3 && now.Month() == time.January)
+
+	// On Wednesday I tweet the subnet pie graph.
+	todo.subnetPie = (now.Weekday() == time.Wednesday)
+
+	// On Thursday I tweet the RPKI status.
+	todo.rpkiPie = (now.Weekday() == time.Thursday)
+
+	return todo
+}
+
+func run() {
+
+	/*
+		// Post tweets.
+		for _, tweet := range tweets {
+			if err := postTweet(tweet, config.file); err != nil {
+				log.Fatal(err)
+			}
+		}
+	*/
+}
+
 // getConnection will return a connection to a gRPC server. Caller should close.
+// TODO: Do the funky thing where you return the closer.
 func getConnection(srv string) (*grpc.ClientConn, error) {
 	conn, err := grpc.Dial(srv, grpc.WithInsecure())
 	if err != nil {
 		return nil, fmt.Errorf("unable to dial gRPC server: %v", err)
 	}
 	return conn, err
+}
+
+// getTLSConnection is the same as getConnection, but it uses TLS as an option
+// as is required by Google Cloud Run.
+func getTLSConnection(srv string) (*grpc.ClientConn, error) {
+	creds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true,
+	})
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+	tconn, err := grpc.Dial(srv, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("unable to dial gRPC server: %v", err)
+	}
+
+	return tconn, nil
 }
 
 // getLiveServer will return the first live connection it can get. If neither server
@@ -188,7 +371,7 @@ func allCurrent(c config) ([]tweet, error) {
 	for i, v := range connections {
 		if v.err == nil {
 			log.Printf("Connecting to server %d at %v\n", i+1, v.conn.Target())
-			tw, err := current(bpb.NewBgpInfoClient(v.conn))
+			tw, err := current(bpb.NewBgpInfoClient(v.conn), c.dryRun)
 			res = append(res, tweetErr{tweets: tw, err: err})
 		}
 	}
@@ -205,7 +388,7 @@ func allCurrent(c config) ([]tweet, error) {
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
-func current(b bpb.BgpInfoClient) ([]tweet, error) {
+func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 
 	log.Println("Running current")
 	counts, err := b.GetPrefixCount(context.Background(), &bpb.Empty{})
@@ -252,7 +435,7 @@ func current(b bpb.BgpInfoClient) ([]tweet, error) {
 		message: v6Update.String(),
 	}
 
-	if err := setTweetBit(b, counts.GetTime()); err != nil {
+	if err := setTweetBit(b, counts.GetTime(), dryrun); err != nil {
 		log.Printf("Unable to set tweet bit, but continuing on: %v", err)
 	}
 	return []tweet{v4Tweet, v6Tweet}, nil
@@ -295,8 +478,13 @@ func deltaMessage(h, w int) string {
 
 }
 
-func setTweetBit(cpb bpb.BgpInfoClient, time uint64) error {
+func setTweetBit(cpb bpb.BgpInfoClient, time uint64, dryrun bool) error {
 	log.Println("Running setTweetBit")
+
+	if dryrun {
+		log.Printf("dry run set, so not setting tweet bit")
+		return nil
+	}
 
 	timestamp := &bpb.Timestamp{
 		Time: time,
@@ -374,10 +562,8 @@ func subnets(c config) ([]tweet, error) {
 		},
 		Copyright: "data by @mellowdrifter | www.mellowd.dev",
 	}
-	grp, err := getConnection(c.grapher)
-	if err != nil {
-		return nil, err
-	}
+
+	grp, err := getTLSConnection(c.grapher)
 	defer grp.Close()
 	gpb := gpb.NewGrapherClient(grp)
 
@@ -475,7 +661,7 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 
 	// Dial the grapher to retrive graphs via matplotlib
 	// TODO: seperate this?
-	grp, err := getConnection(c.grapher)
+	grp, err := getTLSConnection(c.grapher)
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +738,7 @@ func rpki(c config) ([]tweet, error) {
 	}
 
 	// Dial the grapher to retrive graphs via matplotlib
-	grp, err := getConnection(c.grapher)
+	grp, err := getTLSConnection(c.grapher)
 	if err != nil {
 		return nil, err
 	}
