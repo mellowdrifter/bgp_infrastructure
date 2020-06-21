@@ -529,5 +529,6 @@ func (s *server) clearCache() {
 		}
 
 		s.mu.Unlock()
+		log.Printf("cache cleared")
 	}
 }
