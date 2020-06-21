@@ -6,6 +6,15 @@ service Grapher {
     rpc GetLineGraph(LineGraphRequest) returns (GrapherResponse);
     rpc GetPieChart(PieChartRequest) returns (GrapherResponse);
     rpc GetRPKI(RPKIRequest) returns (GrapherResponse);
+    rpc TestRPC(TestRequest) returns (TestResponse);
+}
+
+message TestRequest {
+    string testmessage = 1;
+}
+
+message TestResponse {
+    string testresponse = 1;
 }
 
 message LineGraphRequest {

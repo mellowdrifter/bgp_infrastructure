@@ -69,7 +69,7 @@ type tweeter struct {
 }
 
 // Pull out most of the initial set up into a separate function
-func setup(dryrun bool) (config, error) {
+func setup() (config, error) {
 	// load in config
 	exe, err := os.Executable()
 	if err != nil {
@@ -88,9 +88,6 @@ func setup(dryrun bool) (config, error) {
 	config.grapher = cf.Section("grapher").Key("server").String()
 	config.servers = cf.Section("bgpinfo").Key("server").ValueWithShadows()
 
-	// When dry-run is set, do not tweet, and do not set tweet bit.
-	config.dryRun = dryrun
-
 	flag.Parse()
 
 	return config, nil
@@ -101,8 +98,7 @@ func setup(dryrun bool) (config, error) {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	// true while testing...
-	cfg, err := setup(true)
+	cfg, err := setup()
 	if err != nil {
 		log.Fatalf("unable to set things up: %v", err)
 	}
@@ -111,8 +107,8 @@ func main() {
 	srv.mux = http.NewServeMux()
 	srv.cfg = cfg
 
-	// srv.mux.HandleFunc("/post", srv.post())
-	srv.mux.HandleFunc("/", srv.index())
+	srv.mux.HandleFunc("/post", srv.post())
+	srv.mux.HandleFunc("/", srv.dryrun())
 	srv.mux.HandleFunc("/favicon.ico", faviconHandler)
 
 	port := os.Getenv("PORT")
@@ -135,12 +131,13 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Basic index for now.
-func (t *tweeter) index() http.HandlerFunc {
+func (t *tweeter) dryrun() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("This is the full request: %#v\n", r)
 		log.Printf("url is %v\n", r.RequestURI)
 		t.mu.Lock()
 		defer t.mu.Unlock()
+		t.cfg.dryRun = true
 
 		todo := whatToTweet(time.Now())
 		//TEMP
@@ -154,7 +151,7 @@ func (t *tweeter) index() http.HandlerFunc {
 
 		tweetList, err := getTweets(todo, t.cfg)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "unable to get tweets: %v", err)
 			return
 		}
@@ -164,10 +161,42 @@ func (t *tweeter) index() http.HandlerFunc {
 		fmt.Fprintf(w, "<p>The time is now %v</p>\n", time.Now())
 
 		for i, tweet := range tweetList {
-			fmt.Fprintf(w, "tweet %d: %s\n", i, tweet.message)
+			fmt.Fprintf(w, "<p><b>tweet %d: %s</b></p>\n", i, tweet.message)
 			if len(tweet.media) > 0 {
 				image64 := base64.StdEncoding.EncodeToString(tweet.media)
 				fmt.Fprintf(w, fmt.Sprintf(`<img src="data:image/png;base64,%s">`, image64))
+			}
+		}
+	}
+}
+
+// post is the function that will really post things!
+func (t *tweeter) post() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("This is the full request: %#v\n", r)
+		log.Printf("url is %v\n", r.RequestURI)
+		t.mu.Lock()
+		defer t.mu.Unlock()
+
+		todo := whatToTweet(time.Now())
+
+		tweetList, err := getTweets(todo, t.cfg)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "unable to get tweets: %v", err)
+			return
+		}
+
+		if len(tweetList) == 0 {
+			fmt.Fprintf(w, "nothing to tweet at this time")
+			return
+		}
+
+		for _, tweet := range tweetList {
+			// Post tweets.
+			if err := postTweet(tweet, t.cfg.file); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				log.Printf("error when posting tweet: %v", err)
 			}
 		}
 	}
@@ -266,7 +295,7 @@ func whatToTweet(now time.Time) toTweet {
 	todo.monthGraph = (now.Day() == 1)
 
 	// 1st of July also tweet a 6 month growth graph.
-	todo.monthGraph = (now.Day() == 1 && now.Month() == time.July)
+	todo.sixMonthGraph = (now.Day() == 1 && now.Month() == time.July)
 
 	// Annual graph. Post on 3rd of January as no-one is around 1st and 2nd.
 	todo.annualGraph = (now.Day() == 3 && now.Month() == time.January)
@@ -283,13 +312,7 @@ func whatToTweet(now time.Time) toTweet {
 func run() {
 
 	/*
-		// Post tweets.
-		for _, tweet := range tweets {
-			if err := postTweet(tweet, config.file); err != nil {
-				log.Fatal(err)
-			}
-		}
-	*/
+	 */
 }
 
 // getConnection will return a connection to a gRPC server. Caller should close.

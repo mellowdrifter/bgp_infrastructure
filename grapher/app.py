@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from typing import List
+from typing import Text
 import os
 from concurrent import futures
 import configparser
@@ -13,32 +14,27 @@ import logging
 import matplotlib
 matplotlib.use('Agg')
 
-
 _PORT = os.environ["PORT"]
 
-# Load config
-config = configparser.ConfigParser()
-path = "{}/config.ini".format(os.path.dirname(os.path.realpath(__file__)))
-config.read(path)
-server = str(config.get('grpc', 'server'))
-log = config.get('grpc', 'logfile')
 
-# Set up logging
-format_string = '%(levelname)s: %(asctime)s: %(message)s'
-logging.basicConfig(filename=log, level=logging.INFO, format=format_string)
-
-
-class GrapherServicer(grapher_pb2_grpc.GrapherServicer):
+class Grapher(grapher_pb2_grpc.GrapherServicer):
     """Provides methods that implement functionality of the grapher server."""
 
     def GetLineGraph(self, request, context):
+        logging.info("Request received for GetLineGraph")
         return get_line_graph(request)
 
     def GetPieChart(self, request, context):
+        logging.info("Request received for GetPieChart")
         return get_pie_chart(request)
 
     def GetRPKI(self, request, context):
+        logging.info("Request received for GetRPKI")
         return get_rpki(request)
+
+    def TestRPC(self, request, context):
+        logging.info("Received request: %s", request)
+        return pb.TestResponse(testresponse="something")
 
 
 def get_line_graph(
@@ -204,21 +200,17 @@ def get_rpki(
     logging.info("Returning rpki charts")
     return RPKICharts
 
+# Text
 
-# Start running as a GCP Cloud Run service
-def _serve(port):
+
+def _serve(port: Text):
     bind_address = f"[::]:{port}"
-    grpcserver = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=1),
-        maximum_concurrent_rpcs=3,
-    )
-    grapher_pb2_grpc.add_GrapherServicer_to_server(
-        GrapherServicer(), grpcserver
-    )
-    grpcserver.add_insecure_port(bind_address)
-    grpcserver.start()
+    server = grpc.server(futures.ThreadPoolExecutor())
+    grapher_pb2_grpc.add_GrapherServicer_to_server(Grapher(), server)
+    server.add_insecure_port(bind_address)
+    server.start()
     logging.info("Listening on %s.", bind_address)
-    grpcserver.wait_for_termination()
+    server.wait_for_termination()
 
 
 if __name__ == "__main__":

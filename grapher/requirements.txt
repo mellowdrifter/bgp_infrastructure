@@ -2,3 +2,5 @@ grpcio
 grpcio-tools
 protobuf
 matplotlib
+google
+google-cloud
