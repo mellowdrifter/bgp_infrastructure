@@ -67,6 +67,7 @@ message Metadata {
     string colour = 4;
     repeated string colours = 5;
     repeated string labels = 6;
+    string theme = 7;
 }
 
 message GrapherResponse {

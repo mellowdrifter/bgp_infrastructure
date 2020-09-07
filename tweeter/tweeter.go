@@ -180,6 +180,8 @@ func (t *tweeter) post() http.HandlerFunc {
 
 		todo := whatToTweet(time.Now())
 
+		t.cfg.dryRun = false
+
 		tweetList, err := getTweets(todo, t.cfg)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

@@ -63,8 +63,8 @@ def get_line_graph(
         x = metadata.x_axis
         y = metadata.y_axis
         colour = metadata.colour
+        theme = metadata.theme
 
-        #print(title, x, y, labels, colours, explode)
         image = io.BytesIO()
         matplotlib.pyplot.figure(figsize=(x, y))
         ax = matplotlib.pyplot.subplot(111)
@@ -86,8 +86,12 @@ def get_line_graph(
                                       labelbottom=True, left=False, right=False, labelleft=True)
         matplotlib.pyplot.plot(
             dates, totals[j], 'o-', lw=1, alpha=0.4, color=colour)
-        matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
-                                  fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+        if theme == "dark":
+            matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                      fontsize=14, color='snow', ha='center', va='top', alpha=0.8)
+        else:
+            matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                      fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
         matplotlib.pyplot.savefig(image, format='png')
         image.seek(0)
@@ -118,13 +122,11 @@ def get_pie_chart(
         y = metadata.y_axis
         labels = list(metadata.labels)
         colours = list(metadata.colours)
+        theme = metadata.theme
 
         explode = [float(0)] * (len(colours) - 1)
         explode.append(0.1)
 
-        #print(title, x, y, labels, colours, explode)
-
-        # Start with something
         image = io.BytesIO()
         matplotlib.pyplot.figure(figsize=(x, y))
         matplotlib.pyplot.subplots_adjust(
@@ -132,8 +134,12 @@ def get_pie_chart(
         matplotlib.pyplot.suptitle(title, fontsize=17)
         matplotlib.pyplot.pie(subnets[j], labels=labels, colors=colours, explode=explode,
                               autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
-        matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
-                                  fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+        if theme == "dark":
+            matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                      fontsize=14, color='snow', ha='center', va='top', alpha=0.8)
+        else:
+            matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                      fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
         matplotlib.pyplot.savefig(image, format='png')
         image.seek(0)
         pie = pieCharts.images.add()
@@ -169,7 +175,7 @@ def get_rpki(
     rpkis = [v4_rpki, v6_rpki]
     RPKICharts = pb.GrapherResponse()
 
-    labels = ['VALID', 'INVALID', 'UNKNOWN']
+    labels = ['VALID', 'INVALID', 'NO ROA (UNKNOWN)']
     colours = ['lightskyblue', 'lightcoral', 'gold']
 
     j = 0
@@ -177,6 +183,7 @@ def get_rpki(
         title = metadata.title
         x = metadata.x_axis
         y = metadata.y_axis
+        theme = metadata.theme
 
         # Start with something
         image = io.BytesIO()
@@ -186,8 +193,12 @@ def get_rpki(
         matplotlib.pyplot.suptitle(title, fontsize=17)
         matplotlib.pyplot.pie(rpkis[j], labels=labels, colors=colours,
                               autopct='%1.1f%%', shadow=True, startangle=90, labeldistance=1.05)
-        matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
-                                  fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
+        if theme == "dark":
+            matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                      fontsize=14, color='snow', ha='center', va='top', alpha=0.8)
+        else:
+            matplotlib.pyplot.figtext(0.5, 0.93, request.copyright,
+                                      fontsize=14, color='gray', ha='center', va='top', alpha=0.8)
 
         matplotlib.pyplot.savefig(image, format='png')
         image.seek(0)
