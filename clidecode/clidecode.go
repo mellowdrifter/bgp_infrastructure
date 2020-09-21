@@ -40,6 +40,10 @@ type Decoder interface {
 
 	// GetROA will return the ROA status, if any, from a source IP and ASN.
 	GetROA(*net.IPNet, uint32) (int, bool, error)
+
+	// GetInvalids returns a map of ASNs that are advertising RPKI invalid prefixes.
+	// It also includes all those prefixes being advertised.
+	GetInvalids() (map[string][]string, error)
 }
 
 // Totals holds the total BGP route count.

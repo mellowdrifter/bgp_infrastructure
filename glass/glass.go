@@ -193,6 +193,40 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	return resp, nil
 }
 
+func (s *server) Invalids(context.Context, *pb.Empty) (*pb.InvalidResponse, error) {
+	log.Printf("Running Invalids")
+
+	// check local cache
+	cache, ok := s.checkInvalidsCache()
+	if ok {
+		return &cache, nil
+	}
+
+	inv, err := s.router.GetInvalids()
+	if err != nil {
+		log.Printf("Error: %v", err)
+		return &pb.InvalidResponse{}, err
+	}
+
+	var resp pb.InvalidResponse
+	var invalids []*pb.InvalidOriginator
+
+	for k, v := range inv {
+		var src pb.InvalidOriginator
+		src.Asn = k
+		src.Ip = v
+
+		invalids = append(invalids, &src)
+	}
+	resp.Asn = invalids
+
+	// update the local cache
+	s.updateInvalidsCache(resp)
+
+	return &resp, nil
+
+}
+
 // Totals will return the current IPv4 and IPv6 FIB.
 // Grabs from database as it's updated every 5 minutes.
 func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, error) {

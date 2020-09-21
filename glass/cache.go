@@ -20,6 +20,7 @@ const (
 	ilocation = 7
 	imap      = 8
 	itotal    = 9
+	iinvalids = 10
 )
 
 var (
@@ -33,6 +34,7 @@ var (
 		ilocation: time.Hour * 24 * 14,
 		imap:      time.Hour * 24 * 14,
 		itotal:    time.Minute * 10,
+		iinvalids: time.Hour * 1,
 	}
 	maxCache = map[int]int{
 		iasn:      100,
@@ -56,6 +58,7 @@ type cache struct {
 	roaCache     map[string]roaAge
 	locCache     map[string]locAge
 	mapCache     map[string]mapAge
+	invCache     invAge
 }
 
 type asnAge struct {
@@ -65,6 +68,11 @@ type asnAge struct {
 
 type totalsAge struct {
 	tot pb.TotalResponse
+	age time.Time
+}
+
+type invAge struct {
+	inv pb.InvalidResponse
 	age time.Time
 }
 
@@ -117,6 +125,7 @@ func getNewCache() cache {
 		roaCache:     make(map[string]roaAge),
 		locCache:     make(map[string]locAge),
 		mapCache:     make(map[string]mapAge),
+		invCache:     invAge{},
 	}
 }
 
@@ -184,6 +193,31 @@ func (s *server) updateOriginCache(req *pb.OriginRequest, res *pb.OriginResponse
 	s.originCache[ip] = originAge{
 		origin: *res,
 		age:    time.Now(),
+	}
+}
+
+// checkInvalidsCache will check the local cache.
+func (s *server) checkInvalidsCache() (pb.InvalidResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	log.Printf("Check cache for Invalids")
+
+	// If cache entry exists, return true only if the cache entry is still valid.
+	if time.Since(s.invCache.age) < maxAge[iinvalids] {
+		return s.invCache.inv, true
+	}
+
+	return pb.InvalidResponse{}, false
+}
+
+// updateInvalidsCache will update the local cache.
+func (s *server) updateInvalidsCache(t pb.InvalidResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log.Printf("Updating cache for Totals")
+	s.invCache = invAge{
+		inv: t,
+		age: time.Now(),
 	}
 }
 

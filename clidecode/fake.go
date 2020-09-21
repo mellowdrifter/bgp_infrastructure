@@ -67,3 +67,9 @@ func (f FakeConn) GetRoute(net.IP) (*net.IPNet, bool, error) {
 func (f FakeConn) GetROA(*net.IPNet, uint32) (int, bool, error) {
 	return 0, false, nil
 }
+
+// GetInvalids returns a map of ASNs that are advertising RPKI invalid prefixes.
+// It also includes all those prefixes being advertised.
+func (f FakeConn) GetInvalids() (map[string][]string, error) {
+	return nil, nil
+}

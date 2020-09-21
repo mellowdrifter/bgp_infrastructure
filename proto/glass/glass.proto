@@ -34,6 +34,9 @@ service looking_glass {
     // map will return a google maps image for the airport location specified.
     rpc map(map_request) returns (map_response);
 
+    // invalids will return a list of ASNs originating invalid prefixes, plus a list of prefixes actually originated
+    rpc invalids(empty) returns (invalid_response);
+
 }
 
 message ip_address {
@@ -173,4 +176,13 @@ message map_request {
 
 message map_response {
     string image = 1;
+}
+
+message invalid_response {
+    repeated invalid_originator asn = 1;
+}
+
+message invalid_originator {
+    string asn = 1;
+    repeated string ip = 2;
 }

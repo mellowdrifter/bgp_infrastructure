@@ -145,6 +145,32 @@ func (b Bird2Conn) GetROAs() (Roas, error) {
 
 }
 
+// GetInvalids returns a map of ASNs that are advertising RPKI invalid prefixes.
+// It also includes all those prefixes being advertised.
+func (b Bird2Conn) GetInvalids() (map[string][]string, error) {
+
+	var inv = make(map[string][]string)
+	cmds := []string{
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'} | tr -d '[]ASie?'",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'} | tr -d '[]ASie?'",
+	}
+
+	for _, cmd := range cmds {
+		out, err := c.GetOutput(cmd)
+		if err != nil {
+			return inv, err
+		}
+		lines := strings.Split(out, "\n")
+		for _, v := range lines {
+			split := strings.Split(v, " ")
+			inv[split[0]] = append(inv[split[0]], split[1])
+
+		}
+	}
+
+	return inv, nil
+}
+
 // GetMasks returns the total count of each mask value
 // First item is IPv4, second item is IPv6
 func (b Bird2Conn) GetMasks() ([]map[string]uint32, error) {
