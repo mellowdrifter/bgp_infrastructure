@@ -396,6 +396,32 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 
 }
 
+// Asnames will return all of the registered AS number to AS name mappings.
+func (s *server) Asnames(ctx context.Context, e *pb.Empty) (*pb.AsnamesResponse, error) {
+	log.Printf("Running Asnames")
+
+	stub := bpb.NewBgpInfoClient(s.bsql)
+	names, err := stub.GetAsnames(ctx, &bpb.Empty{})
+	if err != nil {
+		s.handleUnavailableRPC(err)
+		return &pb.AsnamesResponse{}, err
+	}
+
+	var allnames pb.AsnamesResponse
+	// TODO: This is awful. Some of these proto messages should be defined elsewhere to be shared
+	for _, v := range names.Asnumnames {
+		var t pb.AsnumberAsnames
+		// DOES THIS WORK???
+		t = pb.AsnumberAsnames(*v)
+		//t.AsName = v.AsName
+		//t.AsNumber = v.AsNumber
+		//t.AsLocale = v.AsLocale
+		allnames.Asnumnames = append(allnames.Asnumnames, &t)
+	}
+
+	return &allnames, nil
+}
+
 // Roa will check the ROA status of a prefix.
 func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, error) {
 	log.Printf("Running Roa")

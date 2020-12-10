@@ -193,6 +193,18 @@ func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.Get
 
 }
 
+func (s *server) GetAsnames(ctx context.Context, e *pb.Empty) (*pb.GetAsnamesResponse, error) {
+	log.Println("Running GetAsNames")
+
+	res, err := getAsnamesHelper(s.db)
+	if err != nil {
+		log.Printf("Got error in GetAsnames: %s\n", err)
+		return nil, err
+	}
+	return res, nil
+
+}
+
 func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb.Result, error) {
 	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Println("Running UpdateAsname")

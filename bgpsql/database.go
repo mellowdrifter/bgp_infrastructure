@@ -255,6 +255,32 @@ func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse,
 
 }
 
+func getAsnamesHelper(db *sql.DB) (*pb.GetAsnamesResponse, error) {
+	var n pb.GetAsnamesResponse
+	query := fmt.Sprintf(`select ASNUMBER, ASNAME, LOCALE from ASNUMNAME`)
+	rows, err := db.Query(query)
+	if err != nil {
+		return &n, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var a pb.AsnumberAsnames
+		err = rows.Scan(&a.AsNumber, &a.AsName, &a.AsLocale)
+		// TODO: This is messy
+		if err != nil {
+			return nil, err
+		}
+		n.Asnumnames = append(n.Asnumnames, &a)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return &n, nil
+}
+
 func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 	// Temp table may be sitting around from a failed attempt.
 	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS ASNUMNAME_NEW`)

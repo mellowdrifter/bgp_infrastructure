@@ -11,6 +11,7 @@ service bgp_info {
     rpc get_rpki(empty) returns (roas);
     rpc update_asnames(asnames_request) returns (result);
     rpc get_asname(get_asname_request) returns (get_asname_response);
+    rpc get_asnames(empty) returns (get_asnames_response);
 }
 
 message values {
@@ -65,6 +66,16 @@ message get_asname_response {
     string as_name = 1;
     string as_locale = 2;
     bool exists = 3;
+}
+
+message get_asnames_response {
+    repeated asnumber_asnames asnumnames = 1;
+}
+
+message asnumber_asnames {
+    uint32 as_number = 1;
+    string as_name = 2;
+    string as_locale = 3;
 }
 
 message pie_subnets_response { 
