@@ -193,12 +193,16 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	return resp, nil
 }
 
-func (s *server) Invalids(context.Context, *pb.Empty) (*pb.InvalidResponse, error) {
-	log.Printf("Running Invalids")
+// Invalids returns all the ROA invalid prefixes for an ASN. If the ASN passed in = 0,
+// then all ASNs advertising invalids is returned.
+func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.InvalidResponse, error) {
+	log.Printf("Running Invalids for ASN %s", r.GetAsn())
 
 	// check local cache
-	cache, ok := s.checkInvalidsCache()
+	cache, ok := s.checkInvalidsCache(r.GetAsn())
 	if ok {
+		// TODO: Doesn't seem to work for ASN = "0"
+		log.Println("Got something in the cache")
 		return &cache, nil
 	}
 
@@ -223,7 +227,27 @@ func (s *server) Invalids(context.Context, *pb.Empty) (*pb.InvalidResponse, erro
 	// update the local cache
 	s.updateInvalidsCache(resp)
 
-	return &resp, nil
+	// an ASN query of zero means all ASNs.
+	if r.GetAsn() == "0" {
+		return &resp, nil
+	}
+
+	// Otherwise just return the specific ASN and it's invalids.
+	for _, v := range resp.GetAsn() {
+		if v.GetAsn() == r.GetAsn() {
+			return &pb.InvalidResponse{
+				Asn: []*pb.InvalidOriginator{
+					&pb.InvalidOriginator{
+						Asn: v.GetAsn(),
+						Ip:  v.GetIp(),
+					},
+				},
+			}, nil
+		}
+	}
+
+	// The ASN queried has no invalids.
+	return &pb.InvalidResponse{}, nil
 
 }
 
@@ -586,15 +610,19 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	}
 	defer f.Close()
 
+	// Get location co-ordinates
 	loc, err := getLocation(r.GetAirport(), f)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine location: %v", err)
 	}
 
-	// update cache
-	s.updateLocationCache(r.GetAirport(), *loc)
+	// Now get the map
+	l, err := s.getMap(ctx, loc)
 
-	return loc, nil
+	// update cache
+	s.updateLocationCache(r.GetAirport(), *l)
+
+	return l, nil
 }
 
 func getLocation(loc string, file *os.File) (*pb.LocationResponse, error) {
@@ -629,20 +657,20 @@ func (s *server) warmCache() {
 	log.Println("Cache filled")
 }
 
-func (s *server) Map(ctx context.Context, r *pb.MapRequest) (*pb.MapResponse, error) {
-	log.Printf("Running Map")
-	defer com.TimeFunction(time.Now(), "Map")
-
+// Map adds an image from Google Maps of the co-ordinates and then updates
+// the location response with a base64 encoded version of the image.
+func (s *server) getMap(ctx context.Context, r *pb.LocationResponse) (*pb.LocationResponse, error) {
 	// check local cache first
-	imap, ok := s.checkMapCache(r.GetLat(), r.GetLong())
+	cor := fmt.Sprintf("%s%s", r.GetLat(), r.GetLong())
+	cmap, ok := s.checkMapCache(cor)
 	if ok {
-		return &imap, nil
+		r.Image = cmap
+		return r, nil
 	}
-
 	// get the map and encode
 	c, err := maps.NewClient(maps.WithAPIKey(s.mapi))
 	if err != nil {
-		return &pb.MapResponse{}, err
+		return r, err
 	}
 	req := maps.StaticMapRequest{
 		Center: fmt.Sprintf("%s,%s", r.GetLat(), r.GetLong()),
@@ -652,18 +680,17 @@ func (s *server) Map(ctx context.Context, r *pb.MapRequest) (*pb.MapResponse, er
 	}
 	img, err := c.StaticMap(ctx, &req)
 	if err != nil {
-		return &pb.MapResponse{}, err
+		return r, err
 	}
 	buffer := new(bytes.Buffer)
 	png.Encode(buffer, img)
-	str := base64.StdEncoding.EncodeToString(buffer.Bytes())
 
-	imapr := &pb.MapResponse{
-		Image: str,
-	}
+	rmap := base64.StdEncoding.EncodeToString(buffer.Bytes())
 
-	// update cache
-	s.updateMapCache(r.GetLat(), r.GetLong(), *imapr)
+	// Update the cache
+	s.updateMapCache(cor, rmap)
 
-	return imapr, nil
+	r.Image = rmap
+
+	return r, nil
 }

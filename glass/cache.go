@@ -110,7 +110,7 @@ type locAge struct {
 }
 
 type mapAge struct {
-	imap pb.MapResponse
+	imap string
 	age  time.Time
 }
 
@@ -197,14 +197,30 @@ func (s *server) updateOriginCache(req *pb.OriginRequest, res *pb.OriginResponse
 }
 
 // checkInvalidsCache will check the local cache.
-func (s *server) checkInvalidsCache() (pb.InvalidResponse, bool) {
+func (s *server) checkInvalidsCache(asn string) (pb.InvalidResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("Check cache for Invalids")
 
 	// If cache entry exists, return true only if the cache entry is still valid.
 	if time.Since(s.invCache.age) < maxAge[iinvalids] {
-		return s.invCache.inv, true
+		// Empty query means all invalids
+		if asn == "" {
+			return s.invCache.inv, true
+		}
+		// Otherwise only return the specific ASN invalids
+		for _, v := range s.invCache.inv.GetAsn() {
+			if v.GetAsn() == asn {
+				return pb.InvalidResponse{
+					Asn: []*pb.InvalidOriginator{
+						&pb.InvalidOriginator{
+							Asn: v.GetAsn(),
+							Ip:  v.GetIp(),
+						},
+					},
+				}, true
+			}
+		}
 	}
 
 	return pb.InvalidResponse{}, false
@@ -214,7 +230,7 @@ func (s *server) checkInvalidsCache() (pb.InvalidResponse, bool) {
 func (s *server) updateInvalidsCache(t pb.InvalidResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	log.Printf("Updating cache for Totals")
+	log.Printf("Updating cache for Invalids")
 	s.invCache = invAge{
 		inv: t,
 		age: time.Now(),
@@ -366,36 +382,36 @@ func (s *server) updateLocationCache(airport string, loc pb.LocationResponse) {
 	}
 }
 
-func (s *server) checkMapCache(lat, long string) (pb.MapResponse, bool) {
+func (s *server) checkMapCache(coordinates string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	log.Printf("Check map cache for %s, %s", lat, long)
+	log.Printf("Check map cache for %s, %s", coordinates)
 
-	val, ok := s.mapCache[fmt.Sprintf("%s%s", lat, long)]
+	val, ok := s.mapCache[fmt.Sprintf("%s%s", coordinates)]
 
 	// only return cache entry if it's within the max age
 	if ok {
-		log.Printf("cache entry exists for %s, %s", lat, long)
+		log.Printf("cache entry exists for %s", coordinates)
 		if time.Since(val.age) < maxAge[imap] {
-			log.Printf("cache hit for route entry for %s, %s", lat, long)
+			log.Printf("cache hit for route entry for %s", coordinates)
 			return val.imap, ok
 		}
-		log.Printf("cache miss for location %s, %s", lat, long)
+		log.Printf("cache miss for location %s", coordinates)
 	}
 	if !ok {
-		log.Printf("cache miss for location %s, %s", lat, long)
+		log.Printf("cache miss for location %s", coordinates)
 	}
 
-	return pb.MapResponse{}, false
+	return "", false
 }
 
-func (s *server) updateMapCache(lat, long string, imap pb.MapResponse) {
+func (s *server) updateMapCache(coordinates string, imap string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("adding %s, %s to the map cache", lat, long)
+	log.Printf("adding %s to the map cache", coordinates)
 
-	s.mapCache[fmt.Sprintf("%s%s", lat, long)] = mapAge{
+	s.mapCache[coordinates] = mapAge{
 		imap: imap,
 		age:  time.Now(),
 	}

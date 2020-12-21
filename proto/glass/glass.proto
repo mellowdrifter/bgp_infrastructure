@@ -31,14 +31,11 @@ service looking_glass {
     // Total number of ASNs
     rpc total_asns(empty) returns (total_asns_response);
 
-    // location will return the city, country, and lat/long co-ordinates of an airport.
+    // location will return the city, country, lat/long co-ordinates, and Google maps image of an airport.
     rpc location(location_request) returns (location_response);
 
-    // map will return a google maps image for the airport location specified.
-    rpc map(map_request) returns (map_response);
-
     // invalids will return a list of ASNs originating invalid prefixes, plus a list of prefixes actually originated
-    rpc invalids(empty) returns (invalid_response);
+    rpc invalids(invalids_request) returns (invalid_response);
 
 
 }
@@ -181,15 +178,11 @@ message location_response {
     string country = 2;
     string lat = 3;
     string long = 4;
+    string image = 5;
 }
 
-message map_request {
-    string lat = 1;
-    string long = 2;
-}
-
-message map_response {
-    string image = 1;
+message invalids_request {
+    string asn = 1;
 }
 
 message invalid_response {
