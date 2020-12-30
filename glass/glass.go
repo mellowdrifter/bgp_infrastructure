@@ -201,8 +201,6 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 	// check local cache
 	cache, ok := s.checkInvalidsCache(r.GetAsn())
 	if ok {
-		// TODO: Doesn't seem to work for ASN = "0"
-		log.Println("Got something in the cache")
 		return &cache, nil
 	}
 
@@ -232,7 +230,7 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 		return &resp, nil
 	}
 
-	// Otherwise just return the specific ASN and it's invalids.
+	// Otherwise just return the specific ASN and its invalids.
 	for _, v := range resp.GetAsn() {
 		if v.GetAsn() == r.GetAsn() {
 			return &pb.InvalidResponse{

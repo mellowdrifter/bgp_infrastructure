@@ -148,7 +148,9 @@ func (s *server) checkTotalCache() bool {
 func (s *server) updateTotalCache(t *pb.TotalResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	log.Printf("Updating cache for Totals")
+
 	s.totalCache = totalsAge{
 		tot: *t,
 		age: time.Now(),
@@ -205,7 +207,7 @@ func (s *server) checkInvalidsCache(asn string) (pb.InvalidResponse, bool) {
 	// If cache entry exists, return true only if the cache entry is still valid.
 	if time.Since(s.invCache.age) < maxAge[iinvalids] {
 		// Empty query means all invalids
-		if asn == "" {
+		if asn == "0" {
 			return s.invCache.inv, true
 		}
 		// Otherwise only return the specific ASN invalids
@@ -230,7 +232,9 @@ func (s *server) checkInvalidsCache(asn string) (pb.InvalidResponse, bool) {
 func (s *server) updateInvalidsCache(t pb.InvalidResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	log.Printf("Updating cache for Invalids")
+
 	s.invCache = invAge{
 		inv: t,
 		age: time.Now(),
