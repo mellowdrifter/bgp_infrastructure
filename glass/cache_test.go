@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
-	"image"
-	"image/png"
-	"os"
-	"strings"
+	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -17,8 +13,16 @@ func getServer() server {
 	return server{
 		mu: &sync.RWMutex{},
 		cache: cache{
-			mapCache:     make(map[string]mapAge),
+			totalCache:   totalsAge{},
+			asNameCache:  make(map[uint32]asnAge),
 			sourcedCache: make(map[uint32]sourcedAge),
+			routeCache:   make(map[string]routeAge),
+			originCache:  make(map[string]originAge),
+			aspathCache:  make(map[string]aspathAge),
+			roaCache:     make(map[string]roaAge),
+			locCache:     make(map[string]locAge),
+			mapCache:     make(map[string]mapAge),
+			invCache:     invAge{},
 		},
 	}
 }
@@ -100,7 +104,7 @@ func BenchmarkCheckSourcedCache(b *testing.B) {
 		srv.checkSourcedCache(1234)
 		srv.checkSourcedCache(12345)
 	}
-}*/
+}
 
 func BenchmarkUpdateMapCache(b *testing.B) {
 	f, err := os.Open("washington.png")
@@ -152,4 +156,69 @@ func TestMapCache(t *testing.T) {
 		t.Errorf("Cache image and live image do not match")
 
 	}
+}*/
+
+func BenchmarkUpdateInvalidsCache(b *testing.B) {
+	//t.Parallel()
+	srv := getServer()
+
+	invalids := pb.InvalidResponse{
+		Asn: []*pb.InvalidOriginator{
+			{Asn: "3356", Ip: []string{"1.2.3.0/24", "12.1.0.0/16"}},
+			{Asn: "1", Ip: []string{"4.5.6.0/24", "13.1.0.0/16"}},
+			{Asn: "2", Ip: []string{"5.6.7.0/24", "14.1.0.0/16"}}},
+	}
+
+	for i := 0; i < b.N; i++ {
+		srv.updateInvalidsCache(invalids)
+	}
+
+}
+
+func TestInvalidsCache(t *testing.T) {
+	srv := getServer()
+
+	invalid1 := pb.InvalidOriginator{Asn: "1", Ip: []string{"1.2.3.0/24", "11.1.0.0/16"}}
+	invalid2 := pb.InvalidOriginator{Asn: "2", Ip: []string{"4.5.6.0/24", "12.1.0.0/16"}}
+	invalid3 := pb.InvalidOriginator{Asn: "3", Ip: []string{"7.8.9.0/24", "13.1.0.0/16"}}
+
+	invalids := pb.InvalidResponse{
+		Asn: []*pb.InvalidOriginator{
+			&invalid1, &invalid2, &invalid3,
+		}}
+
+	srv.updateInvalidsCache(invalids)
+
+	// Check entire cache
+	got, ok := srv.checkInvalidsCache("0")
+	if !ok {
+		t.Errorf("Updated cache, but nothing returned")
+	}
+
+	// Make sure retrived full cache is the same
+	if !reflect.DeepEqual(got, invalids) {
+		t.Errorf("Received entry not the same")
+	}
+
+	// Ensure checking cache for a single existing ASN works
+	for i, v := range invalids.GetAsn() {
+		got, ok := srv.checkInvalidsCache(fmt.Sprint(i + 1))
+		if !ok {
+			t.Errorf("Cache missing for item #%d", i)
+		}
+		want := pb.InvalidResponse{Asn: []*pb.InvalidOriginator{v}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got: %+v, but wanted: %+v", got, want)
+		}
+	}
+
+	// Ensure checking cache for a non-existing ASN returns empty
+	got, ok = srv.checkInvalidsCache("100")
+	if ok {
+		t.Errorf("Cache should be empty, but it's not")
+	}
+	if !reflect.DeepEqual(got, pb.InvalidResponse{}) {
+		t.Errorf("Should be empty, but got: %+v", got)
+	}
+
 }

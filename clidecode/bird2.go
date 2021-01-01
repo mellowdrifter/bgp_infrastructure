@@ -280,7 +280,21 @@ func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 		return aspath, false, nil
 	}
 
-	paths := strings.Fields(out)
+	path, set := decodeASPaths(out)
+	aspath.Path = path
+	aspath.Set = set
+
+	return aspath, true, nil
+
+}
+
+// decodeASPaths will return a slice of AS & AS-Sets from a string as-path output.
+func decodeASPaths(in string) ([]uint32, []uint32) {
+	if strings.ContainsAny(in, "{}") {
+		in = strings.Replace(in, "{", "{ ", 1)
+		in = strings.Replace(in, "}", " }", 1)
+	}
+	paths := strings.Fields(in)
 	var path, set []uint32
 
 	// Need to separate as-set
@@ -299,11 +313,7 @@ func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 		}
 	}
 
-	aspath.Path = path
-	aspath.Set = set
-
-	return aspath, true, nil
-
+	return path, set
 }
 
 // GetRoute will return the current FIB entry, if any, from a source IP.

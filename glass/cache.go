@@ -202,7 +202,7 @@ func (s *server) updateOriginCache(req *pb.OriginRequest, res *pb.OriginResponse
 func (s *server) checkInvalidsCache(asn string) (pb.InvalidResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	log.Printf("Check cache for Invalids")
+	log.Printf("Check cache for Invalids using ASN #%s", asn)
 
 	// If cache entry exists, return true only if the cache entry is still valid.
 	if time.Since(s.invCache.age) < maxAge[iinvalids] {
@@ -215,7 +215,7 @@ func (s *server) checkInvalidsCache(asn string) (pb.InvalidResponse, bool) {
 			if v.GetAsn() == asn {
 				return pb.InvalidResponse{
 					Asn: []*pb.InvalidOriginator{
-						&pb.InvalidOriginator{
+						{
 							Asn: v.GetAsn(),
 							Ip:  v.GetIp(),
 						},
@@ -223,6 +223,9 @@ func (s *server) checkInvalidsCache(asn string) (pb.InvalidResponse, bool) {
 				}, true
 			}
 		}
+		// If cache is fresh, but missing ASN, then we return an empty response, but the cache
+		// does exist.
+		return pb.InvalidResponse{}, true
 	}
 
 	return pb.InvalidResponse{}, false
@@ -389,9 +392,9 @@ func (s *server) updateLocationCache(airport string, loc pb.LocationResponse) {
 func (s *server) checkMapCache(coordinates string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	log.Printf("Check map cache for %s, %s", coordinates)
+	log.Printf("Check map cache for %s", coordinates)
 
-	val, ok := s.mapCache[fmt.Sprintf("%s%s", coordinates)]
+	val, ok := s.mapCache[fmt.Sprintf("%s", coordinates)]
 
 	// only return cache entry if it's within the max age
 	if ok {

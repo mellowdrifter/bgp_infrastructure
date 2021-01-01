@@ -235,7 +235,7 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 		if v.GetAsn() == r.GetAsn() {
 			return &pb.InvalidResponse{
 				Asn: []*pb.InvalidOriginator{
-					&pb.InvalidOriginator{
+					{
 						Asn: v.GetAsn(),
 						Ip:  v.GetIp(),
 					},
@@ -321,13 +321,11 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	}
 
 	var set = make([]*pb.Asn, 0, len(paths.Set))
-	if len(set) > 0 {
-		for _, v := range paths.Set {
-			set = append(set, &pb.Asn{
-				Asplain: v,
-				Asdot:   com.ASPlainToASDot(v),
-			})
-		}
+	for _, v := range paths.Set {
+		set = append(set, &pb.Asn{
+			Asplain: v,
+			Asdot:   com.ASPlainToASDot(v),
+		})
 	}
 
 	// update the cache
