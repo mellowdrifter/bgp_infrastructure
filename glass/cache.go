@@ -238,8 +238,8 @@ func (s *server) updateInvalidsCache(t pb.InvalidResponse) {
 	}
 }
 
-// checkASPathCache returns two lists of ASNs. The first if the regular as-path
-// while the second represents an as-set, if it exists.
+// checkASPathCache returns an AS path response which can contain
+// both a list of ASNs plus an AS-SET.
 // TODO: ideally origin cache should contain the entire subnet, not just IP.
 func (s *server) checkASPathCache(ip string) (pb.AspathResponse, bool) {
 	s.mu.RLock()
@@ -302,7 +302,7 @@ func (s *server) updateROACache(ipnet *net.IPNet, roa pb.RoaResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("adding %s to the as-path cache", ipnet.String())
+	log.Printf("adding %v to the as-path cache", ipnet.String())
 
 	s.roaCache[ipnet.String()] = roaAge{
 		roa: roa,

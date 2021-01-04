@@ -16,9 +16,6 @@ service looking_glass {
     // asname will return the AS name.
     rpc asname(asname_request) returns (asname_response);
 
-    // asnames will return all as number to as names
-    rpc asnames(empty) returns (asnames_response);
-
     // roa will return the roa status.
     rpc roa(roa_request) returns (roa_response);
 
@@ -54,6 +51,7 @@ message origin_response {
     // origin_response shows the current origin ASN for active route.
     uint32 origin_asn = 1;
     bool exists = 2;
+    uint64 cache_time = 3;
 }
 
 message source_request {
@@ -65,6 +63,7 @@ message source_response {
     bool exists = 2;
     uint32 v4count = 3;
     uint32 v6count = 4;
+    uint64 cache_time = 5;
 }
 
 message empty {
@@ -86,6 +85,7 @@ message aspath_response {
     repeated asn asn = 1;
     repeated asn set = 2;
     bool exists = 3;
+    uint64 cache_time = 4;
 }
 
 message asn {
@@ -101,6 +101,7 @@ message route_response {
     // route_response shows the current prefix/mask for the active route.
     ip_address ip_address = 1;
     bool exists = 2;
+    uint64 cache_time = 3;
 }
 
 message asname_request {
@@ -112,16 +113,7 @@ message asname_response {
     string as_name = 1;
     bool exists = 2;
     string locale = 3;
-}
-
-message asnames_response {
-    repeated asnumber_asnames asnumnames = 1;
-}
-
-message asnumber_asnames {
-    uint32 as_number = 1;
-    string as_name = 2;
-    string as_locale = 3;
+    uint64 cache_time = 4;
 }
 
 message total_transit_request {
@@ -166,6 +158,7 @@ message roa_response {
     ip_address ip_address = 1;
     ROAStatus status = 2;
     bool exists = 3;
+    uint64 cache_time = 4;
 
 }
 
@@ -187,6 +180,7 @@ message invalids_request {
 
 message invalid_response {
     repeated invalid_originator asn = 1;
+    uint64 cache_time = 2;
 }
 
 message invalid_originator {

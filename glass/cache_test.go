@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"reflect"
 	"sync"
 	"testing"
@@ -287,4 +288,97 @@ func TestOriginCache(t *testing.T) {
 		})
 	}
 
+}
+
+func TestASPathCache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	cache, ok := srv.checkASPathCache("192.168.0.0")
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	// Fill cache and check
+	t.Parallel()
+	var i uint32
+	for i = 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("AS%d", i), func(t *testing.T) {
+			now := uint64(time.Now().Unix())
+			resp := pb.AspathResponse{
+				Asn: []*pb.Asn{
+					{
+						Asplain: 123,
+						Asdot:   "123",
+					},
+					{
+						Asplain: 456,
+						Asdot:   "456",
+					},
+				},
+				Set: []*pb.Asn{
+					{
+						Asplain: 321,
+						Asdot:   "321",
+					},
+					{
+						Asplain: 654,
+						Asdot:   "654",
+					},
+				},
+				Exists:    true,
+				CacheTime: now,
+			}
+			ip := net.ParseIP(fmt.Sprintf("192.168.%d.0", i))
+			srv.updateASPathCache(ip, resp)
+			cache, ok := srv.checkASPathCache(ip.String())
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+		})
+	}
+
+}
+
+func TestROACache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	_, ipn, err := net.ParseCIDR("192.168.0.0/24")
+	if err != nil {
+		t.Error(err)
+	}
+	cache, ok := srv.checkROACache(ipn)
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	t.Parallel()
+	for i := 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("AS%d", i), func(t *testing.T) {
+			now := uint64(time.Now().Unix())
+			_, ipnet, err := net.ParseCIDR(fmt.Sprintf("192.168.%d.0/24", i))
+			resp := pb.RoaResponse{
+				IpAddress: &pb.IpAddress{
+					Address: ipnet.IP.String(),
+					Mask:    24,
+				},
+				Status:    1,
+				Exists:    true,
+				CacheTime: now,
+			}
+			if err != nil {
+				t.Error(err)
+			}
+			srv.updateROACache(ipnet, resp)
+			cache, ok := srv.checkROACache(ipnet)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+		})
+	}
 }
