@@ -157,7 +157,7 @@ func (s *server) updateTotalCache(t pb.TotalResponse) {
 }
 
 // checkOriginCache will return an origin uint32 that matches a previous origin check
-// if it's still within maxAge.
+// if it's still within age.
 func (s *server) checkOriginCache(ip string) (pb.OriginResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -311,7 +311,7 @@ func (s *server) updateROACache(ipnet *net.IPNet, roa pb.RoaResponse) {
 }
 
 // checkRouteCache will return an ipnet that matches a previous route check
-// if it's still within maxAge.
+// if it's still within age.
 func (s *server) checkRouteCache(ip string) (pb.RouteResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -419,7 +419,7 @@ func (s *server) updateMapCache(coordinates string, imap string) {
 }
 
 // checkASNCache will check the local cache.
-// Only returns the cache entry if it's within the maxAge timer.
+// Only returns the cache entry if it's within the age timer.
 func (s *server) checkASNCache(asnum uint32) (pb.AsnameResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -492,88 +492,118 @@ func (s *server) updateSourcedCache(asn uint32, sr pb.SourceResponse) {
 
 }
 
-func (s *server) clearCache() {
+func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, count map[int]int) {
 	for {
-		time.Sleep(5 * time.Minute)
+		time.Sleep(sleep)
 		log.Printf("Clearing old cache entries")
 		s.mu.Lock()
 
 		// ASN cache
+		log.Printf("asn cache is currently length %d", len(s.asNameCache))
 		for key, val := range s.asNameCache {
-			if time.Since(val.age) > maxAge[iasn] {
+			if time.Since(val.age) > age[iasn] {
 				delete(s.asNameCache, key)
 			}
 		}
-		if len(s.asNameCache) > maxCache[iasn] {
+		if len(s.asNameCache) > count[iasn] {
 			log.Printf("AS name cache full, purging...")
 			s.asNameCache = make(map[uint32]asnAge)
 		}
 
 		// sourced cache
+		log.Printf("sourced cache is currently length %d", len(s.sourcedCache))
 		for key, val := range s.sourcedCache {
-			if time.Since(val.age) > maxAge[isourced] {
+			if time.Since(val.age) > age[isourced] {
 				delete(s.sourcedCache, key)
 
 			}
 		}
-		if len(s.sourcedCache) > maxCache[isourced] {
+		if len(s.sourcedCache) > count[isourced] {
 			log.Printf("sourced cache full, purging...")
 			s.sourcedCache = make(map[uint32]sourcedAge)
 		}
 
 		// route cache
+		log.Printf("route cache is currently length %d", len(s.routeCache))
 		for key, val := range s.routeCache {
-			if time.Since(val.age) > maxAge[iroute] {
+			if time.Since(val.age) > age[iroute] {
 				delete(s.routeCache, key)
 			}
 		}
-		if len(s.routeCache) > maxCache[iroute] {
+		if len(s.routeCache) > count[iroute] {
 			log.Printf("route cache full, purging...")
 			s.routeCache = make(map[string]routeAge)
 		}
+		log.Printf("route cache is now length %d", len(s.routeCache))
 
 		// origin cache
+		log.Printf("origin cache is currently length %d", len(s.originCache))
 		for key, val := range s.originCache {
-			if time.Since(val.age) > maxAge[iorigin] {
+			if time.Since(val.age) > age[iorigin] {
 				delete(s.originCache, key)
 			}
 		}
-		if len(s.originCache) > maxCache[iorigin] {
+		if len(s.originCache) > count[iorigin] {
 			log.Printf("origin cache full, purging...")
 			s.originCache = make(map[string]originAge)
 		}
+		log.Printf("origin cache is now length %d", len(s.originCache))
 
 		// as-path cache
+		log.Printf("as-path cache is currently length %d", len(s.aspathCache))
 		for key, val := range s.aspathCache {
-			if time.Since(val.age) > maxAge[iaspath] {
+			if time.Since(val.age) > age[iaspath] {
 				delete(s.aspathCache, key)
 			}
 		}
-		if len(s.aspathCache) > maxCache[iaspath] {
+		if len(s.aspathCache) > count[iaspath] {
 			log.Printf("as-path cache full, purging...")
 			s.aspathCache = make(map[string]aspathAge)
 		}
+		log.Printf("as-path cache is now length %d", len(s.aspathCache))
 
 		// roa cache
+		log.Printf("roa cache is currently length %d", len(s.roaCache))
 		for key, val := range s.roaCache {
-			if time.Since(val.age) > maxAge[iroa] {
+			if time.Since(val.age) > age[iroa] {
 				delete(s.roaCache, key)
 			}
 		}
-		if len(s.roaCache) > maxCache[iroa] {
+		if len(s.roaCache) > count[iroa] {
 			log.Printf("roa cache full, purging...")
 			s.roaCache = make(map[string]roaAge)
 		}
+		log.Printf("roa cache is now length %d", len(s.roaCache))
 
 		// location cache
+		log.Printf("location cache is currently length %d", len(s.locCache))
 		for key, val := range s.locCache {
-			if time.Since(val.age) > maxAge[ilocation] {
+			if time.Since(val.age) > age[ilocation] {
 				delete(s.locCache, key)
 			}
 		}
-		if len(s.locCache) > maxCache[ilocation] {
+		if len(s.locCache) > count[ilocation] {
 			log.Printf("location cache full, puring...")
 			s.locCache = make(map[string]locAge)
+		}
+		log.Printf("location cache is now length %d", len(s.locCache))
+
+		// map cache
+		log.Printf("map cache is currently length %d", len(s.mapCache))
+		for key, val := range s.mapCache {
+			if time.Since(val.age) > age[imap] {
+				delete(s.mapCache, key)
+			}
+		}
+		if len(s.mapCache) > count[imap] {
+			log.Printf("map cache full, puring...")
+			s.mapCache = make(map[string]mapAge)
+		}
+		log.Printf("map cache is now length %d", len(s.mapCache))
+
+		// invalids cache
+		if time.Since(s.invCache.age) > age[iinvalids] {
+			s.invCache = invAge{}
 		}
 
 		s.mu.Unlock()

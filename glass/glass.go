@@ -113,7 +113,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterLookingGlassServer(grpcServer, glassServer)
 
-	go glassServer.clearCache()
+	go glassServer.clearCache(5*time.Minute, maxAge, maxCache)
 
 	glassServer.warmCache()
 
