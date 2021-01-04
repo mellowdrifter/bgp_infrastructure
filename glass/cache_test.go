@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"reflect"
@@ -381,4 +382,177 @@ func TestROACache(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRouteCache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	cache, ok := srv.checkRouteCache("192.168.0.0")
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	t.Parallel()
+	for i := 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("AS%d", i), func(t *testing.T) {
+			now := uint64(time.Now().Unix())
+			ip := fmt.Sprintf("192.168.%d.0", i)
+			resp := pb.RouteResponse{
+				IpAddress: &pb.IpAddress{Address: ip, Mask: 24},
+				Exists:    true,
+				CacheTime: now,
+			}
+			srv.updateRouteCache(ip, resp)
+			cache, ok := srv.checkRouteCache(ip)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+		})
+	}
+}
+
+func TestLocationCache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	cache, ok := srv.checkLocationCache("AMS")
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	t.Parallel()
+	for _, airport := range commonPops {
+		t.Run(fmt.Sprintf("Airport %s", airport), func(t *testing.T) {
+			resp := pb.LocationResponse{
+				City:    "ABC",
+				Country: "DEF",
+				Lat:     "123",
+				Long:    "456",
+				Image:   "encoded",
+			}
+			srv.updateLocationCache(airport, resp)
+			cache, ok := srv.checkLocationCache(airport)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+		})
+	}
+	// TODO: Add this length check to all!
+	if len(srv.locCache) != len(commonPops) {
+		t.Errorf("expected a cache length of %d, but actual length is %d", len(commonPops), len(srv.locCache))
+	}
+}
+
+func TestMapCache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	cache, ok := srv.checkMapCache("123,456")
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	t.Parallel()
+	for i := 0; i < 100; i++ {
+		loc := fmt.Sprintf("123,45%d", i)
+		t.Run(loc, func(t *testing.T) {
+			maploc := base64.StdEncoding.EncodeToString([]byte(loc))
+			srv.updateMapCache(loc, maploc)
+			cache, ok := srv.checkMapCache(loc)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if maploc != cache {
+				t.Errorf("got %+v, wanted %+v", cache, maploc)
+			}
+		})
+	}
+	if len(srv.mapCache) != 100 {
+		t.Errorf("expected a mapcache length of %d, but actual length is %d", 100, len(srv.mapCache))
+	}
+
+}
+
+func TestASNCache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	cache, ok := srv.checkASNCache(123)
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	t.Parallel()
+	var i uint32
+	for i = 1; i < 101; i++ {
+		t.Run(fmt.Sprintf("ASN %d", i), func(t *testing.T) {
+			now := uint64(time.Now().Unix())
+			resp := pb.AsnameResponse{
+				AsName:    fmt.Sprintf("corportation of %d", i),
+				Exists:    true,
+				Locale:    "US",
+				CacheTime: now,
+			}
+			srv.updateASNCache(i, resp)
+			cache, ok := srv.checkASNCache(i)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+		})
+	}
+	if len(srv.asNameCache) != 100 {
+		t.Errorf("expected a namecache length of %d, but actual length is %d", 100, len(srv.asNameCache))
+	}
+}
+
+func TestSourcedCache(t *testing.T) {
+	srv := getServer()
+	// check an empty cache
+	cache, ok := srv.checkSourcedCache(123)
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	t.Parallel()
+	var i uint32
+	for i = 1; i < 101; i++ {
+		t.Run(fmt.Sprintf("ASN %d", i), func(t *testing.T) {
+			now := uint64(time.Now().Unix())
+			resp := pb.SourceResponse{
+				IpAddress: []*pb.IpAddress{
+					{
+						Address: "192.168.0.0/24",
+					},
+					{
+						Address: "2000::/3",
+					},
+					{
+						Address: "3000::/3",
+					},
+				},
+				Exists:    true,
+				V4Count:   1,
+				V6Count:   2,
+				CacheTime: now,
+			}
+			srv.updateSourcedCache(i, resp)
+			cache, ok := srv.checkSourcedCache(i)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+		})
+	}
+	if len(srv.sourcedCache) != 100 {
+		t.Errorf("expected a namecache length of %d, but actual length is %d", 100, len(srv.sourcedCache))
+	}
+
 }

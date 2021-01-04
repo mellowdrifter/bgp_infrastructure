@@ -335,13 +335,13 @@ func (s *server) checkRouteCache(ip string) (pb.RouteResponse, bool) {
 	return pb.RouteResponse{}, false
 }
 
-func (s *server) updateRouteCache(ip net.IP, rr pb.RouteResponse) {
+func (s *server) updateRouteCache(ip string, rr pb.RouteResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("Adding %s to the route cache", ip.String())
+	log.Printf("Adding %s to the route cache", ip)
 
-	s.routeCache[ip.String()] = routeAge{
+	s.routeCache[ip] = routeAge{
 		rr:  rr,
 		age: time.Now(),
 	}
@@ -376,6 +376,7 @@ func (s *server) updateLocationCache(airport string, loc pb.LocationResponse) {
 
 	log.Printf("adding %s to the location cache", airport)
 
+	// TODO: Check if cache is full!
 	s.locCache[airport] = locAge{
 		loc: loc,
 		age: time.Now(),

@@ -377,7 +377,7 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 	resp.CacheTime = uint64(time.Now().Unix())
 
 	// cache the result
-	s.updateRouteCache(ip, resp)
+	s.updateRouteCache(ip.String(), resp)
 
 	return &resp, nil
 }
