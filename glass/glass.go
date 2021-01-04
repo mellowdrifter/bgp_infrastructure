@@ -168,29 +168,31 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 	}
 
 	// check local cache
-	cache, ok := s.checkOriginCache(r)
+	cache, ok := s.checkOriginCache(r.GetIpAddress().GetAddress())
 	if ok {
-		return cache, nil
+		return &cache, nil
 	}
 
 	origin, exists, err := s.router.GetOriginFromIP(ip)
 	if err != nil {
-		log.Printf("Error: %v", err)
-		return &pb.OriginResponse{}, err
-	}
-	if !exists {
 		return &pb.OriginResponse{}, err
 	}
 
-	resp := &pb.OriginResponse{
+	// IP route may not exist. Return no error, but not existing either.
+	if !exists {
+		return &pb.OriginResponse{}, nil
+	}
+
+	resp := pb.OriginResponse{
 		OriginAsn: origin,
 		Exists:    exists,
+		CacheTime: uint64(time.Now().Unix()),
 	}
 
 	// update the local cache
-	s.updateOriginCache(r, resp)
+	s.updateOriginCache(r.GetIpAddress().GetAddress(), resp)
 
-	return resp, nil
+	return &resp, nil
 }
 
 // Invalids returns all the ROA invalid prefixes for an ASN. If the ASN passed in = 0,
@@ -221,6 +223,7 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 		invalids = append(invalids, &src)
 	}
 	resp.Asn = invalids
+	resp.CacheTime = uint64(time.Now().Unix())
 
 	// update the local cache
 	s.updateInvalidsCache(resp)
@@ -255,10 +258,9 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	log.Printf("Running Totals")
 
 	// check local cache first
-	if s.checkTotalCache() {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-		return &s.totalCache.tot, nil
+	cache, ok := s.checkTotalCache()
+	if ok {
+		return &cache, nil
 	}
 
 	stub := bpb.NewBgpInfoClient(s.bsql)
@@ -268,7 +270,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 		return &pb.TotalResponse{}, err
 	}
 
-	tot := &pb.TotalResponse{
+	tot := pb.TotalResponse{
 		Active_4: totals.GetActive_4(),
 		Active_6: totals.GetActive_6(),
 		Time:     totals.GetTime(),
@@ -277,7 +279,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	// update local cache
 	s.updateTotalCache(tot)
 
-	return tot, nil
+	return &tot, nil
 }
 
 // Aspath returns a list of ASNs for an IP address.
@@ -291,13 +293,9 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	}
 
 	// check local cache
-	a, st, ok := s.checkASPathCache(ip.String())
+	path, ok := s.checkASPathCache(ip.String())
 	if ok {
-		return &pb.AspathResponse{
-			Asn:    a,
-			Set:    st,
-			Exists: true,
-		}, nil
+		return &path, nil
 	}
 
 	paths, exists, err := s.router.GetASPathFromIP(ip)
@@ -328,14 +326,18 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 		})
 	}
 
-	// update the cache
-	s.updateASPathCache(ip, p, set)
+	resp := pb.AspathResponse{
+		Asn:       p,
+		Set:       set,
+		Exists:    exists,
+		CacheTime: uint64(time.Now().Unix()),
+	}
 
-	return &pb.AspathResponse{
-		Asn:    p,
-		Set:    set,
-		Exists: exists,
-	}, nil
+	// update the cache
+	s.updateASPathCache(ip, resp)
+
+	return &resp, nil
+
 }
 
 // Route returns the primary active RIB entry for the requested IP.
@@ -348,12 +350,9 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 	}
 
 	// check local cache first
-	ipnetcache, ok := s.checkRouteCache(ip.String())
+	cache, ok := s.checkRouteCache(ip.String())
 	if ok {
-		return &pb.RouteResponse{
-			IpAddress: &ipnetcache,
-			Exists:    true,
-		}, nil
+		return &cache, nil
 	}
 
 	ipnet, exists, err := s.router.GetRoute(ip)
@@ -365,19 +364,22 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 		return &pb.RouteResponse{}, nil
 	}
 
+	var resp pb.RouteResponse
+
 	mask, _ := ipnet.Mask.Size()
-	ipaddr := &pb.IpAddress{
+	ipaddr := pb.IpAddress{
 		Address: ipnet.IP.String(),
 		Mask:    uint32(mask),
 	}
 
-	// cache the result
-	s.updateRouteCache(ip, ipaddr)
+	resp.IpAddress = &ipaddr
+	resp.Exists = exists
+	resp.CacheTime = uint64(time.Now().Unix())
 
-	return &pb.RouteResponse{
-		IpAddress: ipaddr,
-		Exists:    exists,
-	}, nil
+	// cache the result
+	s.updateRouteCache(ip, resp)
+
+	return &resp, nil
 }
 
 // Asname will return the registered name of the ASN. As this isn't in bird directly, will need
@@ -387,13 +389,9 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	log.Printf("Running Asname")
 
 	// check local cache first
-	n, l, ok := s.checkASNCache(r.GetAsNumber())
+	cache, ok := s.checkASNCache(r.GetAsNumber())
 	if ok {
-		return &pb.AsnameResponse{
-			AsName: n,
-			Locale: l,
-			Exists: true,
-		}, nil
+		return &cache, nil
 	}
 
 	number := bpb.GetAsnameRequest{AsNumber: r.GetAsNumber()}
@@ -405,41 +403,18 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 		return &pb.AsnameResponse{}, err
 	}
 
+	resp := pb.AsnameResponse{
+		AsName:    name.GetAsName(),
+		Exists:    name.GetExists(),
+		Locale:    name.GetAsLocale(),
+		CacheTime: uint64(time.Now().Unix()),
+	}
+
 	// Cache the result for next time
-	s.updateASNCache(name.GetAsName(), name.GetAsLocale(), r.GetAsNumber())
+	s.updateASNCache(r.GetAsNumber(), resp)
 
-	return &pb.AsnameResponse{
-		AsName: name.GetAsName(),
-		Locale: name.GetAsLocale(),
-		Exists: name.Exists,
-	}, nil
+	return &resp, nil
 
-}
-
-// Asnames will return all of the registered AS number to AS name mappings.
-func (s *server) Asnames(ctx context.Context, e *pb.Empty) (*pb.AsnamesResponse, error) {
-	log.Printf("Running Asnames")
-
-	stub := bpb.NewBgpInfoClient(s.bsql)
-	names, err := stub.GetAsnames(ctx, &bpb.Empty{})
-	if err != nil {
-		s.handleUnavailableRPC(err)
-		return &pb.AsnamesResponse{}, err
-	}
-
-	var allnames pb.AsnamesResponse
-	// TODO: This is awful. Some of these proto messages should be defined elsewhere to be shared
-	for _, v := range names.Asnumnames {
-		var t pb.AsnumberAsnames
-		// DOES THIS WORK???
-		t = pb.AsnumberAsnames(*v)
-		//t.AsName = v.AsName
-		//t.AsNumber = v.AsNumber
-		//t.AsLocale = v.AsLocale
-		allnames.Asnumnames = append(allnames.Asnumnames, &t)
-	}
-
-	return &allnames, nil
 }
 
 // Roa will check the ROA status of a prefix.
@@ -458,22 +433,22 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 		log.Printf("Error: %v", err)
 		return &pb.RoaResponse{}, err
 	}
+	// TODO: Not sure if I should check cache before?
+	// or getroute should be cached itself
+	if !exists {
+		return &pb.RoaResponse{}, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
+	}
+	// Only check the origin now.
 	origin, err := s.Origin(ctx, &pb.OriginRequest{IpAddress: r.IpAddress})
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return &pb.RoaResponse{}, err
 	}
 
-	// TODO: Not sure if I should check cache before?
-	// or getroute should be cached itself
-	if !exists {
-		return &pb.RoaResponse{}, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
-	}
-
 	// check local cache
 	roa, ok := s.checkROACache(ipnet)
 	if ok {
-		return roa, nil
+		return &roa, nil
 	}
 
 	status, exists, err := s.router.GetROA(ipnet, origin.GetOriginAsn())
@@ -483,10 +458,6 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	}
 
 	// Check for an existing ROA
-	// I've set local preference on all routes to make this easier to determine:
-	// 200 = ROA_VALID
-	// 100 = ROA_UNKNOWN
-	//  50 = ROA_INVALID
 	statuses := map[int]pb.RoaResponse_ROAStatus{
 		cli.RUnknown: pb.RoaResponse_UNKNOWN,
 		cli.RInvalid: pb.RoaResponse_INVALID,
@@ -494,18 +465,19 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	}
 
 	mask, _ := ipnet.Mask.Size()
-	resp := &pb.RoaResponse{
+	resp := pb.RoaResponse{
 		IpAddress: &pb.IpAddress{
 			Address: ipnet.IP.String(),
 			Mask:    uint32(mask),
 		},
-		Status: statuses[status],
-		Exists: exists,
+		Status:    statuses[status],
+		Exists:    exists,
+		CacheTime: uint64(time.Now().Unix()),
 	}
 	// update cache
 	s.updateROACache(ipnet, resp)
 
-	return resp, nil
+	return &resp, nil
 }
 
 func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceResponse, error) {
@@ -517,22 +489,25 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 	}
 
 	// check local cache first
-	p, ok := s.checkSourcedCache(r.GetAsNumber())
+	cache, ok := s.checkSourcedCache(r.GetAsNumber())
 	if ok {
-		return &pb.SourceResponse{
-			IpAddress: p.prefixes,
-			Exists:    true,
-			V4Count:   p.v4,
-			V6Count:   p.v6,
-		}, nil
+		return &cache, nil
 	}
 
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
 		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv4 from source: %w", err)
 	}
+	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
+	if err != nil {
+		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv6 from source: %w", err)
+	}
+	// No prefixes will return empty, but no error
+	if len(v4)+len(v6) == 0 {
+		return &pb.SourceResponse{}, nil
+	}
 
-	var prefixes = make([]*pb.IpAddress, 0, len(v4))
+	var prefixes = make([]*pb.IpAddress, 0, len(v4)+len(v6))
 	for _, v := range v4 {
 		mask, _ := v.Mask.Size()
 		prefixes = append(prefixes, &pb.IpAddress{
@@ -540,12 +515,6 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 			Mask:    uint32(mask),
 		})
 	}
-
-	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
-	if err != nil {
-		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv6 from source: %w", err)
-	}
-
 	for _, v := range v6 {
 		mask, _ := v.Mask.Size()
 		prefixes = append(prefixes, &pb.IpAddress{
@@ -554,20 +523,18 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 		})
 	}
 
-	// Update the local cache
-	s.updateSourcedCache(prefixes, uint32(len(v4)), uint32(len(v6)), r.GetAsNumber())
-
-	// No prefixes will return empty, but no error
-	if len(prefixes) == 0 {
-		return &pb.SourceResponse{}, nil
-	}
-
-	return &pb.SourceResponse{
+	resp := pb.SourceResponse{
 		IpAddress: prefixes,
 		Exists:    true,
 		V4Count:   uint32(len(v4)),
 		V6Count:   uint32(len(v6)),
-	}, nil
+		CacheTime: uint64(time.Now().Unix()),
+	}
+
+	// Update the local cache
+	s.updateSourcedCache(r.GetAsNumber(), resp)
+
+	return &resp, nil
 }
 
 // bgpsql server might go offline, if so we should attempt to reconnect.
@@ -595,11 +562,12 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	defer com.TimeFunction(time.Now(), "Location")
 
 	// check local cache first
-	cloc, ok := s.checkLocationCache(r.GetAirport())
+	cache, ok := s.checkLocationCache(r.GetAirport())
 	if ok {
-		return &cloc, nil
+		return &cache, nil
 	}
 
+	// TODO: Keep having to open this file. How much memory would it use?
 	f, err := os.Open(s.airFile)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to open airports data file: %v", err)
@@ -613,23 +581,25 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	}
 
 	// Now get the map
-	l, err := s.getMap(ctx, loc)
+	if err := s.addMap(ctx, &loc); err != nil {
+		return nil, fmt.Errorf("Unable to add map to response: %w", err)
+	}
 
 	// update cache
-	s.updateLocationCache(r.GetAirport(), *l)
+	s.updateLocationCache(r.GetAirport(), loc)
 
-	return l, nil
+	return &loc, nil
 }
 
-func getLocation(loc string, file *os.File) (*pb.LocationResponse, error) {
+func getLocation(loc string, file *os.File) (pb.LocationResponse, error) {
 	records, err := csv.NewReader(file).ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse csv file: %v", err)
+		return pb.LocationResponse{}, fmt.Errorf("unable to parse csv file: %v", err)
 	}
 
 	for _, row := range records {
 		if row[4] == loc {
-			return &pb.LocationResponse{
+			return pb.LocationResponse{
 				City:    row[2],
 				Country: row[3],
 				Lat:     row[6],
@@ -638,7 +608,7 @@ func getLocation(loc string, file *os.File) (*pb.LocationResponse, error) {
 		}
 
 	}
-	return nil, fmt.Errorf("unable to find airport code %s in the records", loc)
+	return pb.LocationResponse{}, fmt.Errorf("unable to find airport code %s in the records", loc)
 }
 
 // warmCache will fill the cache with the most common ingress points.
@@ -655,18 +625,18 @@ func (s *server) warmCache() {
 
 // Map adds an image from Google Maps of the co-ordinates and then updates
 // the location response with a base64 encoded version of the image.
-func (s *server) getMap(ctx context.Context, r *pb.LocationResponse) (*pb.LocationResponse, error) {
+func (s *server) addMap(ctx context.Context, r *pb.LocationResponse) error {
 	// check local cache first
 	cor := fmt.Sprintf("%s%s", r.GetLat(), r.GetLong())
 	cmap, ok := s.checkMapCache(cor)
 	if ok {
 		r.Image = cmap
-		return r, nil
+		return nil
 	}
 	// get the map and encode
 	c, err := maps.NewClient(maps.WithAPIKey(s.mapi))
 	if err != nil {
-		return r, err
+		return err
 	}
 	req := maps.StaticMapRequest{
 		Center: fmt.Sprintf("%s,%s", r.GetLat(), r.GetLong()),
@@ -676,7 +646,7 @@ func (s *server) getMap(ctx context.Context, r *pb.LocationResponse) (*pb.Locati
 	}
 	img, err := c.StaticMap(ctx, &req)
 	if err != nil {
-		return r, err
+		return err
 	}
 	buffer := new(bytes.Buffer)
 	png.Encode(buffer, img)
@@ -688,5 +658,5 @@ func (s *server) getMap(ctx context.Context, r *pb.LocationResponse) (*pb.Locati
 
 	r.Image = rmap
 
-	return r, nil
+	return nil
 }

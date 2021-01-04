@@ -5,25 +5,15 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
 )
 
 func getServer() server {
 	return server{
-		mu: &sync.RWMutex{},
-		cache: cache{
-			totalCache:   totalsAge{},
-			asNameCache:  make(map[uint32]asnAge),
-			sourcedCache: make(map[uint32]sourcedAge),
-			routeCache:   make(map[string]routeAge),
-			originCache:  make(map[string]originAge),
-			aspathCache:  make(map[string]aspathAge),
-			roaCache:     make(map[string]roaAge),
-			locCache:     make(map[string]locAge),
-			mapCache:     make(map[string]mapAge),
-			invCache:     invAge{},
-		},
+		mu:    &sync.RWMutex{},
+		cache: getNewCache(),
 	}
 }
 
@@ -178,6 +168,13 @@ func BenchmarkUpdateInvalidsCache(b *testing.B) {
 func TestInvalidsCache(t *testing.T) {
 	srv := getServer()
 
+	// check empty cache
+	cache, ok := srv.checkInvalidsCache("0")
+	if ok {
+		t.Errorf("expected empty cache, but got %+v", cache)
+	}
+
+	// Add items to cache
 	invalid1 := pb.InvalidOriginator{Asn: "1", Ip: []string{"1.2.3.0/24", "11.1.0.0/16"}}
 	invalid2 := pb.InvalidOriginator{Asn: "2", Ip: []string{"4.5.6.0/24", "12.1.0.0/16"}}
 	invalid3 := pb.InvalidOriginator{Asn: "3", Ip: []string{"7.8.9.0/24", "13.1.0.0/16"}}
@@ -185,7 +182,9 @@ func TestInvalidsCache(t *testing.T) {
 	invalids := pb.InvalidResponse{
 		Asn: []*pb.InvalidOriginator{
 			&invalid1, &invalid2, &invalid3,
-		}}
+		},
+		CacheTime: uint64(time.Now().Unix()),
+	}
 
 	srv.updateInvalidsCache(invalids)
 
@@ -197,28 +196,95 @@ func TestInvalidsCache(t *testing.T) {
 
 	// Make sure retrived full cache is the same
 	if !reflect.DeepEqual(got, invalids) {
-		t.Errorf("Received entry not the same")
+		t.Errorf("Received entry not the same. got %+v, expected %+v", got, invalids)
 	}
 
 	// Ensure checking cache for a single existing ASN works
 	for i, v := range invalids.GetAsn() {
-		got, ok := srv.checkInvalidsCache(fmt.Sprint(i + 1))
-		if !ok {
-			t.Errorf("Cache missing for item #%d", i)
-		}
-		want := pb.InvalidResponse{Asn: []*pb.InvalidOriginator{v}}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("got: %+v, but wanted: %+v", got, want)
-		}
+		t.Run(fmt.Sprintf("AS%s", v.GetAsn()), func(t *testing.T) {
+			cache, ok := srv.checkInvalidsCache(fmt.Sprint(i + 1))
+			if !ok {
+				t.Errorf("Cache missing for item #%d", i+1)
+			}
+			want := pb.InvalidResponse{Asn: []*pb.InvalidOriginator{v}}
+			if !reflect.DeepEqual(cache, want) {
+				t.Errorf("got: %+v, but wanted: %+v", got, want)
+			}
+		})
 	}
 
 	// Ensure checking cache for a non-existing ASN returns empty
 	got, ok = srv.checkInvalidsCache("100")
-	if ok {
-		t.Errorf("Cache should be empty, but it's not")
+	if !ok {
+		// Cache should exist, but be empty for ASN 100
+		t.Errorf("Cache should exist, but got no cache back")
 	}
 	if !reflect.DeepEqual(got, pb.InvalidResponse{}) {
 		t.Errorf("Should be empty, but got: %+v", got)
+	}
+
+}
+
+func TestTotalCache(t *testing.T) {
+	srv := getServer()
+
+	// check an empty cache
+	cache, ok := srv.checkTotalCache()
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache")
+	}
+
+	// insert totals into the cache
+	totals := pb.TotalResponse{
+		Active_4: 1000,
+		Active_6: 500,
+		Time:     uint64(time.Now().Unix()),
+	}
+
+	srv.updateTotalCache(totals)
+
+	// cache should exist
+	cache, ok = srv.checkTotalCache()
+	if !ok {
+		t.Errorf("should be a totals cache entry, but none found")
+	}
+	if !reflect.DeepEqual(cache, totals) {
+		t.Errorf("got %#v from the cache, but expected %#v", cache, totals)
+	}
+
+}
+
+func TestOriginCache(t *testing.T) {
+	srv := getServer()
+
+	// check an empty cache
+	cache, ok := srv.checkOriginCache("192.168.0.0")
+	if ok {
+		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
+	}
+
+	// Fill cache and check
+	t.Parallel()
+	var i uint32
+	for i = 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("AS%d", i), func(t *testing.T) {
+			now := uint64(time.Now().Unix())
+			resp := pb.OriginResponse{
+				OriginAsn: i,
+				Exists:    true,
+				CacheTime: now,
+			}
+			ip := fmt.Sprintf("192.168.%d.0", i)
+			srv.updateOriginCache(ip, resp)
+			cache, ok := srv.checkOriginCache(ip)
+			if !ok {
+				t.Error("cache entry expected, but none found")
+			}
+			if !reflect.DeepEqual(cache, resp) {
+				t.Errorf("got %+v, wanted %+v", cache, resp)
+			}
+
+		})
 	}
 
 }

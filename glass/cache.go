@@ -62,8 +62,8 @@ type cache struct {
 }
 
 type asnAge struct {
-	name, loc string
-	age       time.Time
+	asn pb.AsnameResponse
+	age time.Time
 }
 
 type totalsAge struct {
@@ -77,19 +77,18 @@ type invAge struct {
 }
 
 type roaAge struct {
-	roa *pb.RoaResponse
+	roa pb.RoaResponse
 	age time.Time
 }
 
 type aspathAge struct {
-	asn []*pb.Asn
-	set []*pb.Asn
-	age time.Time
+	path pb.AspathResponse
+	age  time.Time
 }
 
 type routeAge struct {
-	subnet pb.IpAddress
-	age    time.Time
+	rr  pb.RouteResponse
+	age time.Time
 }
 
 type originAge struct {
@@ -98,10 +97,8 @@ type originAge struct {
 }
 
 type sourcedAge struct {
-	prefixes []*pb.IpAddress
-	v4       uint32
-	v6       uint32
-	age      time.Time
+	sr  pb.SourceResponse
+	age time.Time
 }
 
 type locAge struct {
@@ -130,7 +127,7 @@ func getNewCache() cache {
 }
 
 // checkTotalCache will check the local cache.
-func (s *server) checkTotalCache() bool {
+func (s *server) checkTotalCache() (pb.TotalResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("Check cache for Totals")
@@ -138,31 +135,32 @@ func (s *server) checkTotalCache() bool {
 	// If cache entry exists, return true only if the cache entry is still valid.
 	if !reflect.DeepEqual(s.totalCache, totalsAge{}) {
 		log.Printf("Returning cache total if timers is still valid")
-		return time.Since(s.totalCache.age) < maxAge[itotal]
+		if time.Since(s.totalCache.age) < maxAge[itotal] {
+			return s.totalCache.tot, true
+		}
 	}
 
-	return false
+	return pb.TotalResponse{}, false
 }
 
 // updateTotalCache will update the local cache.
-func (s *server) updateTotalCache(t *pb.TotalResponse) {
+func (s *server) updateTotalCache(t pb.TotalResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log.Printf("Updating cache for Totals")
 
 	s.totalCache = totalsAge{
-		tot: *t,
+		tot: t,
 		age: time.Now(),
 	}
 }
 
 // checkOriginCache will return an origin uint32 that matches a previous origin check
 // if it's still within maxAge.
-func (s *server) checkOriginCache(r *pb.OriginRequest) (*pb.OriginResponse, bool) {
+func (s *server) checkOriginCache(ip string) (pb.OriginResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	ip := r.GetIpAddress().GetAddress()
 	log.Printf("Check origin cache for %s", ip)
 
 	val, ok := s.originCache[ip]
@@ -172,28 +170,24 @@ func (s *server) checkOriginCache(r *pb.OriginRequest) (*pb.OriginResponse, bool
 		log.Printf("cache entry exists for %s", ip)
 		if time.Since(val.age) < maxAge[iorigin] {
 			log.Printf("cache hit for origin entry for %s", ip)
-			return &val.origin, ok
+			return val.origin, ok
 		}
 		log.Printf("cache miss for origin %s", ip)
 	}
-	if !ok {
-		log.Printf("cache miss for origin %s", ip)
-	}
-	return nil, false
+
+	return pb.OriginResponse{}, false
 }
 
 // TODO: ideally origin cache should contain the entire subnet, not just IP.
 // Will need to re-do how I have this data
-func (s *server) updateOriginCache(req *pb.OriginRequest, res *pb.OriginResponse) {
+func (s *server) updateOriginCache(ip string, res pb.OriginResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	ip := req.GetIpAddress().GetAddress()
 
 	log.Printf("Adding %s to the origin cache", ip)
 
 	s.originCache[ip] = originAge{
-		origin: *res,
+		origin: res,
 		age:    time.Now(),
 	}
 }
@@ -247,7 +241,7 @@ func (s *server) updateInvalidsCache(t pb.InvalidResponse) {
 // checkASPathCache returns two lists of ASNs. The first if the regular as-path
 // while the second represents an as-set, if it exists.
 // TODO: ideally origin cache should contain the entire subnet, not just IP.
-func (s *server) checkASPathCache(ip string) ([]*pb.Asn, []*pb.Asn, bool) {
+func (s *server) checkASPathCache(ip string) (pb.AspathResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("Check as-path cache for %s", ip)
@@ -259,32 +253,31 @@ func (s *server) checkASPathCache(ip string) ([]*pb.Asn, []*pb.Asn, bool) {
 		log.Printf("as-path cache entry exists for %s", ip)
 		if time.Since(val.age) < maxAge[iaspath] {
 			log.Printf("as-path cache hit for %s", ip)
-			return val.asn, val.set, ok
+			return val.path, ok
 		}
 		log.Printf("as-path cache entry too old for %s", ip)
 	}
 	if !ok {
 		log.Printf("as-path cache entry does not exist for %s", ip)
 	}
-	return nil, nil, false
+	return pb.AspathResponse{}, false
 }
 
-func (s *server) updateASPathCache(ip net.IP, asn []*pb.Asn, set []*pb.Asn) {
+func (s *server) updateASPathCache(ip net.IP, path pb.AspathResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log.Printf("adding %s to the as-path cache", ip.String())
 
 	s.aspathCache[ip.String()] = aspathAge{
-		asn: asn,
-		set: set,
-		age: time.Now(),
+		path: path,
+		age:  time.Now(),
 	}
 }
 
 // checkROACache will return any cached ROA entry.
 // TODO: Again, this should be based on subnet...
-func (s *server) checkROACache(ipnet *net.IPNet) (*pb.RoaResponse, bool) {
+func (s *server) checkROACache(ipnet *net.IPNet) (pb.RoaResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("Check ROA cache for %s", ipnet.String())
@@ -302,10 +295,10 @@ func (s *server) checkROACache(ipnet *net.IPNet) (*pb.RoaResponse, bool) {
 	if !ok {
 		log.Printf("roa cache entry does not exist for %s", ipnet.String())
 	}
-	return nil, false
+	return pb.RoaResponse{}, false
 }
 
-func (s *server) updateROACache(ipnet *net.IPNet, roa *pb.RoaResponse) {
+func (s *server) updateROACache(ipnet *net.IPNet, roa pb.RoaResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -319,7 +312,7 @@ func (s *server) updateROACache(ipnet *net.IPNet, roa *pb.RoaResponse) {
 
 // checkRouteCache will return an ipnet that matches a previous route check
 // if it's still within maxAge.
-func (s *server) checkRouteCache(ip string) (pb.IpAddress, bool) {
+func (s *server) checkRouteCache(ip string) (pb.RouteResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("Check route cache for %s", ip)
@@ -331,7 +324,7 @@ func (s *server) checkRouteCache(ip string) (pb.IpAddress, bool) {
 		log.Printf("cache entry exists for %s", ip)
 		if time.Since(val.age) < maxAge[iroute] {
 			log.Printf("cache hit for route entry for %s", ip)
-			return val.subnet, ok
+			return val.rr, ok
 		}
 		log.Printf("cache miss for route %s", ip)
 	}
@@ -339,18 +332,18 @@ func (s *server) checkRouteCache(ip string) (pb.IpAddress, bool) {
 		log.Printf("cache miss for route %s", ip)
 	}
 
-	return pb.IpAddress{}, false
+	return pb.RouteResponse{}, false
 }
 
-func (s *server) updateRouteCache(ip net.IP, subnet *pb.IpAddress) {
+func (s *server) updateRouteCache(ip net.IP, rr pb.RouteResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log.Printf("Adding %s to the route cache", ip.String())
 
 	s.routeCache[ip.String()] = routeAge{
-		subnet: *subnet,
-		age:    time.Now(),
+		rr:  rr,
+		age: time.Now(),
 	}
 }
 
@@ -426,43 +419,42 @@ func (s *server) updateMapCache(coordinates string, imap string) {
 
 // checkASNCache will check the local cache.
 // Only returns the cache entry if it's within the maxAge timer.
-func (s *server) checkASNCache(asn uint32) (string, string, bool) {
+func (s *server) checkASNCache(asnum uint32) (pb.AsnameResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	log.Printf("check ASN cache for AS%d", asn)
+	log.Printf("check ASN cache for AS%d", asnum)
 
-	val, ok := s.asNameCache[asn]
+	val, ok := s.asNameCache[asnum]
 
 	// Only return cache value if it's within the max age
 	if ok {
-		log.Printf("cache entry exists for AS%d", asn)
+		log.Printf("cache entry exists for AS%d", asnum)
 		if time.Since(val.age) < maxAge[iasn] {
-			log.Printf("cache hit for AS%d", asn)
-			return val.name, val.loc, ok
+			log.Printf("cache hit for AS%d", asnum)
+			return val.asn, ok
 		}
-		log.Printf("cache miss for AS%d", asn)
+		log.Printf("cache miss for AS%d", asnum)
 	}
 	if !ok {
-		log.Printf("cache miss for AS%d", asn)
+		log.Printf("cache miss for AS%d", asnum)
 	}
 
-	return "", "", false
+	return pb.AsnameResponse{}, false
 }
 
-func (s *server) updateASNCache(name, loc string, as uint32) {
+func (s *server) updateASNCache(asnum uint32, asr pb.AsnameResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("Adding AS%d: %s to the cache", as, name)
-	s.asNameCache[as] = asnAge{
-		name: name,
-		loc:  loc,
-		age:  time.Now(),
+	log.Printf("Adding AS%d: %q to the cache", asnum, asr.GetAsName())
+	s.asNameCache[asnum] = asnAge{
+		asn: asr,
+		age: time.Now(),
 	}
 
 }
 
-func (s *server) checkSourcedCache(asn uint32) (*sourcedAge, bool) {
+func (s *server) checkSourcedCache(asn uint32) (pb.SourceResponse, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -474,7 +466,7 @@ func (s *server) checkSourcedCache(asn uint32) (*sourcedAge, bool) {
 		log.Printf("Cache entry exists for AS%d", asn)
 		if time.Since(val.age) < maxAge[isourced] {
 			log.Printf("Cache hit for AS%d", asn)
-			return &val, ok
+			return val.sr, ok
 		}
 		log.Printf("Cache miss for AS%d", asn)
 	}
@@ -483,20 +475,18 @@ func (s *server) checkSourcedCache(asn uint32) (*sourcedAge, bool) {
 		log.Printf("Cache miss for AS%d", asn)
 	}
 
-	return nil, false
+	return pb.SourceResponse{}, false
 }
 
-func (s *server) updateSourcedCache(prefixes []*pb.IpAddress, v4, v6, asn uint32) {
+func (s *server) updateSourcedCache(asn uint32, sr pb.SourceResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	log.Printf("Updating cache for IPs sourced from %d", asn)
 
 	s.sourcedCache[asn] = sourcedAge{
-		prefixes: prefixes,
-		v4:       v4,
-		v6:       v6,
-		age:      time.Now(),
+		sr:  sr,
+		age: time.Now(),
 	}
 
 }
