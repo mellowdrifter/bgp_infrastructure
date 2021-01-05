@@ -495,6 +495,7 @@ func (s *server) updateSourcedCache(asn uint32, sr pb.SourceResponse) {
 func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, count map[int]int) {
 	for {
 		time.Sleep(sleep)
+		log.Println("***")
 		log.Printf("Clearing old cache entries")
 		s.mu.Lock()
 
@@ -509,6 +510,7 @@ func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, coun
 			log.Printf("AS name cache full, purging...")
 			s.asNameCache = make(map[uint32]asnAge)
 		}
+		log.Printf("asn cache is now length %d", len(s.asNameCache))
 
 		// sourced cache
 		log.Printf("sourced cache is currently length %d", len(s.sourcedCache))
@@ -522,6 +524,7 @@ func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, coun
 			log.Printf("sourced cache full, purging...")
 			s.sourcedCache = make(map[uint32]sourcedAge)
 		}
+		log.Printf("sourced cache is now length %d", len(s.sourcedCache))
 
 		// route cache
 		log.Printf("route cache is currently length %d", len(s.routeCache))
@@ -608,5 +611,6 @@ func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, coun
 
 		s.mu.Unlock()
 		log.Printf("cache cleared")
+		log.Println("***")
 	}
 }

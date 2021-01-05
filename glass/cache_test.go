@@ -556,3 +556,53 @@ func TestSourcedCache(t *testing.T) {
 	}
 
 }
+
+func TestClearCache(t *testing.T) {
+	srv := getServer()
+
+	// Much shortened for testing
+	tAge := map[int]time.Duration{
+		iasn:      time.Millisecond * 500,
+		isourced:  time.Minute * 1,
+		iroute:    time.Minute * 1,
+		iorigin:   time.Minute * 1,
+		iaspath:   time.Minute * 1,
+		iroa:      time.Minute * 1,
+		ilocation: time.Minute * 1,
+		imap:      time.Minute * 1,
+		itotal:    time.Minute * 1,
+		iinvalids: time.Minute * 1,
+	}
+	tCache := map[int]int{
+		iasn:      10,
+		isourced:  10,
+		iroute:    10,
+		iorigin:   10,
+		iaspath:   10,
+		iroa:      10,
+		ilocation: 10,
+		imap:      30,
+	}
+
+	// Inject into the cache
+	srv.updateASNCache(1, pb.AsnameResponse{AsName: "test"})
+
+	// clearCache will run every 100 milliseconds
+	sleepTimer := 100 * time.Millisecond
+	go srv.clearCache(sleepTimer, tAge, tCache)
+
+	// Cache entry should still be live
+	time.Sleep(time.Millisecond * 200)
+	_, ok := srv.checkASNCache(1)
+	if !ok {
+		t.Errorf("expected cache entry to still be there, but none found")
+	}
+
+	// After 1 second, cache entry should be gone
+	time.Sleep(1 * time.Second)
+	_, ok = srv.checkASNCache(1)
+	if ok {
+		t.Errorf("expected cache entry to be gone, but was still there")
+	}
+
+}
