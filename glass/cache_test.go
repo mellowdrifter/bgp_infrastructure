@@ -151,20 +151,20 @@ func TestMapCache(t *testing.T) {
 }*/
 
 func BenchmarkUpdateInvalidsCache(b *testing.B) {
-	//t.Parallel()
+	// t.Parallel()
 	srv := getServer()
 
 	invalids := pb.InvalidResponse{
 		Asn: []*pb.InvalidOriginator{
 			{Asn: "3356", Ip: []string{"1.2.3.0/24", "12.1.0.0/16"}},
 			{Asn: "1", Ip: []string{"4.5.6.0/24", "13.1.0.0/16"}},
-			{Asn: "2", Ip: []string{"5.6.7.0/24", "14.1.0.0/16"}}},
+			{Asn: "2", Ip: []string{"5.6.7.0/24", "14.1.0.0/16"}},
+		},
 	}
 
 	for i := 0; i < b.N; i++ {
 		srv.updateInvalidsCache(invalids)
 	}
-
 }
 
 func TestInvalidsCache(t *testing.T) {
@@ -224,7 +224,6 @@ func TestInvalidsCache(t *testing.T) {
 	if !reflect.DeepEqual(got, pb.InvalidResponse{}) {
 		t.Errorf("Should be empty, but got: %+v", got)
 	}
-
 }
 
 func TestTotalCache(t *testing.T) {
@@ -253,7 +252,6 @@ func TestTotalCache(t *testing.T) {
 	if !reflect.DeepEqual(cache, totals) {
 		t.Errorf("got %#v from the cache, but expected %#v", cache, totals)
 	}
-
 }
 
 func TestOriginCache(t *testing.T) {
@@ -285,10 +283,8 @@ func TestOriginCache(t *testing.T) {
 			if !reflect.DeepEqual(cache, resp) {
 				t.Errorf("got %+v, wanted %+v", cache, resp)
 			}
-
 		})
 	}
-
 }
 
 func TestASPathCache(t *testing.T) {
@@ -340,7 +336,6 @@ func TestASPathCache(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestROACache(t *testing.T) {
@@ -474,7 +469,6 @@ func TestMapCache(t *testing.T) {
 	if len(srv.mapCache) != 100 {
 		t.Errorf("expected a mapcache length of %d, but actual length is %d", 100, len(srv.mapCache))
 	}
-
 }
 
 func TestASNCache(t *testing.T) {
@@ -554,7 +548,6 @@ func TestSourcedCache(t *testing.T) {
 	if len(srv.sourcedCache) != 100 {
 		t.Errorf("expected a namecache length of %d, but actual length is %d", 100, len(srv.sourcedCache))
 	}
-
 }
 
 func TestClearCache(t *testing.T) {
@@ -604,5 +597,4 @@ func TestClearCache(t *testing.T) {
 	if ok {
 		t.Errorf("expected cache entry to be gone, but was still there")
 	}
-
 }

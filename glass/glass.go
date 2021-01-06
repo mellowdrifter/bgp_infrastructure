@@ -39,18 +39,16 @@ type server struct {
 	cache
 }
 
-var (
-	// commonPops are the most used ingress points.
-	commonPops = []string{
-		"AMS",
-		"CDG",
-		"FRA",
-		"IAD",
-		"LHR",
-		"ORD",
-		"SEA",
-	}
-)
+// commonPops are the most used ingress points.
+var commonPops = []string{
+	"AMS",
+	"CDG",
+	"FRA",
+	"IAD",
+	"LHR",
+	"ORD",
+	"SEA",
+}
 
 func main() {
 	// load in config
@@ -118,12 +116,11 @@ func main() {
 	glassServer.warmCache()
 
 	grpcServer.Serve(lis)
-
 }
 
 func dialGRPC(srv string) (*grpc.ClientConn, error) {
 	// Set keepalive on the client
-	var kacp = keepalive.ClientParameters{
+	kacp := keepalive.ClientParameters{
 		Time:    10 * time.Second, // send pings every 10 seconds if there is no activity
 		Timeout: 3 * time.Second,  // wait 3 seconds for ping ack before considering the connection dead
 	}
@@ -154,7 +151,6 @@ func (s *server) TotalAsns(ctx context.Context, e *pb.Empty) (*pb.TotalAsnsRespo
 		As6Only: as.As6Only,
 		AsBoth:  as.AsBoth,
 	}, nil
-
 }
 
 // Origin will return the origin ASN for the active route.
@@ -228,6 +224,12 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 	// update the local cache
 	s.updateInvalidsCache(resp)
 
+	// Once cache updated and context cancelled, exit early
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is done, but still updated local cache")
+		return nil, nil
+	}
+
 	// an ASN query of zero means all ASNs.
 	if r.GetAsn() == "0" {
 		return &resp, nil
@@ -249,7 +251,6 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 
 	// The ASN queried has no invalids.
 	return &pb.InvalidResponse{}, nil
-
 }
 
 // Totals will return the current IPv4 and IPv6 FIB.
@@ -261,6 +262,12 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	cache, ok := s.checkTotalCache()
 	if ok {
 		return &cache, nil
+	}
+
+	// If context cancelled, exit early here
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is done, so exiting early")
+		return nil, nil
 	}
 
 	stub := bpb.NewBgpInfoClient(s.bsql)
@@ -310,7 +317,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	}
 
 	// Repackage into proto
-	var p = make([]*pb.Asn, 0, len(paths.Path))
+	p := make([]*pb.Asn, 0, len(paths.Path))
 	for _, v := range paths.Path {
 		p = append(p, &pb.Asn{
 			Asplain: v,
@@ -318,7 +325,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 		})
 	}
 
-	var set = make([]*pb.Asn, 0, len(paths.Set))
+	set := make([]*pb.Asn, 0, len(paths.Set))
 	for _, v := range paths.Set {
 		set = append(set, &pb.Asn{
 			Asplain: v,
@@ -337,7 +344,6 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 	s.updateASPathCache(ip, resp)
 
 	return &resp, nil
-
 }
 
 // Route returns the primary active RIB entry for the requested IP.
@@ -385,7 +391,7 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 // Asname will return the registered name of the ASN. As this isn't in bird directly, will need
 // to speak to bgpsql to get information from the database.
 func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
-	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	// return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Printf("Running Asname")
 
 	// check local cache first
@@ -414,7 +420,6 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	s.updateASNCache(r.GetAsNumber(), resp)
 
 	return &resp, nil
-
 }
 
 // Roa will check the ROA status of a prefix.
@@ -433,11 +438,19 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 		log.Printf("Error: %v", err)
 		return &pb.RoaResponse{}, err
 	}
+
 	// TODO: Not sure if I should check cache before?
 	// or getroute should be cached itself
 	if !exists {
 		return &pb.RoaResponse{}, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
 	}
+
+	// If context cancelled, exit early here
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is cancelled, exiting early")
+		return nil, nil
+	}
+
 	// Only check the origin now.
 	origin, err := s.Origin(ctx, &pb.OriginRequest{IpAddress: r.IpAddress})
 	if err != nil {
@@ -449,6 +462,12 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	roa, ok := s.checkROACache(ipnet)
 	if ok {
 		return &roa, nil
+	}
+
+	// If context cancelled, exit early here
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is cancelled, exiting early")
+		return nil, nil
 	}
 
 	status, exists, err := s.router.GetROA(ipnet, origin.GetOriginAsn())
@@ -494,6 +513,12 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 		return &cache, nil
 	}
 
+	// If context cancelled, exit early here
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is cancelled, exiting early")
+		return nil, nil
+	}
+
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
 		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv4 from source: %w", err)
@@ -507,7 +532,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 		return &pb.SourceResponse{}, nil
 	}
 
-	var prefixes = make([]*pb.IpAddress, 0, len(v4)+len(v6))
+	prefixes := make([]*pb.IpAddress, 0, len(v4)+len(v6))
 	for _, v := range v4 {
 		mask, _ := v.Mask.Size()
 		prefixes = append(prefixes, &pb.IpAddress{
@@ -567,6 +592,12 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 		return &cache, nil
 	}
 
+	// If context cancelled, exit early here
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is cancelled, exiting early")
+		return nil, nil
+	}
+
 	// TODO: Keep having to open this file. How much memory would it use?
 	f, err := os.Open(s.airFile)
 	if err != nil {
@@ -578,6 +609,12 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	loc, err := getLocation(r.GetAirport(), f)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine location: %v", err)
+	}
+
+	// If context cancelled, exit early here
+	if ctx.Err() == context.Canceled {
+		log.Println("Context is cancelled, exiting early")
+		return nil, nil
 	}
 
 	// Now get the map
@@ -606,7 +643,6 @@ func getLocation(loc string, file *os.File) (pb.LocationResponse, error) {
 				Long:    row[7],
 			}, nil
 		}
-
 	}
 	return pb.LocationResponse{}, fmt.Errorf("unable to find airport code %s in the records", loc)
 }

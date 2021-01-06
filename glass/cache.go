@@ -452,7 +452,6 @@ func (s *server) updateASNCache(asnum uint32, asr pb.AsnameResponse) {
 		asn: asr,
 		age: time.Now(),
 	}
-
 }
 
 func (s *server) checkSourcedCache(asn uint32) (pb.SourceResponse, bool) {
@@ -489,7 +488,6 @@ func (s *server) updateSourcedCache(asn uint32, sr pb.SourceResponse) {
 		sr:  sr,
 		age: time.Now(),
 	}
-
 }
 
 func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, count map[int]int) {
@@ -517,7 +515,6 @@ func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, coun
 		for key, val := range s.sourcedCache {
 			if time.Since(val.age) > age[isourced] {
 				delete(s.sourcedCache, key)
-
 			}
 		}
 		if len(s.sourcedCache) > count[isourced] {
