@@ -442,7 +442,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	// TODO: Not sure if I should check cache before?
 	// or getroute should be cached itself
 	if !exists {
-		return &pb.RoaResponse{}, fmt.Errorf("No route exists for %s, so unable to check ROA status", ip.String())
+		return &pb.RoaResponse{}, nil
 	}
 
 	// If context cancelled, exit early here
