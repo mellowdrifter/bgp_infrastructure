@@ -59,7 +59,6 @@ func (b Bird2Conn) GetPeers() (Peers, error) {
 	p.V6e = peers[3]
 
 	return p, nil
-
 }
 
 // GetTotalSourceASNs returns total amount of unique ASNs
@@ -110,7 +109,6 @@ func (b Bird2Conn) GetTotalSourceASNs() (ASNs, error) {
 	s.AsBoth = uint32(len(asBoth))
 
 	return s, nil
-
 }
 
 // GetROAs returns total amount of all ROA states
@@ -142,14 +140,12 @@ func (b Bird2Conn) GetROAs() (Roas, error) {
 	r.V6u = roas[5]
 
 	return r, nil
-
 }
 
 // GetInvalids returns a map of ASNs that are advertising RPKI invalid prefixes.
 // It also includes all those prefixes being advertised.
 func (b Bird2Conn) GetInvalids() (map[string][]string, error) {
-
-	var inv = make(map[string][]string)
+	inv := make(map[string][]string)
 	cmds := []string{
 		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'} | tr -d '[]ASie?'",
 		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'} | tr -d '[]ASie?'",
@@ -229,7 +225,6 @@ func (b Bird2Conn) GetLargeCommunities() (Large, error) {
 
 // GetIPv4FromSource returns all the IPv4 networks sourced from a source ASN.
 func (b Bird2Conn) GetIPv4FromSource(asn uint32) ([]*net.IPNet, error) {
-
 	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master4 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", asn)
 	out, err := c.GetOutput(cmd)
 	if err != nil {
@@ -248,7 +243,6 @@ func (b Bird2Conn) GetIPv4FromSource(asn uint32) ([]*net.IPNet, error) {
 
 // GetIPv6FromSource returns all the IPv6 networks sourced from a source ASN.
 func (b Bird2Conn) GetIPv6FromSource(asn uint32) ([]*net.IPNet, error) {
-
 	cmd := fmt.Sprintf("/usr/sbin/birdc 'show route primary table master6 where bgp_path ~ [= * %d =]' | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $1}'", asn)
 	out, err := c.GetOutput(cmd)
 	if err != nil {
@@ -285,7 +279,6 @@ func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 	aspath.Set = set
 
 	return aspath, true, nil
-
 }
 
 // decodeASPaths will return a slice of AS & AS-Sets from a string as-path output.
@@ -330,13 +323,11 @@ func (b Bird2Conn) GetRoute(ip net.IP) (*net.IPNet, bool, error) {
 	}
 
 	return net, true, nil
-
 }
 
 // GetOriginFromIP will return the origin ASN from a source IP.
 func (b Bird2Conn) GetOriginFromIP(ip net.IP) (uint32, bool, error) {
-
-	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | awk '{print $NF}'", ip.String())
+	cmd := fmt.Sprintf("/usr/sbin/birdc show route primary all for %s | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep as_path | sed 's/{.*}//' | awk {'print $NF'}", ip.String())
 	out, err := c.GetOutput(cmd)
 	if err != nil {
 		return 0, false, err
@@ -354,7 +345,6 @@ func (b Bird2Conn) GetOriginFromIP(ip net.IP) (uint32, bool, error) {
 	}
 
 	return uint32(source), true, nil
-
 }
 
 // GetROA will return the ROA status from a prefix and ASN.

@@ -6,7 +6,7 @@ import (
 )
 
 func TestDecodeASPaths(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		Name     string
 		path     string
 		wantPath []uint32
@@ -48,7 +48,7 @@ func TestDecodeASPaths(t *testing.T) {
 }
 
 func BenchmarkDecodeASPaths(b *testing.B) {
-	var tests = []struct {
+	tests := []struct {
 		Name     string
 		path     string
 		wantPath []uint32
