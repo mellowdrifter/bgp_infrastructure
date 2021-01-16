@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"image/png"
 	"log"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"googlemaps.github.io/maps"
 
 	"google.golang.org/grpc/keepalive"
@@ -153,13 +153,20 @@ func (s *server) TotalAsns(ctx context.Context, e *pb.Empty) (*pb.TotalAsnsRespo
 	}, nil
 }
 
+func getTracerFromContext(ctx context.Context) string {
+	tracer, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	return tracer.Get("id")[0]
+}
+
 // Origin will return the origin ASN for the active route.
 func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginResponse, error) {
 	log.Printf("Running Origin")
 
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
-		log.Printf("Error: %v", err)
 		return &pb.OriginResponse{}, err
 	}
 
@@ -171,6 +178,7 @@ func (s *server) Origin(ctx context.Context, r *pb.OriginRequest) (*pb.OriginRes
 
 	origin, exists, err := s.router.GetOriginFromIP(ip)
 	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.OriginResponse{}, err
 	}
 
@@ -204,7 +212,7 @@ func (s *server) Invalids(ctx context.Context, r *pb.InvalidsRequest) (*pb.Inval
 
 	inv, err := s.router.GetInvalids()
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.InvalidResponse{}, err
 	}
 
@@ -295,7 +303,6 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
-		log.Printf("Error: %v", err)
 		return &pb.AspathResponse{}, err
 	}
 
@@ -307,7 +314,7 @@ func (s *server) Aspath(ctx context.Context, r *pb.AspathRequest) (*pb.AspathRes
 
 	paths, exists, err := s.router.GetASPathFromIP(ip)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.AspathResponse{}, err
 	}
 
@@ -352,7 +359,7 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
-		return &pb.RouteResponse{}, errors.New("Unable to validate IP")
+		return &pb.RouteResponse{}, err
 	}
 
 	// check local cache first
@@ -363,7 +370,7 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 
 	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.RouteResponse{}, err
 	}
 	if !exists {
@@ -405,6 +412,7 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	stub := bpb.NewBgpInfoClient(s.bsql)
 	name, err := stub.GetAsname(ctx, &number)
 	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		s.handleUnavailableRPC(err)
 		return &pb.AsnameResponse{}, err
 	}
@@ -428,14 +436,13 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 
 	ip, err := com.ValidateIP(r.GetIpAddress().GetAddress())
 	if err != nil {
-		log.Printf("Error: %v", err)
 		return &pb.RoaResponse{}, err
 	}
 
 	// In oder to check ROA, I first need the FIB entry as well as the current source ASN.
 	ipnet, exists, err := s.router.GetRoute(ip)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.RoaResponse{}, err
 	}
 
@@ -454,7 +461,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	// Only check the origin now.
 	origin, err := s.Origin(ctx, &pb.OriginRequest{IpAddress: r.IpAddress})
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.RoaResponse{}, err
 	}
 
@@ -472,7 +479,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 
 	status, exists, err := s.router.GetROA(ipnet, origin.GetOriginAsn())
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.RoaResponse{}, err
 	}
 
@@ -521,10 +528,12 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv4 from source: %w", err)
 	}
 	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
 	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv6 from source: %w", err)
 	}
 	// No prefixes will return empty, but no error
@@ -568,8 +577,7 @@ func (s *server) handleUnavailableRPC(err error) {
 	defer s.mu.Unlock()
 	st, ok := status.FromError(err)
 	if !ok {
-		log.Println("RPC error, but not a status code")
-		log.Printf("Error is: %+v\n", err)
+		log.Printf("RPC error, but not a status code. Error if : %+v\n", err)
 	}
 	if st.Code() == codes.Unavailable {
 		log.Printf("Server not available")
@@ -608,6 +616,7 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	// Get location co-ordinates
 	loc, err := getLocation(r.GetAirport(), f)
 	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		return nil, fmt.Errorf("Unable to determine location: %v", err)
 	}
 
