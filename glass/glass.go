@@ -30,13 +30,21 @@ import (
 )
 
 type server struct {
-	router  cli.Decoder
-	mu      *sync.RWMutex
-	bsql    *grpc.ClientConn
-	bgprpc  string
-	airFile string
-	mapi    string
+	router   cli.Decoder
+	mu       *sync.RWMutex
+	bsql     *grpc.ClientConn
+	bgprpc   string
+	mapi     string
+	airports map[string]location
 	cache
+}
+
+// location holds the values for an airport code.
+type location struct {
+	city    string
+	country string
+	lat     string
+	long    string
 }
 
 // commonPops are the most used ingress points.
@@ -77,6 +85,11 @@ func main() {
 
 	daemon := cf.Section("local").Key("daemon").String()
 
+	airports, err := loadAirports(airFile)
+	if err != nil {
+		log.Panic(err)
+	}
+
 	var router cli.Decoder
 	switch daemon {
 	case "bird2":
@@ -93,13 +106,13 @@ func main() {
 	defer conn.Close()
 
 	glassServer := &server{
-		router:  router,
-		mu:      &sync.RWMutex{},
-		bsql:    conn,
-		bgprpc:  bgprpc,
-		airFile: airFile,
-		mapi:    mapi,
-		cache:   getNewCache(),
+		router:   router,
+		mu:       &sync.RWMutex{},
+		bsql:     conn,
+		bgprpc:   bgprpc,
+		mapi:     mapi,
+		airports: airports,
+		cache:    getNewCache(),
 	}
 
 	// set up gRPC server
@@ -118,6 +131,7 @@ func main() {
 	grpcServer.Serve(lis)
 }
 
+// TODO: Do these options even work? Check bgpstuff.net settings
 func dialGRPC(srv string) (*grpc.ClientConn, error) {
 	// Set keepalive on the client
 	kacp := keepalive.ClientParameters{
@@ -131,6 +145,31 @@ func dialGRPC(srv string) (*grpc.ClientConn, error) {
 		grpc.WithInsecure(),
 		grpc.WithKeepaliveParams(kacp),
 	)
+}
+
+// loadAirports will read the airports.dat file and load into a map of location structs
+func loadAirports(airFile string) (map[string]location, error) {
+	f, err := os.Open(airFile)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to open airports data file: %v", err)
+	}
+	defer f.Close()
+
+	records, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse csv file: %v", err)
+	}
+
+	var locations = make(map[string]location)
+	for _, row := range records {
+		locations[row[4]] = location{
+			city:    row[2],
+			country: row[3],
+			lat:     row[6],
+			long:    row[7],
+		}
+	}
+	return locations, nil
 }
 
 // TotalAsns will return the total number of course ASNs.
@@ -603,27 +642,27 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	// If context cancelled, exit early here
 	if ctx.Err() == context.Canceled {
 		log.Println("Context is cancelled, exiting early")
-		return nil, nil
+		return &pb.LocationResponse{}, nil
 	}
-
-	// TODO: Keep having to open this file. How much memory would it use?
-	f, err := os.Open(s.airFile)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to open airports data file: %v", err)
-	}
-	defer f.Close()
 
 	// Get location co-ordinates
-	loc, err := getLocation(r.GetAirport(), f)
-	if err != nil {
-		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
-		return nil, fmt.Errorf("Unable to determine location: %v", err)
+	coor, ok := s.airports[r.GetAirport()]
+	if !ok {
+		return &pb.LocationResponse{}, fmt.Errorf("Unable to determine location for %s", r.GetAirport())
 	}
 
 	// If context cancelled, exit early here
 	if ctx.Err() == context.Canceled {
 		log.Println("Context is cancelled, exiting early")
-		return nil, nil
+		return &pb.LocationResponse{}, nil
+	}
+
+	// convert location data to proto message
+	loc := pb.LocationResponse{
+		City:    coor.city,
+		Country: coor.country,
+		Lat:     coor.lat,
+		Long:    coor.long,
 	}
 
 	// Now get the map
@@ -635,25 +674,6 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	s.updateLocationCache(r.GetAirport(), loc)
 
 	return &loc, nil
-}
-
-func getLocation(loc string, file *os.File) (pb.LocationResponse, error) {
-	records, err := csv.NewReader(file).ReadAll()
-	if err != nil {
-		return pb.LocationResponse{}, fmt.Errorf("unable to parse csv file: %v", err)
-	}
-
-	for _, row := range records {
-		if row[4] == loc {
-			return pb.LocationResponse{
-				City:    row[2],
-				Country: row[3],
-				Lat:     row[6],
-				Long:    row[7],
-			}, nil
-		}
-	}
-	return pb.LocationResponse{}, fmt.Errorf("unable to find airport code %s in the records", loc)
 }
 
 // warmCache will fill the cache with the most common ingress points.

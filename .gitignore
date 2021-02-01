@@ -18,3 +18,4 @@ tweeter/proto/bgpsql/bgpsql.proto
 tweeter/proto/bgpsql/bgpsql.pb.go
 grapher/.vscode/launch.json
 grapher/.vscode/tasks.json
+glass/gofumpt_v0.1.0_linux_amd64
