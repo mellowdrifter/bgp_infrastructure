@@ -66,5 +66,4 @@ func TestLoadAirports(t *testing.T) {
 			}
 		})
 	}
-
 }

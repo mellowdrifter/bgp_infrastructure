@@ -75,7 +75,7 @@ func main() {
 	mapi := cf.Section("local").Key("mapsAPI").String()
 
 	// Set up log file
-	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
@@ -160,7 +160,7 @@ func loadAirports(airFile string) (map[string]location, error) {
 		return nil, fmt.Errorf("unable to parse csv file: %v", err)
 	}
 
-	var locations = make(map[string]location)
+	locations := make(map[string]location)
 	for _, row := range records {
 		locations[row[4]] = location{
 			city:    row[2],
@@ -314,7 +314,7 @@ func (s *server) Totals(ctx context.Context, e *pb.Empty) (*pb.TotalResponse, er
 	// If context cancelled, exit early here
 	if ctx.Err() == context.Canceled {
 		log.Println("Context is done, so exiting early")
-		return nil, nil
+		return &pb.TotalResponse{}, nil
 	}
 
 	stub := bpb.NewBgpInfoClient(s.bsql)
@@ -494,7 +494,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	// If context cancelled, exit early here
 	if ctx.Err() == context.Canceled {
 		log.Println("Context is cancelled, exiting early")
-		return nil, nil
+		return &pb.RoaResponse{}, nil
 	}
 
 	// Only check the origin now.
@@ -513,7 +513,7 @@ func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, er
 	// If context cancelled, exit early here
 	if ctx.Err() == context.Canceled {
 		log.Println("Context is cancelled, exiting early")
-		return nil, nil
+		return &pb.RoaResponse{}, nil
 	}
 
 	status, exists, err := s.router.GetROA(ipnet, origin.GetOriginAsn())
@@ -562,7 +562,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 	// If context cancelled, exit early here
 	if ctx.Err() == context.Canceled {
 		log.Println("Context is cancelled, exiting early")
-		return nil, nil
+		return &pb.SourceResponse{}, nil
 	}
 
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
@@ -667,7 +667,7 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 
 	// Now get the map
 	if err := s.addMap(ctx, &loc); err != nil {
-		return nil, fmt.Errorf("Unable to add map to response: %w", err)
+		return &pb.LocationResponse{}, fmt.Errorf("Unable to add map to response: %w", err)
 	}
 
 	// update cache

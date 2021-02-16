@@ -116,12 +116,12 @@ func (b Bird2Conn) GetROAs() (Roas, error) {
 	var r Roas
 	var roas []uint32
 	cmds := []string{
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_VALID count' | sed -e '1d'",
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_INVALID count' | sed -e '1d'",
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_UNKNOWN count' | sed -e '1d'",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_VALID count' | sed -e '1d'",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_INVALID count' | sed -e '1d'",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_UNKNOWN count' | sed -e '1d'",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4) = ROA_VALID count' | sed -e '1d'",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4) = ROA_INVALID count' | sed -e '1d'",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4) = ROA_UNKNOWN count' | sed -e '1d'",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6) = ROA_VALID count' | sed -e '1d'",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6) = ROA_INVALID count' | sed -e '1d'",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6) = ROA_UNKNOWN count' | sed -e '1d'",
 	}
 
 	for _, cmd := range cmds {
@@ -149,8 +149,8 @@ func (b Bird2Conn) GetInvalids() (map[string][]string, error) {
 	inv := make(map[string][]string)
 	num := regexp.MustCompile(`[\d]+`)
 	cmds := []string{
-		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'}",
-		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6, net, bgp_path.last_nonaggregated) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'}",
+		"/usr/sbin/birdc 'show route primary table master4 where roa_check(roa_v4) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'}",
+		"/usr/sbin/birdc 'show route primary table master6 where roa_check(roa_v6) = ROA_INVALID' | sed -e '1,2d' | awk {'print $NF,$1'}",
 	}
 
 	for _, cmd := range cmds {
@@ -162,8 +162,10 @@ func (b Bird2Conn) GetInvalids() (map[string][]string, error) {
 		for _, v := range lines {
 			split := strings.Split(v, " ")
 			asn := num.FindString(split[0])
-			inv[asn] = append(inv[asn], split[1])
-
+			// Ignore invalids when bird doesn't show the source ASN (when AS-SET is used)
+			if asn != "" {
+				inv[asn] = append(inv[asn], split[1])
+			}
 		}
 	}
 
