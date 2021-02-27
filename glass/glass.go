@@ -469,6 +469,39 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	return &resp, nil
 }
 
+func (s *server) Asnames(ctx context.Context, e *pb.Empty) (*pb.AsnamesResponse, error) {
+	log.Printf("Running all asnames")
+
+	// check local cache first
+	cache, ok := s.checkASNSCache()
+	if ok {
+		return &cache, nil
+	}
+
+	stub := bpb.NewBgpInfoClient(s.bsql)
+	names, err := stub.GetAsnames(ctx, &bpb.Empty{})
+	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
+		s.handleUnavailableRPC(err)
+		return &pb.AsnamesResponse{}, err
+	}
+
+	var cnames []*pb.AsnumberAsnames
+
+	for _, v := range names.GetAsnumnames() {
+		asnumname := pb.AsnumberAsnames(*v)
+		cnames = append(cnames, &asnumname)
+	}
+	resp := pb.AsnamesResponse{
+		Asnumnames: cnames,
+	}
+
+	// Cache the result for next time
+	s.updateASNSCache(resp)
+
+	return &resp, nil
+}
+
 // Roa will check the ROA status of a prefix.
 func (s *server) Roa(ctx context.Context, r *pb.RoaRequest) (*pb.RoaResponse, error) {
 	log.Printf("Running Roa")

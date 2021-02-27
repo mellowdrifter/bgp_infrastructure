@@ -16,6 +16,9 @@ service looking_glass {
     // asname will return the AS name.
     rpc asname(asname_request) returns (asname_response);
 
+    // asnames will return all as number to as names	
+    rpc asnames(empty) returns (asnames_response);
+
     // roa will return the roa status.
     rpc roa(roa_request) returns (roa_response);
 
@@ -34,8 +37,6 @@ service looking_glass {
     // invalids will return a list of ASNs originating invalid prefixes, plus a list of prefixes actually originated
     rpc invalids(invalids_request) returns (invalid_response);
 
-    // asnames will return all as number to as names	
-    rpc asnames(empty) returns (asnames_response);
 }
 
 message ip_address {

@@ -21,6 +21,7 @@ const (
 	imap      = 8
 	itotal    = 9
 	iinvalids = 10
+	iasnames  = 11
 )
 
 var (
@@ -35,6 +36,7 @@ var (
 		imap:      time.Hour * 24 * 14,
 		itotal:    time.Minute * 10,
 		iinvalids: time.Hour * 1,
+		iasnames:  time.Hour * 24,
 	}
 	maxCache = map[int]int{
 		iasn:      100,
@@ -59,6 +61,7 @@ type cache struct {
 	locCache     map[string]locAge
 	mapCache     map[string]mapAge
 	invCache     invAge
+	asnamesCache namesAge
 }
 
 type asnAge struct {
@@ -69,6 +72,11 @@ type asnAge struct {
 type totalsAge struct {
 	tot pb.TotalResponse
 	age time.Time
+}
+
+type namesAge struct {
+	names pb.AsnamesResponse
+	age   time.Time
 }
 
 type invAge struct {
@@ -123,6 +131,7 @@ func getNewCache() cache {
 		locCache:     make(map[string]locAge),
 		mapCache:     make(map[string]mapAge),
 		invCache:     invAge{},
+		asnamesCache: namesAge{},
 	}
 }
 
@@ -451,6 +460,35 @@ func (s *server) updateASNCache(asnum uint32, asr pb.AsnameResponse) {
 	s.asNameCache[asnum] = asnAge{
 		asn: asr,
 		age: time.Now(),
+	}
+}
+
+func (s *server) checkASNSCache() (pb.AsnamesResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	log.Printf("check ASN cache for all asnames")
+
+	// If cache entry exists, return true only if the cache entry is still valid.
+	if !reflect.DeepEqual(s.asNameCache, namesAge{}) {
+		log.Printf("Returning cached asnames if timers is still valid")
+		if time.Since(s.asnamesCache.age) < maxAge[iasnames] {
+			return s.asnamesCache.names, true
+		}
+	}
+
+	return pb.AsnamesResponse{}, false
+}
+
+// updateASNSCache will update the local cache.
+func (s *server) updateASNSCache(a pb.AsnamesResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	log.Printf("Updating cache for AS Names")
+
+	s.asnamesCache = namesAge{
+		names: a,
+		age:   time.Now(),
 	}
 }
 
