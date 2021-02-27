@@ -32,7 +32,6 @@ type server struct {
 
 // readConfig is here to read all the config.ini options. Ensure they are correct.
 func readConfig() config {
-
 	// read config
 	exe, err := os.Executable()
 	if err != nil {
@@ -52,16 +51,14 @@ func readConfig() config {
 	cfg.pass = cf.Section("sql").Key("password").String()
 
 	return cfg
-
 }
 
 func main() {
-
 	var bgpinfoServer server
 	bgpinfoServer.cfg = readConfig()
 
 	// Set up log file
-	f, err := os.OpenFile(bgpinfoServer.cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(bgpinfoServer.cfg.logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
@@ -163,7 +160,6 @@ func (s *server) UpdateTweetBit(ctx context.Context, t *pb.Timestamp) (*pb.Resul
 	}
 
 	return res, nil
-
 }
 
 func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
@@ -177,7 +173,6 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 	}
 
 	return res, nil
-
 }
 
 func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
@@ -190,7 +185,6 @@ func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.Get
 	}
 
 	return res, nil
-
 }
 
 func (s *server) GetAsnames(ctx context.Context, e *pb.Empty) (*pb.GetAsnamesResponse, error) {
@@ -202,11 +196,10 @@ func (s *server) GetAsnames(ctx context.Context, e *pb.Empty) (*pb.GetAsnamesRes
 		return nil, err
 	}
 	return res, nil
-
 }
 
 func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb.Result, error) {
-	//return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
+	// return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Println("Running UpdateAsname")
 	fmt.Printf("There are a total of %d AS numbers\n", len(asn.GetAsnNames()))
 
@@ -217,5 +210,4 @@ func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb
 	}
 
 	return res, nil
-
 }

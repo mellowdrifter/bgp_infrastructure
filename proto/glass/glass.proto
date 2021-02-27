@@ -34,7 +34,8 @@ service looking_glass {
     // invalids will return a list of ASNs originating invalid prefixes, plus a list of prefixes actually originated
     rpc invalids(invalids_request) returns (invalid_response);
 
-
+    // asnames will return all as number to as names	
+    rpc asnames(empty) returns (asnames_response);
 }
 
 message ip_address {
@@ -186,4 +187,14 @@ message invalid_response {
 message invalid_originator {
     string asn = 1;
     repeated string ip = 2;
+}
+
+message asnames_response {	
+    repeated asnumber_asnames asnumnames = 1;	
+}	
+
+message asnumber_asnames {	
+    uint32 as_number = 1;	
+    string as_name = 2;	
+    string as_locale = 3;	
 }

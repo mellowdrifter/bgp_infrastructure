@@ -54,7 +54,6 @@ func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 	}
 	log.Printf("updated database: %v", res)
 	return nil
-
 }
 
 func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
@@ -111,7 +110,6 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 }
 
 func getPieSubnetsHelper(db *sql.DB) (*pb.PieSubnetsResponse, error) {
-
 	var masks pb.Masks
 	var pie pb.PieSubnetsResponse
 
@@ -154,7 +152,6 @@ func getPieSubnetsHelper(db *sql.DB) (*pb.PieSubnetsResponse, error) {
 	pie.Masks = &masks
 
 	return &pie, nil
-
 }
 
 func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTotalsResponse, error) {
@@ -210,7 +207,6 @@ func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTot
 	return &pb.MovementTotalsResponse{
 		Values: tv,
 	}, nil
-
 }
 
 func getRPKIHelper(db *sql.DB) (*pb.Roas, error) {
@@ -252,7 +248,6 @@ func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse,
 		n.Exists = true
 		return &n, nil
 	}
-
 }
 
 func getAsnamesHelper(db *sql.DB) (*pb.GetAsnamesResponse, error) {
@@ -330,7 +325,6 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 	return &pb.Result{
 		Success: true,
 	}, nil
-
 }
 
 func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
@@ -346,5 +340,4 @@ func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
 	return &pb.Result{
 		Success: true,
 	}, nil
-
 }

@@ -8,10 +8,10 @@ import (
 	"os/exec"
 )
 
-//TODO: This does nothing right now!
+// TODO: This does nothing right now!
 
 func isHealthy() bool {
-	//return dbHealth() && birdRunning() && minCount() && minPeers()
+	// return dbHealth() && birdRunning() && minCount() && minPeers()
 	return true
 }
 

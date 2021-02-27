@@ -29,7 +29,6 @@ func readOne(f string) *pb.Values {
 	}
 
 	return &values
-
 }
 
 func readAnnual(f string) []*com.BgpUpdate {
@@ -51,7 +50,6 @@ func readAnnual(f string) []*com.BgpUpdate {
 	}
 
 	return structValues
-
 }
 
 func populate(db *sql.DB) {
@@ -195,10 +193,9 @@ func createTestDatabase() {
 	if err := tx.Commit(); err != nil {
 		log.Panic("Unable to create test database")
 	}
-
 }
 
-//func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
+// func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
 func TestAddLatest(t *testing.T) {
 	createTestDatabase()
 
@@ -307,6 +304,5 @@ func TestAddLatest(t *testing.T) {
 
 	if !proto.Equal(got, want) {
 		t.Errorf("Error on TestAddLatest. Got %#v, Want %#v", got, want)
-
 	}
 }
