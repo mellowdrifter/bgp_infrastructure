@@ -434,41 +434,23 @@ func (s *server) Route(ctx context.Context, r *pb.RouteRequest) (*pb.RouteRespon
 	return &resp, nil
 }
 
-// Asname will return the registered name of the ASN. As this isn't in bird directly, will need
-// to speak to bgpsql to get information from the database.
+// Asname will return the registered name of the ASN.
+// This is a bit different to other functions as if the cache is old, it'll update all AS number to names.
+// Meaning if no cache entry, that does not exist.
 func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameResponse, error) {
 	// return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Printf("Running Asname")
 
-	// check local cache first
+	// check cache
 	cache, ok := s.checkASNCache(r.GetAsNumber())
 	if ok {
 		return &cache, nil
 	}
 
-	number := bpb.GetAsnameRequest{AsNumber: r.GetAsNumber()}
-
-	stub := bpb.NewBgpInfoClient(s.bsql)
-	name, err := stub.GetAsname(ctx, &number)
-	if err != nil {
-		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
-		s.handleUnavailableRPC(err)
-		return &pb.AsnameResponse{}, err
-	}
-
-	resp := pb.AsnameResponse{
-		AsName:    name.GetAsName(),
-		Exists:    name.GetExists(),
-		Locale:    name.GetAsLocale(),
-		CacheTime: uint64(time.Now().Unix()),
-	}
-
-	// Cache the result for next time
-	s.updateASNCache(r.GetAsNumber(), resp)
-
-	return &resp, nil
+	return &pb.AsnameResponse{}, nil
 }
 
+// Asnames will download all AS number to names from the database.
 func (s *server) Asnames(ctx context.Context, e *pb.Empty) (*pb.AsnamesResponse, error) {
 	log.Printf("Running all asnames")
 
@@ -479,27 +461,30 @@ func (s *server) Asnames(ctx context.Context, e *pb.Empty) (*pb.AsnamesResponse,
 	}
 
 	stub := bpb.NewBgpInfoClient(s.bsql)
-	names, err := stub.GetAsnames(ctx, &bpb.Empty{})
+	resp, err := stub.GetAsnames(ctx, &bpb.Empty{})
 	if err != nil {
 		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
 		s.handleUnavailableRPC(err)
 		return &pb.AsnamesResponse{}, err
 	}
 
-	var cnames []*pb.AsnumberAsnames
-
-	for _, v := range names.GetAsnumnames() {
-		asnumname := pb.AsnumberAsnames(*v)
-		cnames = append(cnames, &asnumname)
-	}
-	resp := pb.AsnamesResponse{
-		Asnumnames: cnames,
+	names := make([]*pb.AsnumberAsnames, 0, len(resp.GetAsnumnames()))
+	for _, v := range resp.GetAsnumnames() {
+		names = append(names, &pb.AsnumberAsnames{
+			AsNumber: v.GetAsNumber(),
+			Names: &pb.AsnameResponse{
+				AsName: v.GetAsName(),
+				Locale: v.GetAsLocale(),
+			},
+		})
 	}
 
 	// Cache the result for next time
-	s.updateASNSCache(resp)
+	s.updateASNSCache(names)
 
-	return &resp, nil
+	return &pb.AsnamesResponse{
+		Asnumnames: names,
+	}, nil
 }
 
 // Roa will check the ROA status of a prefix.
@@ -718,6 +703,9 @@ func (s *server) warmCache() {
 			Airport: loc,
 		})
 	}
+	// Load all asnumber to asnames
+	s.Asnames(context.Background(), &pb.Empty{})
+
 	log.Println("Cache filled")
 }
 

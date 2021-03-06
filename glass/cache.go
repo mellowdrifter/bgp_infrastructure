@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -75,7 +76,7 @@ type totalsAge struct {
 }
 
 type namesAge struct {
-	names pb.AsnamesResponse
+	names map[uint32]*pb.AsnameResponse
 	age   time.Time
 }
 
@@ -434,33 +435,25 @@ func (s *server) checkASNCache(asnum uint32) (pb.AsnameResponse, bool) {
 	defer s.mu.RUnlock()
 	log.Printf("check ASN cache for AS%d", asnum)
 
-	val, ok := s.asNameCache[asnum]
-
-	// Only return cache value if it's within the max age
-	if ok {
-		log.Printf("cache entry exists for AS%d", asnum)
-		if time.Since(val.age) < maxAge[iasn] {
-			log.Printf("cache hit for AS%d", asnum)
-			return val.asn, ok
+	if !reflect.DeepEqual(s.asNameCache, namesAge{}) {
+		// If cache is old, update straight away.
+		if time.Since(s.asnamesCache.age) >= maxAge[iasnames] {
+			// Need to unlock the mutex here as Asnames will attempt to gain lock of it.
+			s.mu.RUnlock()
+			s.Asnames(context.Background(), &pb.Empty{})
+			// Then relock it again here.
+			s.mu.RLock()
 		}
-		log.Printf("cache miss for AS%d", asnum)
-	}
-	if !ok {
-		log.Printf("cache miss for AS%d", asnum)
-	}
 
+		val, ok := s.asnamesCache.names[asnum]
+		if ok {
+			return pb.AsnameResponse{
+				AsName: val.AsName,
+				Locale: val.Locale,
+			}, true
+		}
+	}
 	return pb.AsnameResponse{}, false
-}
-
-func (s *server) updateASNCache(asnum uint32, asr pb.AsnameResponse) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	log.Printf("Adding AS%d: %q to the cache", asnum, asr.GetAsName())
-	s.asNameCache[asnum] = asnAge{
-		asn: asr,
-		age: time.Now(),
-	}
 }
 
 func (s *server) checkASNSCache() (pb.AsnamesResponse, bool) {
@@ -472,7 +465,16 @@ func (s *server) checkASNSCache() (pb.AsnamesResponse, bool) {
 	if !reflect.DeepEqual(s.asNameCache, namesAge{}) {
 		log.Printf("Returning cached asnames if timers is still valid")
 		if time.Since(s.asnamesCache.age) < maxAge[iasnames] {
-			return s.asnamesCache.names, true
+			names := make([]*pb.AsnumberAsnames, 0, len(s.asnamesCache.names))
+			for k, v := range s.asnamesCache.names {
+				names = append(names, &pb.AsnumberAsnames{
+					AsNumber: k,
+					Names:    v,
+				})
+			}
+			return pb.AsnamesResponse{
+				Asnumnames: names,
+			}, true
 		}
 	}
 
@@ -480,14 +482,19 @@ func (s *server) checkASNSCache() (pb.AsnamesResponse, bool) {
 }
 
 // updateASNSCache will update the local cache.
-func (s *server) updateASNSCache(a pb.AsnamesResponse) {
+func (s *server) updateASNSCache(a []*pb.AsnumberAsnames) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	log.Printf("Updating cache for AS Names")
 
+	names := make(map[uint32]*pb.AsnameResponse, len(a))
+
+	for _, v := range a {
+		names[v.GetAsNumber()] = v.GetNames()
+	}
+
 	s.asnamesCache = namesAge{
-		names: a,
+		names: names,
 		age:   time.Now(),
 	}
 }

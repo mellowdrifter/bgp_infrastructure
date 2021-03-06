@@ -483,12 +483,9 @@ func TestASNCache(t *testing.T) {
 	var i uint32
 	for i = 1; i < 101; i++ {
 		t.Run(fmt.Sprintf("ASN %d", i), func(t *testing.T) {
-			now := uint64(time.Now().Unix())
 			resp := pb.AsnameResponse{
-				AsName:    fmt.Sprintf("corportation of %d", i),
-				Exists:    true,
-				Locale:    "US",
-				CacheTime: now,
+				AsName: fmt.Sprintf("corportation of %d", i),
+				Locale: "US",
 			}
 			srv.updateASNCache(i, resp)
 			cache, ok := srv.checkASNCache(i)
