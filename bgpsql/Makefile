@@ -1,5 +1,5 @@
 build:
-	go build -o  cmd/web/*.go
+	go build -o  *.go
 	
 cover:
 	go test -cover ./...
