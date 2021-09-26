@@ -1,6 +1,6 @@
 module github.com/mellowdrifter/bgp_infrastructure/collector
 
-go 1.16
+go 1.17
 
 replace github.com/mellowdrifter/bgp_infrastructure/clidecode => ../clidecode
 

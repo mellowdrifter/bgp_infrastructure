@@ -23,6 +23,7 @@ const (
 	itotal    = 9
 	iinvalids = 10
 	iasnames  = 11
+	ivrps     = 12
 )
 
 var (
@@ -38,6 +39,7 @@ var (
 		itotal:    time.Minute * 10,
 		iinvalids: time.Hour * 1,
 		iasnames:  time.Hour * 24,
+		ivrps:     time.Hour * 1,
 	}
 	maxCache = map[int]int{
 		iasn:      100,
@@ -48,6 +50,7 @@ var (
 		iroa:      100,
 		ilocation: 100,
 		imap:      30,
+		ivrps:     100,
 	}
 )
 
@@ -61,6 +64,7 @@ type cache struct {
 	roaCache     map[string]roaAge
 	locCache     map[string]locAge
 	mapCache     map[string]mapAge
+	vrpCache     map[uint32]vrpAge
 	invCache     invAge
 	asnamesCache namesAge
 }
@@ -120,6 +124,11 @@ type mapAge struct {
 	age  time.Time
 }
 
+type vrpAge struct {
+	vr  pb.VrpsResponse
+	age time.Time
+}
+
 func getNewCache() cache {
 	return cache{
 		totalCache:   totalsAge{},
@@ -131,6 +140,7 @@ func getNewCache() cache {
 		roaCache:     make(map[string]roaAge),
 		locCache:     make(map[string]locAge),
 		mapCache:     make(map[string]mapAge),
+		vrpCache:     make(map[uint32]vrpAge),
 		invCache:     invAge{},
 		asnamesCache: namesAge{},
 	}
@@ -316,6 +326,40 @@ func (s *server) updateROACache(ipnet *net.IPNet, roa pb.RoaResponse) {
 
 	s.roaCache[ipnet.String()] = roaAge{
 		roa: roa,
+		age: time.Now(),
+	}
+}
+
+func (s *server) checkVRPsCache(asn uint32) (pb.VrpsResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	log.Printf("Check VRP cache for %d", asn)
+
+	// only return cache if it's within the max age
+	val, ok := s.vrpCache[asn]
+	if ok {
+		log.Printf("vrp cache entry exists for %d", asn)
+		if time.Since(val.age) < maxAge[ivrps] {
+			log.Printf("vrp cache hit for %d", asn)
+			return val.vr, ok
+		}
+		log.Printf("vrp cache entry too old for %d", asn)
+	}
+	if !ok {
+		log.Printf("vrp cache entry does not exist for %d", asn)
+	}
+	return pb.VrpsResponse{}, false
+}
+
+func (s *server) updateVRPsCache(asn uint32, vrps pb.VrpsResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	log.Printf("adding %d to the vrp cache", asn)
+
+	s.vrpCache[asn] = vrpAge{
+		vr:  vrps,
 		age: time.Now(),
 	}
 }
@@ -619,6 +663,19 @@ func (s *server) clearCache(sleep time.Duration, age map[int]time.Duration, coun
 			s.roaCache = make(map[string]roaAge)
 		}
 		log.Printf("roa cache is now length %d", len(s.roaCache))
+
+		// vrp cache
+		log.Printf("vrp cache is currently length %d", len(s.vrpCache))
+		for key, val := range s.vrpCache {
+			if time.Since(val.age) > age[ivrps] {
+				delete(s.vrpCache, key)
+			}
+		}
+		if len(s.vrpCache) > count[ivrps] {
+			log.Printf("vrp cache full, purging...")
+			s.vrpCache = make(map[uint32]vrpAge)
+		}
+		log.Printf("vrp cache is now length %d", len(s.vrpCache))
 
 		// location cache
 		log.Printf("location cache is currently length %d", len(s.locCache))

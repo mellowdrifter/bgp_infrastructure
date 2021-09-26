@@ -41,6 +41,9 @@ type Decoder interface {
 	// GetROA will return the ROA status, if any, from a source IP and ASN.
 	GetROA(*net.IPNet, uint32) (int, bool, error)
 
+	// GetVRPs will return all Validated ROA Payloads for an ASN.
+	GetVRPs(uint32) ([]VRP, error)
+
 	// GetInvalids returns a map of ASNs that are advertising RPKI invalid prefixes.
 	// It also includes all those prefixes being advertised.
 	GetInvalids() (map[string][]string, error)
@@ -91,6 +94,13 @@ type Large struct {
 type ASPath struct {
 	Path []uint32
 	Set  []uint32
+}
+
+// VRP contains an IP prefix, a maximum length, and an origin AS number.
+// As the request is the ASN, I'm not using it for now
+type VRP struct {
+	Prefix *net.IPNet
+	Max    int
 }
 
 const (

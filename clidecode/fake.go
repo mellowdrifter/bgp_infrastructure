@@ -68,6 +68,9 @@ func (f FakeConn) GetROA(*net.IPNet, uint32) (int, bool, error) {
 	return 0, false, nil
 }
 
+// GetVRPs will return all Validated ROA Payloads for an ASN.
+func (f FakeConn) GetVRPs(uint32) () {}
+
 // GetInvalids returns a map of ASNs that are advertising RPKI invalid prefixes.
 // It also includes all those prefixes being advertised.
 func (f FakeConn) GetInvalids() (map[string][]string, error) {

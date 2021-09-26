@@ -746,3 +746,48 @@ func (s *server) addMap(ctx context.Context, r *pb.LocationResponse) error {
 
 	return nil
 }
+
+func (s *server) Vrps(ctx context.Context, r *pb.VrpsRequest) (*pb.VrpsResponse, error) {
+	log.Printf("Running VRPs")
+	defer com.TimeFunction(time.Now(), "VRPs")
+
+	if !com.ValidateASN(r.GetAsNumber()) {
+		return &pb.VrpsResponse{}, fmt.Errorf("Invalid AS number")
+	}
+
+	// check local cache first
+	cache, ok := s.checkVRPsCache(r.GetAsNumber())
+	if ok {
+		return &cache, nil
+	}
+
+	vrps, err := s.router.GetVRPs(r.GetAsNumber())
+	if err != nil {
+		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
+		return &pb.VrpsResponse{}, err
+	}
+	if len(vrps) == 0 {
+		return &pb.VrpsResponse{}, nil
+	}
+
+	var resp pb.VrpsResponse
+	var pbvrps []pb.Vrp
+
+	for _, vrp := range vrps {
+		mask, _ := vrp.Prefix.Mask.Size()
+		pbvrps = append(pbvrps, pb.Vrp{
+			IpAddress: &pb.IpAddress{
+				Address: vrp.Prefix.IP.String(),
+				Mask:    uint32(mask),
+			},
+			Max: uint32(vrp.Max),
+		})
+	}
+
+	resp.CacheTime = uint64(time.Now().Unix())
+
+	// cache the result
+	s.updateVRPsCache(r.GetAsNumber(), resp)
+
+	return &resp, nil
+}

@@ -384,3 +384,36 @@ func (b Bird2Conn) GetROA(prefix *net.IPNet, asn uint32) (int, bool, error) {
 
 	return statuses[val], true, nil
 }
+
+// GetVRPs will return all Validated ROA Payloads for an ASN.
+func (b Bird2Conn) GetVRPs(asn uint32) ([]VRP, error) {
+	var VRPs []VRP
+	cmds := []string{
+		fmt.Sprintf("/usr/sbin/birdc show route all table roa_v4 where net.asn=%d | grep -Ev 'BIRD|device1|name|info|kernel1|Table' |grep %d | awk {'print $1'}", asn, asn),
+		fmt.Sprintf("/usr/sbin/birdc show route all table roa_v6 where net.asn=%d | grep -Ev 'BIRD|device1|name|info|kernel1|Table' |grep %d | awk {'print $1'}", asn, asn),
+	}
+	for _, cmd := range cmds {
+		out, err := c.GetOutput(cmd)
+		if err != nil {
+			return VRPs, err
+		}
+		for _, line := range strings.Split(out, "\n") {
+			split := strings.Split(line, "-")
+			_, prefix, err := net.ParseCIDR(split[0])
+			if err != nil {
+				// Set slice to nil to prevent us sending back a half-filled struct
+				VRPs = nil
+				return VRPs, err
+			}
+			max, err := strconv.Atoi(split[1])
+			if err != nil {
+				VRPs = nil
+				return VRPs, err
+			}
+
+			VRPs = append(VRPs, VRP{Prefix: prefix, Max: max})
+		}
+	}
+
+	return VRPs, nil
+}
