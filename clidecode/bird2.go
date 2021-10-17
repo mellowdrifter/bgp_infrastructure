@@ -397,6 +397,10 @@ func (b Bird2Conn) GetVRPs(asn uint32) ([]VRP, error) {
 		if err != nil {
 			return VRPs, err
 		}
+		// If the ASN has no VRPS, for either address family or both, continue onwards to prevent trying to split empty output
+		if out == "" {
+			continue
+		}
 		for _, line := range strings.Split(out, "\n") {
 			split := strings.Split(line, "-")
 			_, prefix, err := net.ParseCIDR(split[0])

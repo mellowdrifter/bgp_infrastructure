@@ -771,11 +771,11 @@ func (s *server) Vrps(ctx context.Context, r *pb.VrpsRequest) (*pb.VrpsResponse,
 	}
 
 	var resp pb.VrpsResponse
-	var pbvrps []pb.Vrp
+	var pbvrps []*pb.Vrp
 
 	for _, vrp := range vrps {
 		mask, _ := vrp.Prefix.Mask.Size()
-		pbvrps = append(pbvrps, pb.Vrp{
+		pbvrps = append(pbvrps, &pb.Vrp{
 			IpAddress: &pb.IpAddress{
 				Address: vrp.Prefix.IP.String(),
 				Mask:    uint32(mask),
@@ -785,6 +785,7 @@ func (s *server) Vrps(ctx context.Context, r *pb.VrpsRequest) (*pb.VrpsResponse,
 	}
 
 	resp.CacheTime = uint64(time.Now().Unix())
+	resp.Vrps = pbvrps
 
 	// cache the result
 	s.updateVRPsCache(r.GetAsNumber(), resp)
