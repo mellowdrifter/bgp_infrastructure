@@ -7,7 +7,7 @@ import (
 )
 
 func TestStringToUint32(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name string
 		in   string
 		out  uint32
@@ -34,11 +34,10 @@ func TestStringToUint32(t *testing.T) {
 			t.Errorf("Error on %s. Expected %d, got %d", tt.name, tt.out, actual)
 		}
 	}
-
 }
 
 func TestUint32ToString(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name string
 		in   uint32
 		out  string
@@ -61,11 +60,10 @@ func TestUint32ToString(t *testing.T) {
 			t.Errorf("Error on %s. Expected %s, got %s", tt.name, tt.out, actual)
 		}
 	}
-
 }
 
 func TestValidateIP(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name    string
 		in      string
 		out     string
@@ -95,7 +93,7 @@ func TestValidateIP(t *testing.T) {
 }
 
 func TestInFirstButNotSecond(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name   string
 		first  []string
 		second []string
@@ -130,13 +128,12 @@ func TestInFirstButNotSecond(t *testing.T) {
 		actual := InFirstButNotSecond(tt.first, tt.second)
 		if !reflect.DeepEqual(actual, tt.out) {
 			t.Errorf("Error on %s. Expected %q, got %q", tt.name, tt.out, actual)
-
 		}
 	}
 }
 
 func TestIntersection(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name   string
 		first  []string
 		second []string
@@ -165,7 +162,6 @@ func TestIntersection(t *testing.T) {
 		actual := Intersection(tt.first, tt.second)
 		if !reflect.DeepEqual(actual, tt.out) {
 			t.Errorf("Error on %s. Expected %q, got %q", tt.name, tt.out, actual)
-
 		}
 	}
 }
@@ -177,7 +173,7 @@ func BenchmarkIntersection(b *testing.B) {
 }
 
 func TestIsPublicIP(t *testing.T) {
-	var ips = []struct {
+	ips := []struct {
 		name   string
 		ip     string
 		public bool
@@ -235,7 +231,7 @@ func TestIsPublicIP(t *testing.T) {
 }
 
 func TestASPlainToASDot(t *testing.T) {
-	var asns = []struct {
+	asns := []struct {
 		test     int
 		asn      uint32
 		expected string
@@ -273,11 +269,10 @@ func TestASPlainToASDot(t *testing.T) {
 			t.Errorf("Error on test #%d: Expected %s, but got %s", tt.test, tt.expected, actual)
 		}
 	}
-
 }
 
 func TestASDotToASPlain(t *testing.T) {
-	var asns = []struct {
+	asns := []struct {
 		test     int
 		asn      string
 		expected uint32
@@ -315,5 +310,4 @@ func TestASDotToASPlain(t *testing.T) {
 			t.Errorf("Error on test #%d: Expected %d, but got %d", tt.test, tt.expected, actual)
 		}
 	}
-
 }

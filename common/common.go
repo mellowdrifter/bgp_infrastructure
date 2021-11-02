@@ -106,7 +106,6 @@ func SetListOfStrings(input []string) []string {
 		}
 	}
 	return u
-
 }
 
 // InFirstButNotSecond returns the second slice subtracted from the first.
@@ -167,7 +166,6 @@ func ValidateIP(ip string) (net.IP, error) {
 	}
 
 	return parsed, nil
-
 }
 
 // IsPublicIP determines if the IPv4 address is public.
@@ -178,7 +176,6 @@ func IsPublicIP(ip net.IP) bool {
 		return IsPublicIPv4(ip4)
 	}
 	return IsPublicIPv6(ip)
-
 }
 
 // IsPublicIPv4 checks if the IPv4 address is a valid public address.
@@ -215,7 +212,6 @@ func IsPublicIPv4(ip net.IP) bool {
 	}
 
 	return true
-
 }
 
 // IsPublicIPv6 checks if the IPv6 address is a valid public address.
@@ -225,7 +221,6 @@ func IsPublicIPv6(ip net.IP) bool {
 	}
 	// For now, just ensure the route belongs to 2000::/3
 	return ip[0] >= 32 && ip[0] <= 63
-
 }
 
 // ValidateIPNet ensures the IP address and mask is valid. We only care about public IPs.
@@ -242,7 +237,6 @@ func ValidateIPNet(ip string, mask uint32) (*net.IPNet, error) {
 	}
 
 	return net, nil
-
 }
 
 // ValidateASN ensures the AS number is a public, non-documentation, non-reserved AS.
@@ -273,7 +267,6 @@ func ASPlainToASDot(asn uint32) string {
 	}
 
 	return fmt.Sprintf("%d.%d", int(dot1), dot2)
-
 }
 
 // ASDotToASPlain will convert an ASDOT AS number to a ASPLAIN representation.
@@ -302,7 +295,6 @@ func ASDotToASPlain(asn string) uint32 {
 	}
 
 	return dot1*65536 + dot2
-
 }
 
 // ProtoToStruct converts a bgpinfo.Values proto to a bgpUpdate struct.
@@ -403,7 +395,6 @@ func ProtoToStruct(v *pb.Values) *BgpUpdate {
 
 // StructToProto converts a BgpUpdate to a bgpinfo.Values proto.
 func StructToProto(b *BgpUpdate) *pb.Values {
-
 	return &pb.Values{
 		Time: b.Time,
 		PrefixCount: &pb.PrefixCount{
