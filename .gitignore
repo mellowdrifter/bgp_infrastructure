@@ -11,7 +11,6 @@ bgpsql/bgpsql
 asname/asname
 bgpstuff_tester/tester
 collector/collector
-bgpsql/testdata/annual.pb
 glass/airports/airports.dat
 tweeter/proto/grapher/grapher.pb.go
 tweeter/proto/bgpsql/bgpsql.proto
