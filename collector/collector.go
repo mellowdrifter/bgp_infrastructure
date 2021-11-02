@@ -34,7 +34,7 @@ func main() {
 	daemon := cf.Section("local").Key("daemon").String()
 
 	// Set up log file
-	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
@@ -76,7 +76,6 @@ func main() {
 	}
 
 	fmt.Println(proto.MarshalTextString(resp))
-
 }
 
 // getTableTotal returns the complete RIB and FIB counts.
@@ -111,7 +110,6 @@ func getPeers(d cli.Decoder) *pb.PeerCount {
 		PeerCount_6: peers.V6c,
 		PeerUp_6:    peers.V6e,
 	}
-
 }
 
 // getAS returns a unique slice of all source ASs seen.
@@ -131,7 +129,6 @@ func getAS(d cli.Decoder) *pb.AsCount {
 		As6Only: as.As6Only,
 		AsBoth:  as.AsBoth,
 	}
-
 }
 
 // getMasks returns the total amount of each subnet mask.
@@ -212,7 +209,6 @@ func getMasks(d cli.Decoder) *pb.Masks {
 	masks.V6_48 = m[1]["48"]
 
 	return &masks
-
 }
 
 // getLargeCommunities finds the amount of prefixes that have large communities (RFC8092)
@@ -247,5 +243,4 @@ func getROAs(d cli.Decoder) *pb.Roas {
 		V6Invalid: r.V6i,
 		V6Unknown: r.V6u,
 	}
-
 }
