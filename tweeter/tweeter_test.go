@@ -7,7 +7,7 @@ import (
 )
 
 func TestDeltaMessage(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name       string
 		hour, week int
 		output     string
@@ -29,7 +29,7 @@ func TestDeltaMessage(t *testing.T) {
 }
 
 func TestWhatToTweet(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name string
 		time string
 		want toTweet
@@ -106,7 +106,6 @@ func TestWhatToTweet(t *testing.T) {
 		got := whatToTweet(time)
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%s failed. got %#v, want %#v", tt.name, got, tt.want)
-
 		}
 	}
 }

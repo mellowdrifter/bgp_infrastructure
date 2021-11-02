@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	bpb "github.com/mellowdrifter/bgp_infrastructure/tweeter/proto/bgpsql"
-	gpb "github.com/mellowdrifter/bgp_infrastructure/tweeter/proto/grapher"
+	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
+	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
 
 	"github.com/ChimeraCoder/anaconda"
 	"google.golang.org/grpc"
@@ -91,7 +91,6 @@ func setup() (config, error) {
 	flag.Parse()
 
 	return config, nil
-
 }
 
 // Cloud Run should use this.
@@ -117,7 +116,6 @@ func main() {
 	}
 	log.Printf("*** Service Started on Port %s ***\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, srv.mux))
-
 }
 
 // Required to implement the interface.
@@ -140,7 +138,7 @@ func (t *tweeter) dryrun() http.HandlerFunc {
 		t.cfg.dryRun = true
 
 		todo := whatToTweet(time.Now())
-		//TEMP
+		// TEMP
 		todo.rpkiPie = true
 		todo.subnetPie = true
 		todo.weekGraph = true
@@ -262,13 +260,11 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	}
 
 	return listOfTweets, nil
-
 }
 
 // whatToTweet will determine exactly what information should be tweeted. This
 // is all determined by the time and day on which it's called.
 func whatToTweet(now time.Time) toTweet {
-
 	var todo toTweet
 
 	// Only tweet items if called in valid hours.
@@ -312,7 +308,6 @@ func whatToTweet(now time.Time) toTweet {
 }
 
 func run() {
-
 	/*
 	 */
 }
@@ -414,7 +409,6 @@ func allCurrent(c config) ([]tweet, error) {
 
 // current grabs the current v4 and v6 table count for tweeting.
 func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
-
 	log.Println("Running current")
 	counts, err := b.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
@@ -464,7 +458,6 @@ func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 		log.Printf("Unable to set tweet bit, but continuing on: %v", err)
 	}
 	return []tweet{v4Tweet, v6Tweet}, nil
-
 }
 
 // deltaMessage creates the update message itself. Uses the deltas to formulate the exact message.
@@ -500,7 +493,6 @@ func deltaMessage(h, w int) string {
 	}
 
 	return update.String()
-
 }
 
 func setTweetBit(cpb bpb.BgpInfoClient, time uint64, dryrun bool) error {
@@ -519,7 +511,6 @@ func setTweetBit(cpb bpb.BgpInfoClient, time uint64, dryrun bool) error {
 		return fmt.Errorf("error: received error when trying to set tweet bit")
 	}
 	return nil
-
 }
 
 func subnets(c config) ([]tweet, error) {
@@ -614,7 +605,6 @@ func subnets(c config) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
-
 }
 
 func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
@@ -715,7 +705,6 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
-
 }
 
 func rpki(c config) ([]tweet, error) {
@@ -792,7 +781,6 @@ func rpki(c config) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
-
 }
 
 func postTweet(t tweet, cf *ini.File) error {
@@ -819,5 +807,4 @@ func postTweet(t tweet, cf *ini.File) error {
 	}
 
 	return nil
-
 }
