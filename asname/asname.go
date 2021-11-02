@@ -21,7 +21,6 @@ import (
 )
 
 func main() {
-
 	// load in config
 	exe, err := os.Executable()
 	if err != nil {
@@ -37,7 +36,7 @@ func main() {
 	bgpinfo := cf.Section("bgpinfo").Key("server").String()
 
 	// Set up log file
-	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open logfile: %v\n", err)
 	}
@@ -63,11 +62,12 @@ func main() {
 		log.Fatalf("Unable to send proto: %s", err)
 	}
 
-	log.Println(proto.MarshalTextString(resp))
+	log.Println(proto.Marshal(resp))
 }
 
 func getASNs() (*pb.AsnamesRequest, error) {
 	// Locations of current ASN mapping
+	// TODO: Add this as an argument. Also find a better location
 	urls := []string{
 		"http://bgp.potaroo.net/cidr/autnums.html",
 		"https://www.cidr-report.org/as2.0/autnums.html",
@@ -78,7 +78,6 @@ func getASNs() (*pb.AsnamesRequest, error) {
 	log.Println("Downloading AS list")
 	for _, url := range urls {
 		resp, err := http.Get(url)
-
 		// There are two URLs to check. If error on the first, try the second.
 		if err != nil {
 			log.Printf("Got error on url(%s): %s\n", url, err)
@@ -107,7 +106,6 @@ func getASNs() (*pb.AsnamesRequest, error) {
 	return &pb.AsnamesRequest{
 		AsnNames: asnNames,
 	}, nil
-
 }
 
 func decoder(contents []byte) []*pb.AsnName {
@@ -133,5 +131,4 @@ func decoder(contents []byte) []*pb.AsnName {
 	}
 
 	return asnNames
-
 }

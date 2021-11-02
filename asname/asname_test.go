@@ -79,7 +79,6 @@ func TestDecoder(t *testing.T) {
 			continue
 		}
 	}
-
 }
 
 func TestDecoderFull(t *testing.T) {
@@ -96,5 +95,4 @@ func TestDecoderFull(t *testing.T) {
 			t.Errorf("AS %s has no Locale", info.GetAsName())
 		}
 	}
-
 }
