@@ -1,5 +1,6 @@
 build:
-	go build -o  *.go
+	gofumpt -w *.go
+	go build -o  bgpsql *.go
 	
 cover:
 	go test -cover ./...
