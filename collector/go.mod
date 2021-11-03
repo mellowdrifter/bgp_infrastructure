@@ -12,9 +12,9 @@ replace github.com/mellowdrifter/bgp_infrastructure/proto/glass => ../proto/glas
 
 require (
 	github.com/golang/protobuf v1.5.2
-	github.com/mellowdrifter/bgp_infrastructure/clidecode v0.0.0-20211102205319-b1d7d44b63cb
-	github.com/mellowdrifter/bgp_infrastructure/common v0.0.0-20211102202924-7df8de3dc760
-	github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql v0.0.0-20211102204422-52aae794c27f
+	github.com/mellowdrifter/bgp_infrastructure/clidecode v0.0.0-20211103003410-146782546999
+	github.com/mellowdrifter/bgp_infrastructure/common v0.0.0-20211103003410-146782546999
+	github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql v0.0.0-20211103004747-25c7b7620a2f
 	google.golang.org/grpc v1.42.0
 	gopkg.in/ini.v1 v1.63.2
 )
