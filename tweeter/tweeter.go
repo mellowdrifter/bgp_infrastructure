@@ -27,8 +27,8 @@ import (
 const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
-	minV4 = 800000
-	minV6 = 80000
+	minV4 = 880000
+	minV6 = 120000
 )
 
 type tweet struct {
@@ -53,10 +53,7 @@ type toTweet struct {
 }
 
 type config struct {
-	log     string
 	grapher string
-	action  *string
-	time    *string
 	servers []string
 	file    *ini.File
 	dryRun  bool
@@ -93,7 +90,6 @@ func setup() (config, error) {
 	return config, nil
 }
 
-// Cloud Run should use this.
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -124,9 +120,7 @@ func (t *tweeter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ignore the request to favicon when I'm calling through a browser.
-func faviconHandler(w http.ResponseWriter, r *http.Request) {
-	return
-}
+func faviconHandler(w http.ResponseWriter, r *http.Request) {}
 
 // Basic index for now.
 func (t *tweeter) dryrun() http.HandlerFunc {
@@ -138,14 +132,12 @@ func (t *tweeter) dryrun() http.HandlerFunc {
 		t.cfg.dryRun = true
 
 		todo := whatToTweet(time.Now())
-		// TEMP
 		todo.rpkiPie = true
 		todo.subnetPie = true
 		todo.weekGraph = true
 		todo.monthGraph = true
 		todo.sixMonthGraph = true
 		todo.annualGraph = true
-		// TEMP
 
 		tweetList, err := getTweets(todo, t.cfg)
 		if err != nil {
@@ -213,7 +205,6 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
-
 	if todo.weekGraph {
 		tweets, err := movement(cfg, bpb.MovementRequest_WEEK)
 		if err != nil {
@@ -242,7 +233,6 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
-
 	if todo.rpkiPie {
 		tweets, err := rpki(cfg)
 		if err != nil {
@@ -250,7 +240,6 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
-
 	if todo.subnetPie {
 		tweets, err := subnets(cfg)
 		if err != nil {
@@ -296,6 +285,8 @@ func whatToTweet(now time.Time) toTweet {
 	todo.sixMonthGraph = (now.Day() == 1 && now.Month() == time.July)
 
 	// Annual graph. Post on 3rd of January as no-one is around 1st and 2nd.
+	// TODO: Make this further into the year, and only if no weekends!
+	// TODO: Check weekends on other functions as well
 	todo.annualGraph = (now.Day() == 3 && now.Month() == time.January)
 
 	// On Wednesday I tweet the subnet pie graph.
