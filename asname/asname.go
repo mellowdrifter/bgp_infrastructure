@@ -62,7 +62,7 @@ func main() {
 		log.Fatalf("Unable to send proto: %s", err)
 	}
 
-	log.Println(proto.Marshal(resp))
+	log.Printf("Updated database with response %s", proto.MarshalTextString(resp))
 }
 
 func getASNs() (*pb.AsnamesRequest, error) {
