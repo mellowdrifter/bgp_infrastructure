@@ -14,8 +14,8 @@ replace github.com/mellowdrifter/bgp_infrastructure/proto/glass => ../proto/glas
 
 require (
 	github.com/golang/protobuf v1.5.2
-	github.com/mellowdrifter/bgp_infrastructure/common v0.0.0-20211102202924-7df8de3dc760
-	github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql v0.0.0-20211017221413-65c9fd9297c4
+	github.com/mellowdrifter/bgp_infrastructure/common v0.0.0-20211103003410-146782546999
+	github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql v0.0.0-20211102210844-d203eb202fce
 	golang.org/x/text v0.3.7
 	google.golang.org/grpc v1.42.0
 	gopkg.in/ini.v1 v1.63.2

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -88,15 +88,15 @@ func getASNs() (*pb.AsnamesRequest, error) {
 			continue
 		}
 		defer resp.Body.Close()
-		contents, err = ioutil.ReadAll(resp.Body)
+		contents, err = io.ReadAll(resp.Body)
 		if err != nil {
-			return &pb.AsnamesRequest{}, fmt.Errorf("Error reading URL: %v", err)
+			return &pb.AsnamesRequest{}, fmt.Errorf("error reading URL: %v", err)
 		}
 		break
 	}
 
 	if len(contents) == 0 {
-		return &pb.AsnamesRequest{}, errors.New("Unable to download ASN names from all URLs")
+		return &pb.AsnamesRequest{}, errors.New("unable to download ASN names from all URLs")
 	}
 
 	asnNames := decoder(contents)
