@@ -607,6 +607,7 @@ func subnets(c config) ([]tweet, error) {
 	return []tweet{v4Tweet, v6Tweet}, nil
 }
 
+// TODO: Remove outliers from graphs because it's looks rubbish!
 func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	log.Println("Running movement")
 

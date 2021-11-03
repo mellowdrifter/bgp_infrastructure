@@ -1,4 +1,4 @@
-FROM python:3.7-slim  AS build-env
+FROM python:3.10-bullseye  AS build-env
 
 WORKDIR /app
 ADD ./ ./ 
@@ -8,8 +8,8 @@ RUN pip3 install --upgrade pip && \
 
 FROM gcr.io/distroless/python3-debian10
 COPY --from=build-env /app /app
-COPY --from=build-env /usr/local/lib/python3.7/site-packages /usr/local/lib/python3.7/site-packages
+COPY --from=build-env /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 
 WORKDIR /app
-ENV PYTHONPATH=/usr/local/lib/python3.7/site-packages
+ENV PYTHONPATH=/usr/local/lib/python3.10/site-packages
 CMD ["app.py"]
