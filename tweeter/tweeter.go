@@ -209,7 +209,7 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	if todo.tableSize {
 		tweets, err := allCurrent(cfg)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to gather table size info: %v", err)
+			return listOfTweets, fmt.Errorf("unable to gather table size info: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
@@ -217,28 +217,28 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	if todo.weekGraph {
 		tweets, err := movement(cfg, bpb.MovementRequest_WEEK)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to gather weekly graph info: %v", err)
+			return listOfTweets, fmt.Errorf("unable to gather weekly graph info: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
 	if todo.monthGraph {
 		tweets, err := movement(cfg, bpb.MovementRequest_MONTH)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to gather monthly graph info: %v", err)
+			return listOfTweets, fmt.Errorf("unable to gather monthly graph info: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
 	if todo.sixMonthGraph {
 		tweets, err := movement(cfg, bpb.MovementRequest_SIXMONTH)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to gather six monthly graph info: %v", err)
+			return listOfTweets, fmt.Errorf("unable to gather six monthly graph info: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
 	if todo.annualGraph {
 		tweets, err := movement(cfg, bpb.MovementRequest_ANNUAL)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to gather six monthly graph info: %v", err)
+			return listOfTweets, fmt.Errorf("unable to gather six monthly graph info: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
@@ -246,7 +246,7 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	if todo.rpkiPie {
 		tweets, err := rpki(cfg)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to generate RPKI tweets: %v", err)
+			return listOfTweets, fmt.Errorf("unable to generate RPKI tweets: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
@@ -254,7 +254,7 @@ func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	if todo.subnetPie {
 		tweets, err := subnets(cfg)
 		if err != nil {
-			return listOfTweets, fmt.Errorf("Unable to generate subnet pie tweets: %v", err)
+			return listOfTweets, fmt.Errorf("unable to generate subnet pie tweets: %v", err)
 		}
 		listOfTweets = append(listOfTweets, tweets...)
 	}
@@ -307,11 +307,6 @@ func whatToTweet(now time.Time) toTweet {
 	return todo
 }
 
-func run() {
-	/*
-	 */
-}
-
 // getConnection will return a connection to a gRPC server. Caller should close.
 // TODO: Do the funky thing where you return the closer.
 func getConnection(srv string) (*grpc.ClientConn, error) {
@@ -341,6 +336,7 @@ func getTLSConnection(srv string) (*grpc.ClientConn, error) {
 
 // getLiveServer will return the first live connection it can get. If neither server
 // can be dialed, an error is returned.
+// TODO: Just call both servers and deal with the first one
 func getLiveServer(c config) (*grpc.ClientConn, error) {
 	for _, v := range c.servers {
 		conn, err := getConnection(v)
@@ -404,7 +400,7 @@ func allCurrent(c config) ([]tweet, error) {
 	}
 
 	// This should only execute if none if the configured servers actually gave a response.
-	return nil, fmt.Errorf("Neither server gave a response for current")
+	return nil, fmt.Errorf("neither server gave a response for current")
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
@@ -517,10 +513,10 @@ func subnets(c config) ([]tweet, error) {
 	log.Println("Running subnets")
 
 	conn, err := getLiveServer(c)
-	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 
 	cpb := bpb.NewBgpInfoClient(conn)
 	pieData, err := cpb.GetPieSubnets(context.Background(), &bpb.Empty{})
@@ -569,7 +565,7 @@ func subnets(c config) ([]tweet, error) {
 	}
 
 	// Dial the grapher to retrieve graphs via matplotlib
-	// TODO: IS this not too much stuff in a single function?
+	// TODO: Is this not too much stuff in a single function?
 	req := &gpb.PieChartRequest{
 		Metadatas: []*gpb.Metadata{v4Meta, v6Meta},
 		Subnets: &gpb.SubnetFamily{
@@ -580,7 +576,11 @@ func subnets(c config) ([]tweet, error) {
 	}
 
 	grp, err := getTLSConnection(c.grapher)
+	if err != nil {
+		return nil, err
+	}
 	defer grp.Close()
+
 	gpb := gpb.NewGrapherClient(grp)
 
 	resp, err := gpb.GetPieChart(context.Background(), req)
@@ -590,7 +590,7 @@ func subnets(c config) ([]tweet, error) {
 
 	// There should be two images, if not something's gone wrong.
 	if len(resp.GetImages()) < 2 {
-		return nil, fmt.Errorf("Less than two images returned")
+		return nil, fmt.Errorf("less than two images returned")
 	}
 
 	v4Tweet := tweet{
@@ -614,10 +614,10 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	y := time.Now().AddDate(0, 0, -1)
 
 	conn, err := getLiveServer(c)
-	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 
 	cpb := bpb.NewBgpInfoClient(conn)
 	graphData, err := cpb.GetMovementTotals(context.Background(), &bpb.MovementRequest{Period: p})
@@ -642,7 +642,7 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 		period = "year"
 		message = "Annual BGP table movement #BGP"
 	default:
-		return nil, fmt.Errorf("Time Period not set")
+		return nil, fmt.Errorf("time Period not set")
 	}
 
 	// metadata to create images
@@ -690,7 +690,7 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 
 	// There should be two images, if not something's gone wrong.
 	if len(resp.GetImages()) < 2 {
-		return nil, fmt.Errorf("Less than two images returned")
+		return nil, fmt.Errorf("less than two images returned")
 	}
 
 	v4Tweet := tweet{
@@ -711,10 +711,10 @@ func rpki(c config) ([]tweet, error) {
 	log.Println("Running rpki")
 
 	conn, err := getLiveServer(c)
-	defer conn.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	cpb := bpb.NewBgpInfoClient(conn)
 
 	rpkiData, err := cpb.GetRpki(context.Background(), &bpb.Empty{})
@@ -766,7 +766,7 @@ func rpki(c config) ([]tweet, error) {
 
 	// There should be two images, if not something's gone wrong.
 	if len(resp.GetImages()) < 2 {
-		return nil, fmt.Errorf("Less than two images returned")
+		return nil, fmt.Errorf("less than two images returned")
 	}
 
 	v4Tweet := tweet{
