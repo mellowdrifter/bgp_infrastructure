@@ -5,7 +5,7 @@
 16030 ALTECOM Alta Tecnologia en Comunicacions, S.L, ES
 47727 WARNETCZ-AS Warnet.cz s.r.o., CZ
 267925 COOPERATIVA TELEFONICA Y OTROS SERVICIOS PUBLICOS  ASISTENCIALES, EDUCATIVOS, VIVIENDA, CREDITO Y CONSUMO TILISARAO LIMITADA, AR
-
-
-
-https://ftp.ripe.net/ripe/asnames/asn.txt
+396632 VRSN-AC50-340 - VeriSign Global Registry Services, US
+397335 GSCS, CA
+397421 SAAQ-PROD - Societe de l'Assurance Automobile du Quebec, CA
+397759 -Reserved AS-, ZZ

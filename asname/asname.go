@@ -67,66 +67,90 @@ func main() {
 
 func getASNs() (*pb.AsnamesRequest, error) {
 	// Locations of current ASN mapping
-	// TODO: Add this as an argument. Also find a better location
+	textUrl := "https://ftp.ripe.net/ripe/asnames/asn.txt"
 	urls := []string{
 		"http://bgp.potaroo.net/cidr/autnums.html",
 		"https://www.cidr-report.org/as2.0/autnums.html",
 	}
 
-	// Download list and print error if unable to get
-	var contents []byte
-	log.Println("Downloading AS list")
+	res, err := getASNFromUrl(textUrl, true)
+	if err == nil {
+		log.Println("returning asnames")
+		return &pb.AsnamesRequest{
+			AsnNames: res,
+		}, nil
+	}
+	log.Printf("unable to decode text url, moving on: %v\n", err)
+
 	for _, url := range urls {
-		resp, err := http.Get(url)
 		// There are two URLs to check. If error on the first, try the second.
+		res, err := getASNFromUrl(url, false)
 		if err != nil {
-			log.Printf("Got error on url(%s): %s\n", url, err)
+			log.Printf("got error on url(%s): %s\n", url, err)
 			continue
 		}
-		if resp.StatusCode != 200 {
-			log.Printf("Got status code error on url(%s): %d\n", url, resp.StatusCode)
-			continue
-		}
-		defer resp.Body.Close()
-		contents, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return &pb.AsnamesRequest{}, fmt.Errorf("error reading URL: %v", err)
-		}
-		break
+		log.Println("returning asnames")
+		return &pb.AsnamesRequest{
+			AsnNames: res,
+		}, nil
 	}
 
-	if len(contents) == 0 {
-		return &pb.AsnamesRequest{}, errors.New("unable to download ASN names from all URLs")
-	}
-
-	asnNames := decoder(contents)
-
-	log.Println("Finished downloading and packing")
-
-	return &pb.AsnamesRequest{
-		AsnNames: asnNames,
-	}, nil
+	return nil, errors.New("unable to download any ASNs")
 }
 
-func decoder(contents []byte) []*pb.AsnName {
+func getASNFromUrl(url string, isText bool) ([]*pb.AsnName, error) {
+	var contents []byte
+	log.Printf("Downloading AS list from %s\n", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("got status code error on url(%s): %d\n", url, resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	contents, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if isText {
+		return decodeText(contents), nil
+	}
+	return decodeHTML(contents), nil
+}
+
+func decodeText(data []byte) []*pb.AsnName {
+	reg := regexp.MustCompile(`(\d+)\s(.*),\s*([A-Z]{2})`)
+	var asnNames []*pb.AsnName
+
+	res := reg.FindAllStringSubmatch(string(data), -1)
+	for _, as := range res {
+		asnNames = append(asnNames, &pb.AsnName{
+			AsNumber: com.StringToUint32(as[1]),
+			AsName:   as[2],
+			AsLocale: as[3],
+		})
+	}
+
+	return asnNames
+}
+
+func decodeHTML(contents []byte) []*pb.AsnName {
+	reg := regexp.MustCompile(`AS(\d+)\s*</a> (.*),\s*([A-Z]{2})`)
+	var asnNames []*pb.AsnName
+
 	// Decode to valid UTF-8. For now these urls seem to use ISO8859_1
 	decoder := charmap.ISO8859_1.NewDecoder()
 	output, _ := decoder.Bytes(contents)
-	strcontents := string(output)
 
-	// I need the AS name, AS number, and the Locale.
-	reg := regexp.MustCompile(`AS(\d+)\s*</a> (.*),\s*([A-Z]{2})`)
-
-	// -1 means no limit of matches
-	res := reg.FindAllStringSubmatch(strcontents, -1)
-
-	// pack into proto so we can send off to bgpinfo
-	var asnNames []*pb.AsnName
-	for _, AS := range res {
+	res := reg.FindAllStringSubmatch(string(output), -1)
+	for _, as := range res {
 		asnNames = append(asnNames, &pb.AsnName{
-			AsNumber: com.StringToUint32(AS[1]),
-			AsName:   AS[2],
-			AsLocale: AS[3],
+			AsNumber: com.StringToUint32(as[1]),
+			AsName:   as[2],
+			AsLocale: as[3],
 		})
 	}
 

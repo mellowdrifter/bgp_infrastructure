@@ -21,17 +21,17 @@ var good = []*pb.AsnName{
 		AsLocale: "US",
 	},
 	{
-		AsName:   "DNIC-ASBLK-05120-05376 - DoD Network Information Center",
+		AsName:   "DNIC-ASBLK-05120-05376",
 		AsNumber: 5218,
 		AsLocale: "US",
 	},
 	{
-		AsName:   "ARRIS-TECHNOLOGY-SD-NOC - ARRIS Technology, Inc.",
+		AsName:   "ARRIS-TECHNOLOGY-SD-NOC",
 		AsNumber: 10580,
 		AsLocale: "US",
 	},
 	{
-		AsName:   "ALTECOM",
+		AsName:   "ALTECOM Alta Tecnologia en Comunicacions, S.L",
 		AsNumber: 16030,
 		AsLocale: "ES",
 	},
@@ -51,7 +51,7 @@ var good = []*pb.AsnName{
 		AsLocale: "US",
 	},
 	{
-		AsName:   "GSCS - St. Paul's Roman Catholic Separate School Division #20",
+		AsName:   "GSCS",
 		AsNumber: 397335,
 		AsLocale: "CA",
 	},
@@ -62,7 +62,7 @@ var good = []*pb.AsnName{
 	},
 	{
 		AsName:   "-Reserved AS-",
-		AsNumber: 397723,
+		AsNumber: 397759,
 		AsLocale: "ZZ",
 	},
 }
@@ -93,6 +93,20 @@ func TestDecoderFull(t *testing.T) {
 	for _, info := range output {
 		if info.GetAsLocale() == "" {
 			t.Errorf("AS %s has no Locale", info.GetAsName())
+		}
+	}
+}
+
+func TestGetTextASNs(t *testing.T) {
+	data, err := ioutil.ReadFile("asn.txt")
+	if err != nil {
+		panic(err)
+	}
+	output := decodeText(data)
+	for i := 0; i < len(output); i++ {
+		if !reflect.DeepEqual(output[i], good[i]) {
+			t.Errorf("No match error. Wanted %v, got %v", good[i], output[i])
+			continue
 		}
 	}
 }
