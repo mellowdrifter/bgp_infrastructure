@@ -279,15 +279,29 @@ func whatToTweet(now time.Time) toTweet {
 	todo.weekGraph = (now.Weekday() == time.Monday)
 
 	// Monthly graphs on the first day of the month.
-	todo.monthGraph = (now.Day() == 1)
+	// Unless the first falls on a Weekend
+	if now.Day() == 1 && isNotWeekend(now.Weekday()) {
+		todo.monthGraph = true
+	}
+	if (now.Day() == 2 || now.Day() == 3) && now.Weekday() == time.Monday {
+		todo.monthGraph = true
+	}
 
 	// 1st of July also tweet a 6 month growth graph.
-	todo.sixMonthGraph = (now.Day() == 1 && now.Month() == time.July)
+	if now.Day() == 1 && now.Month() == time.July && isNotWeekend(now.Weekday()) {
+		todo.sixMonthGraph = true
+	}
+	if (now.Day() == 2 || now.Day() == 3) && now.Month() == time.July && now.Weekday() == time.Monday {
+		todo.sixMonthGraph = true
+	}
 
-	// Annual graph. Post on 3rd of January as no-one is around 1st and 2nd.
-	// TODO: Make this further into the year, and only if no weekends!
-	// TODO: Check weekends on other functions as well
-	todo.annualGraph = (now.Day() == 3 && now.Month() == time.January)
+	// Annual graph. Post on 6th of January as no-one is around in the beginning.
+	if now.Month() == time.January && now.Day() == 6 && isNotWeekend(now.Weekday()) {
+		todo.annualGraph = true
+	}
+	if now.Month() == time.January && (now.Day() == 7 || now.Day() == 8) && now.Weekday() == time.Monday {
+		todo.annualGraph = true
+	}
 
 	// On Wednesday I tweet the subnet pie graph.
 	todo.subnetPie = (now.Weekday() == time.Wednesday)
@@ -296,6 +310,13 @@ func whatToTweet(now time.Time) toTweet {
 	todo.rpkiPie = (now.Weekday() == time.Thursday)
 
 	return todo
+}
+
+func isNotWeekend(t time.Weekday) bool {
+	if t == time.Saturday || t == time.Sunday {
+		return false
+	}
+	return true
 }
 
 // getConnection will return a connection to a gRPC server. Caller should close.
