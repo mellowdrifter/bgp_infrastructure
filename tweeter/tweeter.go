@@ -35,6 +35,7 @@ type tweet struct {
 	account string
 	message string
 	media   []byte
+	video   []byte
 }
 
 type toTweet struct {
@@ -104,6 +105,7 @@ func main() {
 
 	srv.mux.HandleFunc("/post", srv.post())
 	srv.mux.HandleFunc("/", srv.dryrun())
+	srv.mux.HandleFunc("/test", srv.test())
 	srv.mux.HandleFunc("/favicon.ico", faviconHandler)
 
 	port := os.Getenv("PORT")
@@ -121,6 +123,35 @@ func (t *tweeter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ignore the request to favicon when I'm calling through a browser.
 func faviconHandler(w http.ResponseWriter, r *http.Request) {}
+
+func (t *tweeter) test() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("This will tweet using the restonweather account")
+		log.Printf("This is the full request: %#v\n", r)
+		log.Printf("url is %v\n", r.RequestURI)
+		t.mu.Lock()
+		defer t.mu.Unlock()
+
+		f, err := os.ReadFile("fry_900k.mp4")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("error when posting tweet: %v", err)
+			w.Write([]byte(err.Error()))
+		}
+
+		tweet := tweet{
+			account: "restonweather",
+			message: "this is a video test again with video",
+			video:   f,
+		}
+
+		if err := postTweet(tweet, t.cfg.file); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("error when posting tweet: %v", err)
+			w.Write([]byte(err.Error()))
+		}
+	}
+}
 
 // Basic index for now.
 func (t *tweeter) dryrun() http.HandlerFunc {
@@ -457,6 +488,12 @@ func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 		account: "bgp4table",
 		message: v4Update.String(),
 	}
+	// Prep for 900k!
+	if counts.GetActive_4() >= 900000 {
+		f, _ := os.ReadFile("fry_900k.mp4")
+		v4Tweet.video = f
+	}
+	// TODO: Need something for 1 million
 	v6Tweet := tweet{
 		account: "bgp6table",
 		message: v6Update.String(),
@@ -810,8 +847,33 @@ func postTweet(t tweet, cf *ini.File) error {
 	var media anaconda.Media
 	v := url.Values{}
 	if t.media != nil {
+		// TODO: Why am I ignoring errors here?
 		media, _ = api.UploadMedia(base64.StdEncoding.EncodeToString(t.media))
 		v.Set("media_ids", media.MediaIDString)
+	}
+
+	// Videos are a lot more complicated
+	// https://developer.twitter.com/en/docs/tutorials/uploading-media
+	// Note: This only deals with small files
+	// TODO: Make this deal with larger files too!
+	if t.video != nil {
+		size := len(t.video)
+		// Step 1 - Init
+		// TODO: Why am I ignoring errors here?
+		cm, _ := api.UploadVideoInit(size, "video/mp4")
+
+		// Step 2 -- Append
+		encoded := base64.StdEncoding.EncodeToString(t.video)
+		// TODO: check for errors
+		api.UploadVideoAppend(cm.MediaIDString, 0, encoded)
+
+		// Step 3 - Finalise
+		// TODO: check for errors
+		api.UploadVideoFinalize(cm.MediaIDString)
+
+		// attach
+		v.Set("media_ids", cm.MediaIDString)
+
 	}
 
 	// post it!
