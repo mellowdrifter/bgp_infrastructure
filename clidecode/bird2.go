@@ -389,8 +389,8 @@ func (b Bird2Conn) GetROA(prefix *net.IPNet, asn uint32) (int, bool, error) {
 func (b Bird2Conn) GetVRPs(asn uint32) ([]VRP, error) {
 	var VRPs []VRP
 	cmds := []string{
-		fmt.Sprintf("/usr/sbin/birdc show route all table roa_v4 where net.asn=%d | grep -Ev 'BIRD|device1|name|info|kernel1|Table' |grep %d | awk {'print $1'}", asn, asn),
-		fmt.Sprintf("/usr/sbin/birdc show route all table roa_v6 where net.asn=%d | grep -Ev 'BIRD|device1|name|info|kernel1|Table' |grep %d | awk {'print $1'}", asn, asn),
+		fmt.Sprintf("/usr/sbin/birdc show route all table roa_v4 where net.asn=%d | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep / | awk {'print $1'}", asn),
+		fmt.Sprintf("/usr/sbin/birdc show route all table roa_v6 where net.asn=%d | grep -Ev 'BIRD|device1|name|info|kernel1|Table' | grep / | awk {'print $1'}", asn),
 	}
 	for _, cmd := range cmds {
 		out, err := c.GetOutput(cmd)
