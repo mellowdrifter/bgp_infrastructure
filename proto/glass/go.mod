@@ -1,3 +1,3 @@
 module github.com/mellowdrifter/bgp_infrastructure/proto/glass
 
-go 1.17
+go 1.18

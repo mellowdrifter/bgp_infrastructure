@@ -230,7 +230,7 @@ func TestTotalCache(t *testing.T) {
 	srv := getServer()
 
 	// check an empty cache
-	cache, ok := srv.checkTotalCache()
+	_, ok := srv.checkTotalCache()
 	if ok {
 		t.Errorf("expected an empty cache, but got a non empty cache")
 	}
@@ -245,7 +245,7 @@ func TestTotalCache(t *testing.T) {
 	srv.updateTotalCache(totals)
 
 	// cache should exist
-	cache, ok = srv.checkTotalCache()
+	cache, ok := srv.checkTotalCache()
 	if !ok {
 		t.Errorf("should be a totals cache entry, but none found")
 	}
@@ -471,37 +471,6 @@ func TestMapCache(t *testing.T) {
 	}
 }
 
-func TestASNCache(t *testing.T) {
-	srv := getServer()
-	// check an empty cache
-	cache, ok := srv.checkASNCache(123)
-	if ok {
-		t.Errorf("expected an empty cache, but got a non empty cache: %#v", cache)
-	}
-
-	t.Parallel()
-	var i uint32
-	for i = 1; i < 101; i++ {
-		t.Run(fmt.Sprintf("ASN %d", i), func(t *testing.T) {
-			resp := pb.AsnameResponse{
-				AsName: fmt.Sprintf("corportation of %d", i),
-				Locale: "US",
-			}
-			srv.updateASNCache(i, resp)
-			cache, ok := srv.checkASNCache(i)
-			if !ok {
-				t.Error("cache entry expected, but none found")
-			}
-			if !reflect.DeepEqual(cache, resp) {
-				t.Errorf("got %+v, wanted %+v", cache, resp)
-			}
-		})
-	}
-	if len(srv.asNameCache) != 100 {
-		t.Errorf("expected a namecache length of %d, but actual length is %d", 100, len(srv.asNameCache))
-	}
-}
-
 func TestSourcedCache(t *testing.T) {
 	srv := getServer()
 	// check an empty cache
@@ -573,9 +542,6 @@ func TestClearCache(t *testing.T) {
 		ilocation: 10,
 		imap:      30,
 	}
-
-	// Inject into the cache
-	srv.updateASNCache(1, pb.AsnameResponse{AsName: "test"})
 
 	// clearCache will run every 100 milliseconds
 	sleepTimer := 100 * time.Millisecond

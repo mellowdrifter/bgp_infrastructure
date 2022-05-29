@@ -40,6 +40,9 @@ service looking_glass {
     // vrps will return a list of all VRPs for a source AS
     rpc vrps(vrps_request) returns (vrps_response);
 
+    // origin_asname_roa will return the three required fields for a tracerpki hop.
+    rpc origin_asname_roa(origin_asname_roa_request) returns (origin_asname_roa_response);
+
 }
 
 message ip_address {
@@ -57,6 +60,16 @@ message origin_response {
     uint32 origin_asn = 1;
     bool exists = 2;
     uint64 cache_time = 3;
+}
+
+message origin_asname_roa_request {
+    ip_address ip_address = 1;
+}
+
+message origin_asname_roa_response {
+    origin_response origin = 1;
+    asname_response asname = 2;
+    roa_response roa = 3;
 }
 
 message source_request {

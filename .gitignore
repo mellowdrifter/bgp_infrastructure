@@ -19,3 +19,8 @@ grapher/.vscode/launch.json
 grapher/.vscode/tasks.json
 glass/gofumpt_v0.1.0_linux_amd64
 clidecode/clidecode
+glass/__debug_bin
+glass/.vscode/configurationCache.log
+glass/.vscode/dryrun.log
+glass/.vscode/settings.json
+glass/.vscode/targets.log

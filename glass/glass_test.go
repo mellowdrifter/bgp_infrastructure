@@ -1,13 +1,19 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"reflect"
 	"testing"
 )
 
 func TestLoadAirports(t *testing.T) {
 	t.Parallel()
-	airFile := "/home/mellowd/go/src/github.com/mellowdrifter/bgp_infrastructure/glass/airports/airports.dat"
+	path, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	airFile := fmt.Sprintf("%s/testdata/airports.dat", path)
 	airports, err := loadAirports(airFile)
 	if err != nil {
 		t.Fatal(err)

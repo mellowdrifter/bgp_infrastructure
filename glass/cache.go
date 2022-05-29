@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"reflect"
@@ -442,7 +441,7 @@ func (s *server) checkMapCache(coordinates string) (string, bool) {
 	defer s.mu.RUnlock()
 	log.Printf("Check map cache for %s", coordinates)
 
-	val, ok := s.mapCache[fmt.Sprintf("%s", coordinates)]
+	val, ok := s.mapCache[coordinates]
 
 	// only return cache entry if it's within the max age
 	if ok {

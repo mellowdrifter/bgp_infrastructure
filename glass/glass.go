@@ -151,7 +151,7 @@ func dialGRPC(srv string) (*grpc.ClientConn, error) {
 func loadAirports(airFile string) (map[string]location, error) {
 	f, err := os.Open(airFile)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to open airports data file: %v", err)
+		return nil, fmt.Errorf("unable to open airports data file: %v", err)
 	}
 	defer f.Close()
 
@@ -450,6 +450,37 @@ func (s *server) Asname(ctx context.Context, r *pb.AsnameRequest) (*pb.AsnameRes
 	return &pb.AsnameResponse{}, nil
 }
 
+func (s *server) OriginAsnameRoa(ctx context.Context, r *pb.OriginAsnameRoaRequest) (*pb.OriginAsnameRoaResponse, error) {
+	origin, err := s.Origin(ctx, &pb.OriginRequest{IpAddress: r.IpAddress})
+	if err != nil {
+		return nil, err
+	}
+
+	var wg sync.WaitGroup
+	var asname *pb.AsnameResponse
+	var roa *pb.RoaResponse
+
+	wg.Add(2)
+	// Not checking errors here as caller can check if nil
+	go func() {
+		defer wg.Done()
+		asname, _ = s.Asname(ctx, &pb.AsnameRequest{AsNumber: origin.GetOriginAsn()})
+	}()
+
+	go func() {
+		defer wg.Done()
+		roa, _ = s.Roa(ctx, &pb.RoaRequest{IpAddress: r.IpAddress})
+	}()
+
+	wg.Wait()
+
+	return &pb.OriginAsnameRoaResponse{
+		Origin: origin,
+		Asname: asname,
+		Roa:    roa,
+	}, nil
+}
+
 // Asnames will download all AS number to names from the database.
 func (s *server) Asnames(ctx context.Context, e *pb.Empty) (*pb.AsnamesResponse, error) {
 	log.Printf("Running all asnames")
@@ -568,7 +599,7 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 	defer com.TimeFunction(time.Now(), "Sourced")
 
 	if !com.ValidateASN(r.GetAsNumber()) {
-		return &pb.SourceResponse{}, fmt.Errorf("Invalid AS number")
+		return &pb.SourceResponse{}, fmt.Errorf("invalid AS number")
 	}
 
 	// check local cache first
@@ -586,12 +617,12 @@ func (s *server) Sourced(ctx context.Context, r *pb.SourceRequest) (*pb.SourceRe
 	v4, err := s.router.GetIPv4FromSource(r.GetAsNumber())
 	if err != nil {
 		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
-		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv4 from source: %w", err)
+		return &pb.SourceResponse{}, fmt.Errorf("error on getting IPv4 from source: %w", err)
 	}
 	v6, err := s.router.GetIPv6FromSource(r.GetAsNumber())
 	if err != nil {
 		log.Printf("Error on request id %s: %v", getTracerFromContext(ctx), err)
-		return &pb.SourceResponse{}, fmt.Errorf("Error on getting IPv6 from source: %w", err)
+		return &pb.SourceResponse{}, fmt.Errorf("error on getting IPv6 from source: %w", err)
 	}
 	// No prefixes will return empty, but no error
 	if len(v4)+len(v6) == 0 {
@@ -666,7 +697,7 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 	// Get location co-ordinates
 	coor, ok := s.airports[r.GetAirport()]
 	if !ok {
-		return &pb.LocationResponse{}, fmt.Errorf("Unable to determine location for %s", r.GetAirport())
+		return &pb.LocationResponse{}, fmt.Errorf("unable to determine location for %s", r.GetAirport())
 	}
 
 	// If context cancelled, exit early here
@@ -685,7 +716,7 @@ func (s *server) Location(ctx context.Context, r *pb.LocationRequest) (*pb.Locat
 
 	// Now get the map
 	if err := s.addMap(ctx, &loc); err != nil {
-		return &pb.LocationResponse{}, fmt.Errorf("Unable to add map to response: %w", err)
+		return &pb.LocationResponse{}, fmt.Errorf("unable to add map to response: %w", err)
 	}
 
 	// update cache
@@ -752,7 +783,7 @@ func (s *server) Vrps(ctx context.Context, r *pb.VrpsRequest) (*pb.VrpsResponse,
 	defer com.TimeFunction(time.Now(), "VRPs")
 
 	if !com.ValidateASN(r.GetAsNumber()) {
-		return &pb.VrpsResponse{}, fmt.Errorf("Invalid AS number")
+		return &pb.VrpsResponse{}, fmt.Errorf("invalid AS number")
 	}
 
 	// check local cache first
