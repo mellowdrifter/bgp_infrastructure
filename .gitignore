@@ -9,7 +9,6 @@ proto/*/*.py
 bgpsql/bgpsql
 asname/asname
 bgpstuff_tester/tester
-collector/collector
 tweeter/proto/grapher/grapher.pb.go
 tweeter/proto/bgpsql/bgpsql.proto
 tweeter/proto/bgpsql/bgpsql.pb.go

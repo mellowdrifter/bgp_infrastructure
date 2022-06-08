@@ -1,6 +1,6 @@
 module github.com/mellowdrifter/bgp_infrastructure/common
 
-go 1.17
+go 1.18
 
 replace github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql => ../proto/bgpsql
 
