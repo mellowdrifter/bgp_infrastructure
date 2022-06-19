@@ -43,6 +43,8 @@ service looking_glass {
     // origin_asname_roa will return the three required fields for a tracerpki hop.
     rpc origin_asname_roa(origin_asname_roa_request) returns (origin_asname_roa_response);
 
+    // ip_coordinates will attempt to return the longitude and latitude of an IP.
+    rpc ip_coordinates(coordinates_request) returns (coordinates_response);
 }
 
 message ip_address {
@@ -53,6 +55,15 @@ message ip_address {
 
 message origin_request {
     ip_address ip_address = 1;
+}
+
+message coordinates_request {
+    ip_address ip_address = 1;
+}
+
+message coordinates_response {
+    string lat =1;
+    string lon =2;
 }
 
 message origin_response {
