@@ -62,8 +62,11 @@ message coordinates_request {
 }
 
 message coordinates_response {
-    string lat =1;
-    string lon =2;
+    string city = 1;
+    string country = 2;
+    string lat = 3;
+    string long = 4;
+    string image = 5;
 }
 
 message origin_response {
