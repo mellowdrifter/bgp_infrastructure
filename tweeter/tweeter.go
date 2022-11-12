@@ -19,6 +19,7 @@ import (
 	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
 
 	"github.com/ChimeraCoder/anaconda"
+	"github.com/mattn/go-mastodon"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/ini.v1"
@@ -27,8 +28,8 @@ import (
 const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
-	minV4 = 880000
-	minV6 = 120000
+	minV4 = 900000
+	minV6 = 160000
 )
 
 type tweet struct {
@@ -191,6 +192,12 @@ func (t *tweeter) post() http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Printf("error when posting tweet: %v", err)
 			}
+		}
+		// TODO: YUCK
+		err = postToot(tweetList[1], t.cfg.file)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("error when posting toot: %v", err)
 		}
 	}
 }
@@ -799,7 +806,7 @@ func rpki(c config) ([]tweet, error) {
 }
 
 func postTweet(t tweet, cf *ini.File) error {
-	// read account credentials
+	// read twitter account credentials
 	consumerKey := cf.Section(t.account).Key("consumerKey").String()
 	consumerSecret := cf.Section(t.account).Key("consumerSecret").String()
 	accessToken := cf.Section(t.account).Key("accessToken").String()
@@ -844,6 +851,49 @@ func postTweet(t tweet, cf *ini.File) error {
 	// post it!
 	if _, err := api.PostTweet(t.message, v); err != nil {
 		return fmt.Errorf("error: unable to post tweet %v", err)
+	}
+
+	return nil
+}
+
+func postToot(t tweet, cf *ini.File) error {
+	// read mastadon account credentials
+	server := cf.Section("bgp6mastadon").Key("server").String()
+	clientID := cf.Section("bgp6mastadon").Key("consumerKey").String()
+	clientSecret := cf.Section("bgp6mastadon").Key("clientSecret").String()
+	accessToken := cf.Section("bgp6mastadon").Key("accessToken").String()
+	email := cf.Section("bgp6mastadon").Key("accessSecret").String()
+	password := cf.Section("bgp6mastadon").Key("accessSecret").String()
+
+	// set up mastodon client
+	c := mastodon.NewClient(&mastodon.Config{
+		Server:       server,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		AccessToken:  accessToken,
+	})
+
+	// authenticate client
+	err := c.Authenticate(context.Background(), email, password)
+	if err != nil {
+		return err
+	}
+
+	toot := mastodon.Toot{}
+	toot.Status = t.message
+
+	// Images need to be uploaded and referred to in an actual toot
+	if t.media != nil {
+		att, err := c.UploadMedia(context.Background(), base64.StdEncoding.EncodeToString(t.media))
+		if err != nil {
+			return err
+		}
+		toot.MediaIDs = append(toot.MediaIDs, att.ID)
+	}
+
+	// post it!
+	if _, err := c.PostStatus(context.Background(), &toot); err != nil {
+		return fmt.Errorf("error: unable to post toot %v", err)
 	}
 
 	return nil
