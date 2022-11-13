@@ -859,11 +859,11 @@ func postTweet(t tweet, cf *ini.File) error {
 func postToot(t tweet, cf *ini.File) error {
 	// read mastadon account credentials
 	server := cf.Section("bgp6mastadon").Key("server").String()
-	clientID := cf.Section("bgp6mastadon").Key("consumerKey").String()
+	clientID := cf.Section("bgp6mastadon").Key("clientID").String()
 	clientSecret := cf.Section("bgp6mastadon").Key("clientSecret").String()
 	accessToken := cf.Section("bgp6mastadon").Key("accessToken").String()
-	email := cf.Section("bgp6mastadon").Key("accessSecret").String()
-	password := cf.Section("bgp6mastadon").Key("accessSecret").String()
+	email := cf.Section("bgp6mastadon").Key("email").String()
+	password := cf.Section("bgp6mastadon").Key("password").String()
 
 	// set up mastodon client
 	c := mastodon.NewClient(&mastodon.Config{
