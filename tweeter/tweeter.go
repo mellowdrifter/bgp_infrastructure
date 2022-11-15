@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -187,17 +188,17 @@ func (t *tweeter) post() http.HandlerFunc {
 		}
 
 		for _, tweet := range tweetList {
-			// Post tweets.
+			// Tweet it
 			if err := postTweet(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				log.Printf("error when posting tweet: %v", err)
+				log.Printf("error when tweeting: %v", err)
 			}
-		}
-		// TODO: YUCK
-		err = postToot(tweetList[1], t.cfg.file)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("error when posting toot: %v", err)
+			// Toot it
+			if err := postToot(tweet, t.cfg.file); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				log.Printf("error when tooting: %v", err)
+			}
+
 		}
 	}
 }
@@ -857,13 +858,18 @@ func postTweet(t tweet, cf *ini.File) error {
 }
 
 func postToot(t tweet, cf *ini.File) error {
-	// read mastadon account credentials
-	server := cf.Section("bgp6mastadon").Key("server").String()
-	clientID := cf.Section("bgp6mastadon").Key("clientID").String()
-	clientSecret := cf.Section("bgp6mastadon").Key("clientSecret").String()
-	accessToken := cf.Section("bgp6mastadon").Key("accessToken").String()
-	email := cf.Section("bgp6mastadon").Key("email").String()
-	password := cf.Section("bgp6mastadon").Key("password").String()
+	ctx := context.TODO()
+	// read mastodon account credentials
+	account := "bgp6mastodon"
+	if t.account == "bgp4table" {
+		account = "bgp4mastodon"
+	}
+	server := cf.Section(account).Key("server").String()
+	clientID := cf.Section(account).Key("clientID").String()
+	clientSecret := cf.Section(account).Key("clientSecret").String()
+	accessToken := cf.Section(account).Key("accessToken").String()
+	email := cf.Section(account).Key("email").String()
+	password := cf.Section(account).Key("password").String()
 
 	// set up mastodon client
 	c := mastodon.NewClient(&mastodon.Config{
@@ -874,7 +880,7 @@ func postToot(t tweet, cf *ini.File) error {
 	})
 
 	// authenticate client
-	err := c.Authenticate(context.Background(), email, password)
+	err := c.Authenticate(ctx, email, password)
 	if err != nil {
 		return err
 	}
@@ -884,7 +890,7 @@ func postToot(t tweet, cf *ini.File) error {
 
 	// Images need to be uploaded and referred to in an actual toot
 	if t.media != nil {
-		att, err := c.UploadMedia(context.Background(), base64.StdEncoding.EncodeToString(t.media))
+		att, err := c.UploadMediaFromReader(ctx, bytes.NewReader(t.media))
 		if err != nil {
 			return err
 		}
@@ -892,7 +898,7 @@ func postToot(t tweet, cf *ini.File) error {
 	}
 
 	// post it!
-	if _, err := c.PostStatus(context.Background(), &toot); err != nil {
+	if _, err := c.PostStatus(ctx, &toot); err != nil {
 		return fmt.Errorf("error: unable to post toot %v", err)
 	}
 
