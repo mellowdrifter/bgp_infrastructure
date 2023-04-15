@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+
+package poster;
+
+service Poster {
+    rpc PostMessage(PostMessageRequest) returns (PostMessageResponse);
+    rpc PostMessageWithImage(PostMessageWithImageRequest) returns (PostMessageResponse);
+    rpc PostMessageWithVideo(PostMessageWithVideoRequest) returns (PostMessageResponse);
+}
+
+message PostMessageRequest {
+    string message = 1;
+    MastadonAccount mastadon_account = 2;
+    TwitterAccount twitter_account = 3;
+}
+
+message PostMessageWithImageRequest {
+    string message = 1;
+    MastadonAccount mastadon_account = 2;
+    TwitterAccount twitter_account = 3;
+    string image = 4;
+}
+
+message PostMessageWithVideoRequest {
+    string message = 1;
+    MastadonAccount mastadon_account = 2;
+    TwitterAccount twitter_account = 3;
+    string video = 4;
+}
+
+message PostMessageResponse {
+    string response = 1;
+}
+
+message TwitterAccount {
+    string consumer_key = 1;
+    string consumer_secret = 2;
+    string access_token = 3;
+    string access_secret = 4;
+}
+
+message MastadonAccount {
+    string server = 1;
+    string client_id = 2;
+    string client_secret = 3;
+    string access_token = 4;
+    string email = 5;
+    string password = 6;
+}

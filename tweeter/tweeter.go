@@ -21,16 +21,18 @@ import (
 
 	"github.com/ChimeraCoder/anaconda"
 	"github.com/mattn/go-mastodon"
+	"github.com/michimani/gotwi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/ini.v1"
 )
 
 const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
-	minV4 = 900000
-	minV6 = 160000
+	minV4 = 920000
+	minV6 = 170000
 )
 
 type tweet struct {
@@ -68,7 +70,6 @@ type tweeter struct {
 	cfg config
 }
 
-// Pull out most of the initial set up into a separate function
 func setup() (config, error) {
 	// load in config
 	exe, err := os.Executable()
@@ -329,9 +330,8 @@ func isNotWeekend(t time.Weekday) bool {
 }
 
 // getConnection will return a connection to a gRPC server. Caller should close.
-// TODO: Do the funky thing where you return the closer.
 func getConnection(srv string) (*grpc.ClientConn, error) {
-	conn, err := grpc.Dial(srv, grpc.WithInsecure())
+	conn, err := grpc.Dial(srv, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("unable to dial gRPC server: %v", err)
 	}
@@ -815,6 +815,16 @@ func postTweet(t tweet, cf *ini.File) error {
 
 	// set up twitter client
 	api := anaconda.NewTwitterApiWithCredentials(accessToken, accessSecret, consumerKey, consumerSecret)
+	api2, err := gotwi.NewClient(
+		&gotwi.NewClientInput{
+			AuthenticationMethod: gotwi.AuthenMethodOAuth1UserContext,
+			OAuthToken:           accessToken,
+			OAuthTokenSecret:     accessSecret,
+		},
+	)
+	if err != nil {
+		return err
+	}
 
 	// Images need to be uploaded and referred to in an actual tweet
 	var media anaconda.Media
@@ -890,6 +900,7 @@ func postToot(t tweet, cf *ini.File) error {
 
 	// Images need to be uploaded and referred to in an actual toot
 	if t.media != nil {
+		// TODO: change this to uploadmediafrombytes once upgraded
 		att, err := c.UploadMediaFromReader(ctx, bytes.NewReader(t.media))
 		if err != nil {
 			return err
