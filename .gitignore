@@ -6,6 +6,8 @@
 */*_pb2_grpc.py
 proto/*/*.go
 proto/*/*.py
+*/*.sum
+*/*/*.sum
 bgpsql/bgpsql
 asname/asname
 bgpstuff_tester/tester
@@ -16,3 +18,4 @@ grapher/.vscode/launch.json
 grapher/.vscode/tasks.json
 glass/gofumpt_v0.1.0_linux_amd64
 */.vscode/*
+go.work.sum

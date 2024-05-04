@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 
@@ -68,7 +68,7 @@ var good = []*pb.AsnName{
 }
 
 func TestDecoder(t *testing.T) {
-	data, err := ioutil.ReadFile("autnums.html")
+	data, err := os.ReadFile("autnums.html")
 	if err != nil {
 		panic(err)
 	}
@@ -82,7 +82,7 @@ func TestDecoder(t *testing.T) {
 }
 
 func TestDecoderFull(t *testing.T) {
-	data, err := ioutil.ReadFile("autnums.html")
+	data, err := os.ReadFile("autnums.html")
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +98,7 @@ func TestDecoderFull(t *testing.T) {
 }
 
 func TestGetTextASNs(t *testing.T) {
-	data, err := ioutil.ReadFile("asn.txt")
+	data, err := os.ReadFile("asn.txt")
 	if err != nil {
 		panic(err)
 	}

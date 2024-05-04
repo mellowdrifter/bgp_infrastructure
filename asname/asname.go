@@ -107,7 +107,7 @@ func getASNFromUrl(url string, isText bool) ([]*pb.AsnName, error) {
 		return nil, err
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("got status code error on url(%s): %d\n", url, resp.StatusCode)
+		return nil, fmt.Errorf("got status code error on url(%s): %d", url, resp.StatusCode)
 	}
 	defer resp.Body.Close()
 	contents, err = io.ReadAll(resp.Body)
