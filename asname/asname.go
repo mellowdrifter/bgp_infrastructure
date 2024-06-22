@@ -57,12 +57,13 @@ func main() {
 	c := pb.NewBgpInfoClient(conn)
 
 	// Send update
+	log.Printf("sending %d asnames", len(req.AsnNames))
 	resp, err := c.UpdateAsnames(context.Background(), req, grpc.MaxCallSendMsgSize(100000000))
 	if err != nil {
 		log.Fatalf("Unable to send proto: %s", err)
 	}
 
-	log.Printf("Updated database with response %s", resp.GetResult())
+	log.Printf("Updated database with response %v", resp.GetSuccess())
 }
 
 func getASNs() (*pb.AsnamesRequest, error) {
