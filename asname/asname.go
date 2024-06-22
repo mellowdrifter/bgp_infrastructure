@@ -14,10 +14,10 @@ import (
 	"golang.org/x/text/encoding/charmap"
 	"gopkg.in/ini.v1"
 
-	"github.com/golang/protobuf/proto"
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// gRPC dial and send data
-	conn, err := grpc.Dial(bgpinfo, grpc.WithInsecure())
+	conn, err := grpc.Dial(bgpinfo, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
 	}
@@ -57,12 +57,12 @@ func main() {
 	c := pb.NewBgpInfoClient(conn)
 
 	// Send update
-	resp, err := c.UpdateAsnames(context.Background(), req)
+	resp, err := c.UpdateAsnames(context.Background(), req, grpc.MaxCallSendMsgSize(100000000))
 	if err != nil {
 		log.Fatalf("Unable to send proto: %s", err)
 	}
 
-	log.Printf("Updated database with response %s", proto.MarshalTextString(resp))
+	log.Printf("Updated database with response %s", resp.GetResult())
 }
 
 func getASNs() (*pb.AsnamesRequest, error) {

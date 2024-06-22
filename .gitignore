@@ -19,3 +19,8 @@ grapher/.vscode/tasks.json
 glass/gofumpt_v0.1.0_linux_amd64
 */.vscode/*
 go.work.sum
+asname/go.sum
+asname/go.sum
+asname/go.sum
+bgpsql/go.sum
+proto/bgpsql/go.sum

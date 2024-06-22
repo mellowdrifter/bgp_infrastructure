@@ -21,7 +21,6 @@ import (
 
 	"github.com/ChimeraCoder/anaconda"
 	"github.com/mattn/go-mastodon"
-	"github.com/michimani/gotwi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -31,8 +30,8 @@ import (
 const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
-	minV4 = 920000
-	minV6 = 170000
+	minV4 = 950000
+	minV6 = 190000
 )
 
 type tweet struct {
@@ -815,16 +814,6 @@ func postTweet(t tweet, cf *ini.File) error {
 
 	// set up twitter client
 	api := anaconda.NewTwitterApiWithCredentials(accessToken, accessSecret, consumerKey, consumerSecret)
-	api2, err := gotwi.NewClient(
-		&gotwi.NewClientInput{
-			AuthenticationMethod: gotwi.AuthenMethodOAuth1UserContext,
-			OAuthToken:           accessToken,
-			OAuthTokenSecret:     accessSecret,
-		},
-	)
-	if err != nil {
-		return err
-	}
 
 	// Images need to be uploaded and referred to in an actual tweet
 	var media anaconda.Media
