@@ -4,7 +4,6 @@ from typing import List
 from typing import Text
 import os
 from concurrent import futures
-import configparser
 import grapher_pb2 as pb
 import grapher_pb2_grpc
 import datetime
@@ -12,6 +11,7 @@ import grpc
 import io
 import logging
 import matplotlib
+import matplotlib.pyplot
 matplotlib.use('Agg')
 
 _PORT = os.environ["PORT"]

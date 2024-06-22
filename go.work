@@ -1,6 +1,6 @@
 go 1.22
 
-toolchain go1.22.2
+toolchain go1.22.4
 
 use ./common
 use ./asname
@@ -8,3 +8,4 @@ use ./proto/glass
 use ./proto/bgpsql
 use ./proto/grapher
 use ./bgpsql
+use ./tweeter
