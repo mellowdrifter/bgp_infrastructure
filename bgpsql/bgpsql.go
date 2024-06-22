@@ -13,7 +13,6 @@ import (
 	com "github.com/mellowdrifter/bgp_infrastructure/common"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 	ini "gopkg.in/ini.v1"
 )
 
@@ -45,8 +44,8 @@ func readConfig() config {
 
 	var cfg config
 	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
-	cfg.logfile = fmt.Sprintf(cf.Section("log").Key("file").String())
-	cfg.dbname = fmt.Sprintf("%s", cf.Section("sql").Key("database").String())
+	cfg.logfile = cf.Section("log").Key("file").String()
+	cfg.dbname = cf.Section("sql").Key("database").String()
 	cfg.user = cf.Section("sql").Key("username").String()
 	cfg.pass = cf.Section("sql").Key("password").String()
 
@@ -86,7 +85,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.MaxRecvMsgSize(100000000))
 	pb.RegisterBgpInfoServer(grpcServer, &bgpinfoServer)
 
 	grpcServer.Serve(lis)
@@ -102,7 +101,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	// update database
 	err := addLatestHelper(update, s.db)
 	if err != nil {
-		log.Printf("Got error in AddLatest: %s with update %q\n", err, proto.MarshalTextString(v))
+		log.Printf("Got error in AddLatest: %s with update %q\n", err, v)
 		return nil, err
 	}
 
