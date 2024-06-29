@@ -211,19 +211,21 @@ func (t *tweeter) post() http.HandlerFunc {
 // getTweets will compile all tweets as according to the todo list of tweets.
 func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	var listOfTweets []tweet
-	if todo.test {
-		tweets := []tweet{
-			{
-				account: "bgp4table",
-				message: "I'm alive",
-			},
-			{
-				account: "bgp6table",
-				message: "I'm alive",
-			},
+	/*
+		if todo.test {
+			tweets := []tweet{
+				{
+					account: "bgp4table",
+					message: "I'm alive",
+				},
+				{
+					account: "bgp6table",
+					message: "I'm alive",
+				},
+			}
+			listOfTweets = append(listOfTweets, tweets...)
 		}
-		listOfTweets = append(listOfTweets, tweets...)
-	}
+	*/
 
 	if todo.tableSize {
 		tweets, err := allCurrent(cfg)
@@ -484,7 +486,14 @@ func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 		account: "bgp4table",
 		message: v4Update.String(),
 	}
-	// TODO: Need something for 1 million
+	if counts.GetActive_4() >= 1000000 {
+		mil, err := os.ReadFile("million.png")
+		if err == nil {
+			v4Tweet.media = mil
+		} else {
+			log.Printf("error reading million.png: %v", err)
+		}
+	}
 	v6Tweet := tweet{
 		account: "bgp6table",
 		message: v6Update.String(),
@@ -612,7 +621,7 @@ func subnets(c config) ([]tweet, error) {
 			V4Values: v4Subnets,
 			V6Values: v6Subnets,
 		},
-		Copyright: "data by @mellowdrifter | www.mellowd.dev",
+		Copyright: "data by Darren O'Connor | www.mellowd.dev",
 	}
 
 	grp, err := getTLSConnection(c.grapher)
