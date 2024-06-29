@@ -9,17 +9,19 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ChimeraCoder/anaconda"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
+	"github.com/mellowdrifter/gotwi"
+	"github.com/mellowdrifter/gotwi/tweet/managetweet"
+	"github.com/mellowdrifter/gotwi/tweet/managetweet/types"
 
-	"github.com/ChimeraCoder/anaconda"
 	"github.com/mattn/go-mastodon"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -54,6 +56,8 @@ type toTweet struct {
 	subnetPie bool
 
 	rpkiPie bool
+
+	test bool
 }
 
 type config struct {
@@ -69,7 +73,7 @@ type tweeter struct {
 	cfg config
 }
 
-func setup() (config, error) {
+func Setup() (config, error) {
 	// load in config
 	exe, err := os.Executable()
 	if err != nil {
@@ -85,7 +89,8 @@ func setup() (config, error) {
 
 	config.file = cf
 
-	config.grapher = cf.Section("grapher").Key("server").String()
+	gr := cf.Section("grapher").Key("server").String()
+	config.grapher = fmt.Sprintf("%s:443", gr)
 	config.servers = cf.Section("bgpinfo").Key("server").ValueWithShadows()
 
 	flag.Parse()
@@ -96,7 +101,7 @@ func setup() (config, error) {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	cfg, err := setup()
+	cfg, err := Setup()
 	if err != nil {
 		log.Fatalf("unable to set things up: %v", err)
 	}
@@ -206,6 +211,19 @@ func (t *tweeter) post() http.HandlerFunc {
 // getTweets will compile all tweets as according to the todo list of tweets.
 func getTweets(todo toTweet, cfg config) ([]tweet, error) {
 	var listOfTweets []tweet
+	if todo.test {
+		tweets := []tweet{
+			{
+				account: "bgp4table",
+				message: "I'm alive",
+			},
+			{
+				account: "bgp6table",
+				message: "I'm alive",
+			},
+		}
+		listOfTweets = append(listOfTweets, tweets...)
+	}
 
 	if todo.tableSize {
 		tweets, err := allCurrent(cfg)
@@ -273,6 +291,7 @@ func whatToTweet(now time.Time) toTweet {
 		20: true,
 	}
 	if !validHours[now.Hour()] {
+		todo.test = true
 		return todo
 	}
 
@@ -806,53 +825,71 @@ func rpki(c config) ([]tweet, error) {
 }
 
 func postTweet(t tweet, cf *ini.File) error {
-	// read twitter account credentials
-	consumerKey := cf.Section(t.account).Key("consumerKey").String()
-	consumerSecret := cf.Section(t.account).Key("consumerSecret").String()
-	accessToken := cf.Section(t.account).Key("accessToken").String()
-	accessSecret := cf.Section(t.account).Key("accessSecret").String()
 
-	// set up twitter client
-	api := anaconda.NewTwitterApiWithCredentials(accessToken, accessSecret, consumerKey, consumerSecret)
+	in := &gotwi.NewClientInput{
+		AuthenticationMethod: gotwi.AuthenMethodOAuth1UserContext,
+		OAuthToken:           cf.Section(t.account).Key("accessToken").String(),
+		OAuthTokenSecret:     cf.Section(t.account).Key("accessSecret").String(),
+		APIKey:               cf.Section(t.account).Key("apiKey").String(),
+		APISecret:            cf.Section(t.account).Key("apiSecret").String(),
+	}
+	api := anaconda.NewTwitterApiWithCredentials(
+		cf.Section(t.account).Key("accessToken").String(),
+		cf.Section(t.account).Key("accessSecret").String(),
+		cf.Section(t.account).Key("apiKey").String(),
+		cf.Section(t.account).Key("apiSecret").String(),
+	)
+
+	c, err := gotwi.NewClient(in)
+	if err != nil {
+		return err
+	}
+
+	p := &types.CreateInput{
+		Text: gotwi.String(t.message),
+	}
 
 	// Images need to be uploaded and referred to in an actual tweet
 	var media anaconda.Media
-	v := url.Values{}
 	if t.media != nil {
 		// TODO: Why am I ignoring errors here?
 		media, _ = api.UploadMedia(base64.StdEncoding.EncodeToString(t.media))
-		v.Set("media_ids", media.MediaIDString)
+		p.Media = &types.CreateInputMedia{
+			MediaIDs: []string{media.MediaIDString},
+		}
 	}
 
-	// Videos are a lot more complicated
-	// https://developer.twitter.com/en/docs/tutorials/uploading-media
-	// Note: This only deals with small files
-	// TODO: Make this deal with larger files too!
-	if t.video != nil {
-		size := len(t.video)
-		// Step 1 - Init
-		// TODO: Why am I ignoring errors here?
-		cm, _ := api.UploadVideoInit(size, "video/mp4")
+	/*
+		// Videos are a lot more complicated
+		// https://developer.twitter.com/en/docs/tutorials/uploading-media
+		// Note: This only deals with small files
+		// TODO: Make this deal with larger files too!
+		if t.video != nil {
+			size := len(t.video)
+			// Step 1 - Init
+			// TODO: Why am I ignoring errors here?
+			cm, _ := api.UploadVideoInit(size, "video/mp4")
 
-		// Step 2 -- Append
-		encoded := base64.StdEncoding.EncodeToString(t.video)
-		// TODO: check for errors
-		api.UploadVideoAppend(cm.MediaIDString, 0, encoded)
+			// Step 2 -- Append
+			encoded := base64.StdEncoding.EncodeToString(t.video)
+			// TODO: check for errors
+			api.UploadVideoAppend(cm.MediaIDString, 0, encoded)
 
-		// Step 3 - Finalise
-		// TODO: check for errors
-		api.UploadVideoFinalize(cm.MediaIDString)
+			// Step 3 - Finalise
+			// TODO: check for errors
+			api.UploadVideoFinalize(cm.MediaIDString)
 
-		// attach
-		v.Set("media_ids", cm.MediaIDString)
+			// attach
+			v.Set("media_ids", cm.MediaIDString)
 
-	}
+		}
+	*/
 
 	// post it!
-	if _, err := api.PostTweet(t.message, v); err != nil {
+	_, err = managetweet.Create(context.TODO(), c, p)
+	if err != nil {
 		return fmt.Errorf("error: unable to post tweet %v", err)
 	}
-
 	return nil
 }
 
