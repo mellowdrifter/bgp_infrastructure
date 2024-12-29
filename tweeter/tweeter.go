@@ -112,6 +112,7 @@ func main() {
 	srv.cfg = cfg
 
 	srv.mux.HandleFunc("/post", srv.post())
+	srv.mux.HandleFunc("/testbksy", srv.testbsky())
 	srv.mux.HandleFunc("/", srv.dryrun())
 	srv.mux.HandleFunc("/favicon.ico", faviconHandler)
 
@@ -130,6 +131,33 @@ func (t *tweeter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ignore the request to favicon when I'm calling through a browser.
 func faviconHandler(w http.ResponseWriter, r *http.Request) {}
+
+// Test bsky
+func (t *tweeter) testbsky() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		t.cfg.dryRun = true
+
+		var todo toTweet
+		todo.annualGraph = true
+
+		tweetList, err := getTweets(todo, t.cfg)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "unable to get tweets: %v", err)
+			return
+		}
+		for _, tweet := range tweetList {
+			// Post it
+			if err := postBsky(tweet, t.cfg.file); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				log.Printf("error when posting to bluesky: %v", err)
+			}
+		}
+
+	}
+}
 
 // Basic index for now.
 func (t *tweeter) dryrun() http.HandlerFunc {
@@ -1001,7 +1029,6 @@ func postBsky(t tweet, cf *ini.File) error {
 				},
 			},
 		}
-
 	}
 
 	// Post it
