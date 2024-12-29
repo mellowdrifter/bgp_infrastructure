@@ -1,6 +1,6 @@
 module github.com/mellowdrifter/bgp_infrastructure/tweeter
 
-go 1.22.4
+go 1.24rc1
 
 require (
 	github.com/ChimeraCoder/anaconda v2.0.0+incompatible // indirect
@@ -11,7 +11,7 @@ require (
 	github.com/garyburd/go-oauth v0.0.0-20180319155456-bca2e7f09a17 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mattn/go-mastodon v0.0.8 // indirect
-	github.com/mellowdrifter/bgp_infrastructure/proto/grapher v0.0.0-20240622173449-2c92aff0bf71 // indirect
+	github.com/mellowdrifter/bgp_infrastructure v0.0.0-20240703002112-f895390bbfd1 // indirect
 	github.com/mellowdrifter/gotwi v0.0.0-20240625221309-9e68b5998527 // indirect
 	github.com/michimani/gotwi v0.14.0 // indirect
 	github.com/sivchari/gotwtr v1.2.1 // indirect

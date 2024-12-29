@@ -55,3 +55,9 @@ message MastadonAccount {
     string email = 5;
     string password = 6;
 }
+
+message BlueSkyAccount {
+    string handle = 1;
+    string password = 2;
+}
+

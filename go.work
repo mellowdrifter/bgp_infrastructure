@@ -1,4 +1,6 @@
-go 1.23.2
+go 1.24rc1
+
+toolchain go1.24rc1
 
 use ./common
 
@@ -13,3 +15,5 @@ use ./proto/grapher
 use ./bgpsql
 
 use ./tweeter
+
+use ./bsky

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ChimeraCoder/anaconda"
+	"github.com/mellowdrifter/bgp_infrastructure/bsky"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
 	"github.com/mellowdrifter/gotwi"
@@ -33,7 +34,7 @@ const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
 	minV4 = 950000
-	minV6 = 190000
+	minV6 = 200000
 )
 
 type tweet struct {
@@ -197,6 +198,11 @@ func (t *tweeter) post() http.HandlerFunc {
 			if err := postTweet(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Printf("error when tweeting: %v", err)
+			}
+			// Post it
+			if err := postBsky(tweet, t.cfg.file); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				log.Printf("error when posting to bluesky: %v", err)
 			}
 			// Toot it
 			if err := postToot(tweet, t.cfg.file); err != nil {
@@ -925,8 +931,7 @@ func postToot(t tweet, cf *ini.File) error {
 	})
 
 	// authenticate client
-	err := c.Authenticate(ctx, email, password)
-	if err != nil {
+	if err := c.Authenticate(ctx, email, password); err != nil {
 		return err
 	}
 
@@ -946,6 +951,62 @@ func postToot(t tweet, cf *ini.File) error {
 	// post it!
 	if _, err := c.PostStatus(ctx, &toot); err != nil {
 		return fmt.Errorf("error: unable to post toot %v", err)
+	}
+
+	return nil
+}
+
+func postBsky(t tweet, cf *ini.File) error {
+	user := cf.Section("bsky").Key("username").String()
+	hand := cf.Section("bsky").Key("handle").String()
+	pass := cf.Section("bsky").Key("password").String()
+
+	c := bsky.NewClient(
+		bsky.Account{
+			Username: user,
+			Handle:   hand,
+			Password: pass,
+		},
+	)
+
+	// Authenticate
+	token, err := c.Authenticate()
+	if err != nil {
+		return err
+	}
+	did, err := c.GetDID(token, hand)
+
+	post := bsky.PostContent{
+		Type:      "app.bsky.feed.post",
+		Text:      t.message,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	// Upload image
+	if t.media != nil {
+		ul, err := c.UploadImage(token, t.media)
+		if err != nil {
+			return err
+		}
+		post.Embed = bsky.PostEmbed{
+			Type: "app.bsky.embed.images",
+			Images: []bsky.EmbedImage{
+				{
+					Image: bsky.Blob{
+						Type:     "blob",
+						Ref:      bsky.BlobRef{Link: ul.Ref},
+						MimeType: fmt.Sprintf("image/%s", ul.Fmt),
+						Size:     len(t.media),
+					},
+					AspectRatio: bsky.AspectRatio{Width: ul.Cfg.Width, Height: ul.Cfg.Height},
+				},
+			},
+		}
+
+	}
+
+	// Post it
+	if err := c.CreatePost(token, did, post); err != nil {
+		return err
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-module github.com/mellowdrifter/bgp_infrastructure/proto/glass
+module github.com/mellowdrifter/bgp_infrastructure/proto/tweeter
 
 go 1.24rc1
 
