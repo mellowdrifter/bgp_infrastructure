@@ -85,7 +85,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to bind: %v", err)
 	}
-	grpcServer := grpc.NewServer(grpc.MaxRecvMsgSize(100000000))
+	grpcServer := grpc.NewServer(
+		grpc.MaxRecvMsgSize(16*1024*1024),
+		grpc.MaxSendMsgSize(16*1024*1024),
+	)
 	pb.RegisterBgpInfoServer(grpcServer, &bgpinfoServer)
 
 	grpcServer.Serve(lis)
