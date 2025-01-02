@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"math/rand"
+
 	"github.com/ChimeraCoder/anaconda"
 	"github.com/mellowdrifter/bgp_infrastructure/bsky"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
@@ -140,7 +142,7 @@ func (t *tweeter) testbsky() http.HandlerFunc {
 		t.cfg.dryRun = true
 
 		var todo toTweet
-		todo.annualGraph = true
+		todo.tableSize = true
 
 		tweetList, err := getTweets(todo, t.cfg)
 		if err != nil {
@@ -168,13 +170,15 @@ func (t *tweeter) dryrun() http.HandlerFunc {
 		defer t.mu.Unlock()
 		t.cfg.dryRun = true
 
-		todo := whatToTweet(time.Now())
+		var todo toTweet
+		todo.tableSize = true
 		todo.rpkiPie = true
 		todo.subnetPie = true
 		todo.weekGraph = true
 		todo.monthGraph = true
 		todo.sixMonthGraph = true
 		todo.annualGraph = true
+		log.Printf("todo: %#v\n", todo)
 
 		tweetList, err := getTweets(todo, t.cfg)
 		if err != nil {
@@ -222,6 +226,8 @@ func (t *tweeter) post() http.HandlerFunc {
 		}
 
 		for _, tweet := range tweetList {
+			// bsky is not showing the second post often. Maybe I should sleep between posts?
+			time.Sleep(10 * time.Second)
 			// Tweet it
 			if err := postTweet(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -232,12 +238,6 @@ func (t *tweeter) post() http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Printf("error when posting to bluesky: %v", err)
 			}
-			// Toot it
-			if err := postToot(tweet, t.cfg.file); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				log.Printf("error when tooting: %v", err)
-			}
-
 		}
 	}
 }
@@ -479,9 +479,9 @@ func allCurrent(c config) ([]tweet, error) {
 }
 
 // current grabs the current v4 and v6 table count for tweeting.
-func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
+func current(bgp bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 	log.Println("Running current")
-	counts, err := b.GetPrefixCount(context.Background(), &bpb.Empty{})
+	counts, err := bgp.GetPrefixCount(context.Background(), &bpb.Empty{})
 	if err != nil {
 		return nil, err
 	}
@@ -496,29 +496,34 @@ func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 			counts.GetActive_6(), minV6)
 	}
 
-	// Calculate deltas.
-	v4DeltaH := int(counts.GetActive_4()) - int(counts.GetSixhoursv4())
-	v6DeltaH := int(counts.GetActive_6()) - int(counts.GetSixhoursv6())
-	v4DeltaW := int(counts.GetActive_4()) - int(counts.GetWeekagov4())
-	v6DeltaW := int(counts.GetActive_6()) - int(counts.GetWeekagov6())
-
-	// Calculate large subnets percentages
-	percentV4 := float32(counts.GetSlash24()) / float32(counts.GetActive_4()) * 100
-	percentV6 := float32(counts.GetSlash48()) / float32(counts.GetActive_6()) * 100
-
-	// Formulate updates
-	var v4Update, v6Update strings.Builder
-	v4Update.WriteString(fmt.Sprintf("I see %d IPv4 prefixes. ", counts.GetActive_4()))
-	v4Update.WriteString(deltaMessage(v4DeltaH, v4DeltaW))
-	v4Update.WriteString(fmt.Sprintf(". %.2f%% of prefixes are /24.", percentV4))
-
-	v6Update.WriteString(fmt.Sprintf("I see %d IPv6 prefixes. ", counts.GetActive_6()))
-	v6Update.WriteString(deltaMessage(v6DeltaH, v6DeltaW))
-	v6Update.WriteString(fmt.Sprintf(". %.2f%% of prefixes are /48.", percentV6))
+	suffixes := []func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error){
+		func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+			return asnMostBlocks(context.Background(), bgp, counts)
+		},
+		func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+			return asnMostInvalids(context.Background(), bgp, counts)
+		},
+		func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+			return largeSubnetPercentage(context.Background(), bgp, counts)
+		},
+		// TODO: This is very compute heavy
+		//func(b bpb.BgpInfoClient) (string, error) {
+		//	return b.asnRPKIALLAnnounced(context.Background(), &bpb.Empty{})
+		//},
+	}
+	// Seed the random number generator
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	// Generate a random index
+	randomIndex := r.Intn(len(suffixes))
+	// Call the randomly selected function and return the result
+	v4, v6, err := suffixes[randomIndex](bgp, counts)
+	if err != nil {
+		return nil, err
+	}
 
 	v4Tweet := tweet{
 		account: "bgp4table",
-		message: v4Update.String(),
+		message: v4,
 	}
 	if counts.GetActive_4() >= 1000000 {
 		mil, err := os.ReadFile("million.png")
@@ -530,13 +535,68 @@ func current(b bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 	}
 	v6Tweet := tweet{
 		account: "bgp6table",
-		message: v6Update.String(),
+		message: v6,
 	}
 
-	if err := setTweetBit(b, counts.GetTime(), dryrun); err != nil {
+	if err := setTweetBit(bgp, counts.GetTime(), dryrun); err != nil {
 		log.Printf("Unable to set tweet bit, but continuing on: %v", err)
 	}
+
+	log.Printf("IPv4: %s\nIPv6: %s\n", v4, v6)
 	return []tweet{v4Tweet, v6Tweet}, nil
+}
+
+func prefixCurrent(_ bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (*strings.Builder, *strings.Builder, error) {
+	// Calculate deltas.
+	v4DeltaH := int(counts.GetActive_4()) - int(counts.GetSixhoursv4())
+	v6DeltaH := int(counts.GetActive_6()) - int(counts.GetSixhoursv6())
+	v4DeltaW := int(counts.GetActive_4()) - int(counts.GetWeekagov4())
+	v6DeltaW := int(counts.GetActive_6()) - int(counts.GetWeekagov6())
+
+	// Formulate updates
+	var v4Update, v6Update strings.Builder
+	v4Update.WriteString(fmt.Sprintf("I see %d IPv4 prefixes. ", counts.GetActive_4()))
+	v4Update.WriteString(deltaMessage(v4DeltaH, v4DeltaW))
+
+	v6Update.WriteString(fmt.Sprintf("I see %d IPv6 prefixes. ", counts.GetActive_6()))
+	v6Update.WriteString(deltaMessage(v6DeltaH, v6DeltaW))
+
+	return &v4Update, &v6Update, nil
+}
+
+func asnMostBlocks(_ context.Context, bgp bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+	v4, v6, err := prefixCurrent(bgp, counts)
+	if err != nil {
+		return "", "", err
+	}
+	v4.WriteString(" This has asMostBlocks")
+	v6.WriteString(" This has asMostBlocks")
+	return v4.String(), v6.String(), nil
+}
+
+func asnMostInvalids(_ context.Context, bgp bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+	v4, v6, err := prefixCurrent(bgp, counts)
+	if err != nil {
+		return "", "", err
+	}
+	v4.WriteString(" This has asMostInvalids")
+	v6.WriteString(" This has asMostInvalids")
+	return v4.String(), v6.String(), nil
+}
+
+func largeSubnetPercentage(_ context.Context, bgp bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+	v4, v6, err := prefixCurrent(bgp, counts)
+	if err != nil {
+		return "", "", err
+	}
+	// Calculate large subnets percentages
+	percentV4 := float32(counts.GetSlash24()) / float32(counts.GetActive_4()) * 100
+	percentV6 := float32(counts.GetSlash48()) / float32(counts.GetActive_6()) * 100
+
+	v4.WriteString(fmt.Sprintf(" %.2f%% of prefixes are /24.", percentV4))
+	v6.WriteString(fmt.Sprintf(" %.2f%% of prefixes are /48.", percentV6))
+
+	return v4.String(), v6.String(), nil
 }
 
 // deltaMessage creates the update message itself. Uses the deltas to formulate the exact message.
@@ -559,15 +619,15 @@ func deltaMessage(h, w int) string {
 
 	switch {
 	case w == 1:
-		update.WriteString("and 1 more than a week ago")
+		update.WriteString("and 1 more than a week ago.")
 	case w == -1:
-		update.WriteString("and 1 less than a week ago")
+		update.WriteString("and 1 less than a week ago.")
 	case w < 0:
-		update.WriteString(fmt.Sprintf("and %d fewer than a week ago", -w))
+		update.WriteString(fmt.Sprintf("and %d fewer than a week ago.", -w))
 	case w > 0:
-		update.WriteString(fmt.Sprintf("and %d more than a week ago", w))
+		update.WriteString(fmt.Sprintf("and %d more than a week ago.", w))
 	default:
-		update.WriteString("and no change in the amount from a week ago")
+		update.WriteString("and no change in the amount from a week ago.")
 
 	}
 
@@ -1004,16 +1064,16 @@ func postBsky(t tweet, cf *ini.File) error {
 	}
 	did, err := c.GetDID(token, hand)
 
-	post := bsky.PostContent{
-		Type:      "app.bsky.feed.post",
-		Text:      t.message,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-	}
-	// Upload image
 	if t.media != nil {
+		// Upload image
 		ul, err := c.UploadImage(token, t.media)
 		if err != nil {
 			return err
+		}
+		post := bsky.ImagePostContent{
+			Type:      "app.bsky.feed.post",
+			Text:      t.message,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		}
 		post.Embed = bsky.PostEmbed{
 			Type: "app.bsky.embed.images",
@@ -1029,12 +1089,21 @@ func postBsky(t tweet, cf *ini.File) error {
 				},
 			},
 		}
+		// Post it
+		if err := c.CreatePost(token, did, post); err != nil {
+			return err
+		}
+		return nil
 	}
 
+	post := bsky.TextPostContent{
+		Type:      "app.bsky.feed.post",
+		Text:      t.message,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
 	// Post it
 	if err := c.CreatePost(token, did, post); err != nil {
 		return err
 	}
-
 	return nil
 }
