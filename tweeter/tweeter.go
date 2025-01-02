@@ -815,7 +815,7 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	req := &gpb.LineGraphRequest{
 		Metadatas:  []*gpb.Metadata{v4Meta, v6Meta},
 		TotalsTime: tt,
-		Copyright:  "data by @mellowdrifter | www.mellowd.dev",
+		Copyright:  "data by daz.bgpstuff.net | www.mellowd.dev",
 	}
 
 	// Dial the grapher to retrive graphs via matplotlib
