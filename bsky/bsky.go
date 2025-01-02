@@ -54,11 +54,21 @@ type CreateRecordRequest struct {
 	Record     interface{} `json:"record"`
 }
 
-type PostContent struct {
+type ImagePostContent struct {
 	Type      string    `json:"$type"`
 	Text      string    `json:"text"`
 	CreatedAt string    `json:"createdAt"`
 	Embed     PostEmbed `json:"embed"`
+}
+
+type TextPostContent struct {
+	Type      string `json:"$type"`
+	Text      string `json:"text"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type PostContent interface {
+	GetText() string
 }
 
 type PostEmbed struct {
@@ -97,6 +107,14 @@ func NewClient(account Account) *Client {
 	return &Client{
 		Account: account,
 	}
+}
+
+func (p ImagePostContent) GetText() string {
+	return p.Text
+}
+
+func (p TextPostContent) GetText() string {
+	return p.Text
 }
 
 func (c *Client) Authenticate() (string, error) {

@@ -42,9 +42,9 @@ func TestPostBsky(t *testing.T) {
 
 	c, token, did := setup()
 
-	post := PostContent{
+	post := TextPostContent{
 		Type:      "app.bsky.feed.post",
-		Text:      "test post",
+		Text:      "testing",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -58,7 +58,7 @@ func TestPostBsky(t *testing.T) {
 func TestPostBskyPNG(t *testing.T) {
 	c, token, did := setup()
 
-	post := PostContent{
+	post := ImagePostContent{
 		Type:      "app.bsky.feed.post",
 		Text:      "test post with png",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -97,9 +97,9 @@ func TestPostBskyPNG(t *testing.T) {
 func TestPostBskyJPG(t *testing.T) {
 	c, token, did := setup()
 
-	post := PostContent{
+	post := ImagePostContent{
 		Type:      "app.bsky.feed.post",
-		Text:      "test post with jpg",
+		Text:      "testing post with jpg",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
