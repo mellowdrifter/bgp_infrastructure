@@ -19,3 +19,5 @@ use ./bgpsql
 use ./tweeter
 
 use ./bsky
+
+use ./tracerpki

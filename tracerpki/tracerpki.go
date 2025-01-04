@@ -1,6 +1,7 @@
-package tracerpki
+package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,7 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki"
 	bgpstuff "github.com/mellowdrifter/go-bgpstuff.net"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 const (
@@ -19,6 +24,7 @@ const (
 	startPort        = 33434
 	endPort          = 33534 // do i really need this if maxHops == 30 ?
 	defaultTimeoutMS = 3000
+	maxTTL           = 30
 )
 
 var (
@@ -37,21 +43,40 @@ type Args struct {
 	FirstTTL uint
 }
 
-// func Trace(args Args) error {
-func Trace(args Args) error {
-	// find the local address
-	v4Local, _, err := getSocketAddress()
+// server is used to implement tracerpki.TraceRPKI
+type server struct {
+	pb.TraceRPKIServer
+}
+
+func main() {
+	listener, err := net.Listen("tcp", ":50051")
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to listen: %v", err)
 	}
 
-	// where are we trying to get to?
-	destAddr, err := getDestinationAddresses(args.Location)
+	grpcServer := grpc.NewServer()
+	pb.RegisterTraceRPKIServer(grpcServer, &server{})
+	reflection.Register(grpcServer)
+
+	log.Println("gRPC server is listening on :50051")
+	if err := grpcServer.Serve(listener); err != nil {
+		log.Fatalf("Failed to serve: %v", err)
+	}
+}
+
+func (s *server) GetTraceRPKI(ctx context.Context, req *tracerpki.TraceRPKIRequest) (*tracerpki.TraceRPKIResponse, error) {
+	destAddr, err := getDestinationAddresses(req.GetHost())
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	// get glass server
+	localV4, localV6, err := getSocketAddress()
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("local v4 is %s, and local v6 is %s\n", localV4, localV6)
+
+	// TODO: Put this into the server object
 	glass := bgpstuff.NewBGPClient(false)
 
 	// Create the UDP sender and the ICMP receiver
@@ -69,9 +94,9 @@ func Trace(args Args) error {
 	// set timeouts
 	timeout := syscall.NsecToTimeval(1000000 * int64(*timeoutMS))
 
-	fmt.Printf("tracerpki to %s (%s), %d hops max, using %s as source\n", args.Location, destAddr, args.MaxTTL, v4Local)
+	log.Printf("tracerpki to %s (%s), %d hops max, using %s as source\n", req.GetHost(), destAddr, maxTTL, localV4)
 
-	for ttl := uint(1); ttl < args.MaxTTL; ttl++ {
+	for ttl := uint(1); ttl < maxTTL; ttl++ {
 		start := time.Now()
 		hop := hop{hop: ttl}
 
@@ -83,7 +108,7 @@ func Trace(args Args) error {
 		//	fmt.Errorf("error IP_RECVERR: %v", err)
 		//}
 
-		syscall.Bind(receiver, &syscall.SockaddrInet4{Port: startPort, Addr: v4Local.As4()})
+		syscall.Bind(receiver, &syscall.SockaddrInet4{Port: startPort, Addr: localV4.As4()})
 		syscall.Sendto(sender, []byte{}, 0, &syscall.SockaddrInet4{Port: startPort, Addr: destAddr[0].As4()})
 		// Increment the source port each time. We don't have to, but traceroute seems to do this
 		// startPort++
@@ -116,12 +141,14 @@ func Trace(args Args) error {
 		hop.printHop()
 
 		if ip == destAddr[0].As4() {
-			return nil
+			log.Printf("at if ip == destAddr[0]")
+			return nil, nil
 		}
 
 	}
 	fmt.Println("maximum hops reached")
-	return nil
+	return nil, nil
+
 }
 
 func getOrigin(glass *bgpstuff.Client, addr string) int {
@@ -247,4 +274,26 @@ func probeUDP(ttl int, destAddr netip.Addr) error {
 	}
 
 	return nil
+}
+
+type hop struct {
+	hop        uint
+	asNumber   int
+	address    netip.Addr
+	asName     string
+	rDNS       string
+	duration   time.Duration
+	rpkiStatus string
+}
+
+func (h *hop) printHop() {
+	fmt.Printf("%d  %s\t(%s)\t%d\t%s\tRPKI: %s\n", h.hop, h.rDNS, h.address, h.asNumber, h.asName, h.rpkiStatus)
+}
+
+// UNKNOWN looks confusing, so adjust output to not signed
+func unknownToNotSigned(status string) string {
+	if status == "UNKNOWN" {
+		return "NOT SIGNED"
+	}
+	return status
 }

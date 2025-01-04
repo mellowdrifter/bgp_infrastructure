@@ -7,10 +7,6 @@ service TraceRPKI {
     rpc GetTraceRPKI(TraceRPKIRequest) returns (TraceRPKIResponse);
 }
 
-message TestRequest {
-    string testmessage = 1;
-}
-
 message TraceRPKIRequest {
     string host = 1;
     string locale = 2;
