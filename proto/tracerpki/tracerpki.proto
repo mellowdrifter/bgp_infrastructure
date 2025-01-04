@@ -1,0 +1,28 @@
+
+syntax = "proto3";
+
+package tracerpki;
+
+service TraceRPKI {
+    rpc GetTraceRPKI(TraceRPKIRequest) returns (TraceRPKIResponse);
+}
+
+message TestRequest {
+    string testmessage = 1;
+}
+
+message TraceRPKIRequest {
+    string host = 1;
+    string locale = 2;
+}
+
+message TraceRPKIResponse {
+    repeated hop hop = 1;
+}
+
+message hop {
+    string ip = 1;
+    bool valid = 2;
+    string asname = 3;
+    uint32 asnumber = 4;
+}

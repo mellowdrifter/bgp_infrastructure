@@ -12,6 +12,8 @@ use ./proto/bgpsql
 
 use ./proto/grapher
 
+use ./proto/tracerpki
+
 use ./bgpsql
 
 use ./tweeter
