@@ -6,25 +6,23 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/netip"
-	"syscall"
+	"os"
 	"time"
 
-	"github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki"
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki"
 	bgpstuff "github.com/mellowdrifter/go-bgpstuff.net"
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
 const (
-	reqPerMinute     = 60
-	startPort        = 33434
-	endPort          = 33534 // do i really need this if maxHops == 30 ?
-	defaultTimeoutMS = 3000
-	maxTTL           = 30
+	protocolICMP = 1 // ICMP protocol number
+	timeout      = 2 * time.Second
+	maxTTL       = 30
 )
 
 var (
@@ -33,19 +31,23 @@ var (
 	timeoutMS = flag.Int("timeout", 3000, "timeout in milliseconds")
 )
 
-type Args struct {
-	Location string
-	TCP      bool
-	ICMP     bool
-	V6       bool
-	V4       bool
-	MaxTTL   uint
-	FirstTTL uint
-}
-
 // server is used to implement tracerpki.TraceRPKI
 type server struct {
-	pb.TraceRPKIServer
+	glass *bgpstuff.Client
+}
+
+type hop struct {
+	hop     int
+	address string
+	time    time.Duration
+}
+
+type rpkiHop struct {
+	hop        hop
+	rDNS       string
+	asNumber   int
+	asName     string
+	rpkiStatus string
 }
 
 func main() {
@@ -55,7 +57,10 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterTraceRPKIServer(grpcServer, &server{})
+	glass := bgpstuff.NewBGPClient(false)
+	pb.RegisterTraceRPKIServer(grpcServer, &server{
+		glass: glass,
+	})
 	reflection.Register(grpcServer)
 
 	log.Println("gRPC server is listening on :50051")
@@ -64,6 +69,7 @@ func main() {
 	}
 }
 
+/*
 func (s *server) GetTraceRPKI(ctx context.Context, req *tracerpki.TraceRPKIRequest) (*tracerpki.TraceRPKIResponse, error) {
 	destAddr, err := getDestinationAddresses(req.GetHost())
 	if err != nil {
@@ -75,9 +81,6 @@ func (s *server) GetTraceRPKI(ctx context.Context, req *tracerpki.TraceRPKIReque
 		return nil, err
 	}
 	log.Printf("local v4 is %s, and local v6 is %s\n", localV4, localV6)
-
-	// TODO: Put this into the server object
-	glass := bgpstuff.NewBGPClient(false)
 
 	// Create the UDP sender and the ICMP receiver
 	sender, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
@@ -134,9 +137,9 @@ func (s *server) GetTraceRPKI(ctx context.Context, req *tracerpki.TraceRPKIReque
 			hop.rDNS = "*"
 		}
 
-		hop.asNumber = getOrigin(glass, hop.address.String())
-		hop.asName = getASName(glass, hop.asNumber)
-		hop.rpkiStatus = getRPKIStatus(glass, hop.address.String())
+		hop.asNumber = getOrigin(s.glass, hop.address.String())
+		hop.asName = getASName(s.glass, hop.asNumber)
+		hop.rpkiStatus = getRPKIStatus(s.glass, hop.address.String())
 
 		hop.printHop()
 
@@ -148,8 +151,12 @@ func (s *server) GetTraceRPKI(ctx context.Context, req *tracerpki.TraceRPKIReque
 	}
 	fmt.Println("maximum hops reached")
 	return nil, nil
+	_ = traceroute(req.GetHost(), 30)
+
+	return nil, nil
 
 }
+*/
 
 func getOrigin(glass *bgpstuff.Client, addr string) int {
 	origin, _ := glass.GetOrigin(addr)
@@ -190,110 +197,126 @@ func getSocketAddress() (*netip.Addr, *netip.Addr, error) {
 			}
 		}
 	}
-	// fmt.Printf("going to return %s and %s\n", v4, v6)
+	fmt.Printf("going to return %s and %s\n", v4, v6)
 	return &v4, &v6, nil
 }
 
-// getgetDestinationAddresses will return a slice of destination addresses.
-// It will always follow as ipv4, ipv6, error.
-// Any of these values could be nil
-func getDestinationAddresses(dest string) ([]netip.Addr, error) {
-	// fmt.Printf("address passed = %s", dest)
-	// user may pass in an IP directly
-	if addr, err := netip.ParseAddr(dest); err == nil {
-		// fmt.Println("user passed in an IP address direcly")
-		if addr.Is4() {
-			return []netip.Addr{addr, {}}, nil
-		}
-		if addr.Is6() {
-			return []netip.Addr{{}, addr}, nil
-		}
-	}
+func (s *server) GetTraceRPKI(ctx context.Context, req *pb.TraceRPKIRequest) (*pb.TraceRPKIResponse, error) {
 
-	// otherwise resolve the name
-	alladdrs, err := net.LookupHost(dest)
+	// TODO: Split this out into a v4 and v6 version as requested
+	// Also, maybe a UDP and ICMP version?
+	// Where are we going?
+	raddr, err := net.ResolveIPAddr("ip4", req.GetHost())
 	if err != nil {
-		fmt.Println(err)
-		return []netip.Addr{}, err
+		return nil, fmt.Errorf("failed to resolve address: %v", err)
 	}
 
-	return returnRandomIPsFromLookup(alladdrs), nil
-}
+	// Where are we coming from?
+	localV4, _, err := getSocketAddress()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source address: %v", err)
+	}
 
-// returnRandomIPsFromLookup takes a list of ipv4 and ipv6 addresses and returns a slice of one IPv4 and one IPv6.
-// This is chosen randomly. Slice will contain an empty struct literal if there is no ipv4 or no ipv6 addresses.
-func returnRandomIPsFromLookup(alladdrs []string) []netip.Addr {
-	var v4s, v6s []netip.Addr
+	var hops []hop
+	// TODO: Start TTL should be server specific
+	for ttl := 2; ttl <= maxTTL; ttl++ {
+		start := time.Now()
 
-	for _, addr := range alladdrs {
-		t, _ := netip.ParseAddr(addr)
-		if t.Is4() {
-			v4s = append(v4s, t)
+		conn, err := icmp.ListenPacket("ip4:icmp", localV4.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen to packet: %v", err)
+		}
+		defer conn.Close()
+
+		// Set TTL for the outgoing packet
+		if err := conn.IPv4PacketConn().SetTTL(ttl); err != nil {
+			return nil, fmt.Errorf("failed to set TTL: %v", err)
+		}
+
+		// Create ICMP Echo Request
+		message := icmp.Message{
+			Type: ipv4.ICMPTypeEcho,
+			Code: 0,
+			Body: &icmp.Echo{
+				ID:   os.Getpid() & 0xffff,
+				Seq:  ttl,
+				Data: payload,
+			},
+		}
+
+		messageBytes, err := message.Marshal(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal ICMP message: %v", err)
+		}
+
+		// Send the ICMP Echo Request
+		_, err = conn.WriteTo(messageBytes, &net.IPAddr{IP: raddr.IP})
+		if err != nil {
+			return nil, fmt.Errorf("failed to write packet: %v", err)
+		}
+
+		// Set a read deadline
+		conn.SetReadDeadline(time.Now().Add(timeout))
+
+		// Buffer for incoming ICMP response
+		buffer := make([]byte, 1500)
+		n, peer, err := conn.ReadFrom(buffer)
+		if err != nil {
+			fmt.Printf("%2d  * * * (timeout)\n", ttl)
 			continue
 		}
-		if t.Is6() {
-			v6s = append(v6s, t)
+
+		elapsed := time.Since(start)
+
+		// Parse the response
+		parsedMessage, err := icmp.ParseMessage(protocolICMP, buffer[:n])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse ICMP message: %v", err)
+		}
+
+		if parsedMessage.Type == ipv4.ICMPTypeTimeExceeded {
+			fmt.Printf("%2d  %v  %v\n", ttl, peer, elapsed)
+			hops = append(hops, hop{hop: ttl, address: peer.String(), time: elapsed})
+		} else if parsedMessage.Type == ipv4.ICMPTypeEchoReply {
+			fmt.Printf("%2d  %v  %v\n", ttl, peer, elapsed)
+			hops = append(hops, hop{hop: ttl, address: peer.String(), time: elapsed})
+			fmt.Println("Trace complete.")
+			break
 		}
 	}
+	fmt.Printf("Hops: %v\n", hops)
 
-	addrs := make([]netip.Addr, 2)
-	rand.Seed(time.Now().Unix())
-
-	if len(v4s) > 1 {
-		addrs[0] = v4s[rand.Intn(len(v4s))]
-	}
-	if len(v6s) > 1 {
-		addrs[1] = v6s[rand.Intn(len(v6s))]
-	}
-
-	if len(v4s) == 1 {
-		addrs[0] = v4s[0]
-	}
-	if len(v6s) == 1 {
-		addrs[1] = v6s[0]
-	}
-
-	return addrs
+	return printRPKIHops(s.glass, hops)
 }
 
-// send UDP probes
-func probeUDP(ttl int, destAddr netip.Addr) error {
-	// from here to defer, should this be set inside this function or outside?
-	sender, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
-	if err != nil {
-		return err
+func printRPKIHops(glass *bgpstuff.Client, hops []hop) (*pb.TraceRPKIResponse, error) {
+	var rpkiHops []*pb.Hop
+	var response pb.TraceRPKIResponse
+	for _, h := range hops {
+		asNumber := getOrigin(glass, h.address)
+		asName := getASName(glass, asNumber)
+		rpkiStatus := getRPKIStatus(glass, h.address)
+		var rDNS string
+		host, _ := net.LookupAddr(h.address)
+		if len(host) > 0 {
+			rDNS = host[0]
+		} else {
+			rDNS = "*"
+		}
+		rpkiHops = append(rpkiHops, &pb.Hop{
+			Hop:        uint32(h.hop),
+			Ip:         h.address,
+			Rtt:        uint32(h.time.Nanoseconds()),
+			Rdns:       rDNS,
+			AsNumber:   uint32(asNumber),
+			AsName:     asName,
+			RpkiStatus: rpkiStatus,
+		})
 	}
-	defer syscall.Close(sender)
-
-	if err := syscall.SetsockoptInt(sender, 0x0, syscall.IP_TTL, ttl); err != nil {
-		return err
+	response.Hops = rpkiHops
+	for _, rh := range rpkiHops {
+		fmt.Printf("%2d  %v  %v  %v  %v  %v %v\n", rh.GetHop(), rh.GetIp(), rh.GetRtt(), rh.GetRdns(), rh.GetAsNumber(), rh.GetAsName(), rh.GetRpkiStatus())
 	}
-
-	if err := syscall.Sendto(sender, payload, 32, &syscall.SockaddrInet4{Port: startPort, Addr: destAddr.As4()}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-type hop struct {
-	hop        uint
-	asNumber   int
-	address    netip.Addr
-	asName     string
-	rDNS       string
-	duration   time.Duration
-	rpkiStatus string
-}
-
-func (h *hop) printHop() {
-	fmt.Printf("%d  %s\t(%s)\t%d\t%s\tRPKI: %s\n", h.hop, h.rDNS, h.address, h.asNumber, h.asName, h.rpkiStatus)
-}
-
-// UNKNOWN looks confusing, so adjust output to not signed
-func unknownToNotSigned(status string) string {
-	if status == "UNKNOWN" {
-		return "NOT SIGNED"
-	}
-	return status
+	fmt.Println("All done!")
+	return &response, nil
 }

@@ -13,12 +13,15 @@ message TraceRPKIRequest {
 }
 
 message TraceRPKIResponse {
-    repeated hop hop = 1;
+    repeated hop hops = 1;
 }
 
 message hop {
-    string ip = 1;
-    bool valid = 2;
-    string asname = 3;
-    uint32 asnumber = 4;
+    uint32 hop = 1;
+    string ip = 2;
+    uint32 rtt= 3;
+    string rdns = 4;
+    uint32 as_number = 5;
+    string as_name = 6;
+    string rpki_status = 7;
 }
