@@ -1,6 +1,6 @@
-go 1.24rc1
+go 1.24rc2
 
-toolchain go1.24rc1
+toolchain go1.24rc2
 
 use ./common
 

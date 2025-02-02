@@ -1,6 +1,6 @@
 module github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki
 
-go 1.24rc1
+go 1.24rc2
 
 require (
 	github.com/golang/protobuf v1.5.4

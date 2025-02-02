@@ -8,32 +8,33 @@ import (
 	"log"
 	"net"
 	"net/netip"
-	"os"
+	"syscall"
 	"time"
 
 	pb "github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki"
 	bgpstuff "github.com/mellowdrifter/go-bgpstuff.net"
-	"golang.org/x/net/icmp"
-	"golang.org/x/net/ipv4"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
 const (
-	protocolICMP = 1 // ICMP protocol number
-	timeout      = 2 * time.Second
-	maxTTL       = 30
+	protocolICMP   = 1  // ICMP protocol number
+	protocolICMPv6 = 58 // ICMPv6 protocol number
+	maxHops        = 30
+	timeout        = 3 * time.Second
+	packetSize     = 52
 )
 
 var (
-	payload   = []byte("@BGPSTUFF.NET[\\]^_")
-	deadline  = flag.Int("deadline", 2, "bgstuff.net dial deadline in seconds")
-	timeoutMS = flag.Int("timeout", 3000, "timeout in milliseconds")
+	payload  = []byte("@BGPSTUFF.NET[\\]^_")
+	deadline = flag.Int("deadline", 2, "bgstuff.net dial deadline in seconds")
 )
 
 // server is used to implement tracerpki.TraceRPKI
 type server struct {
 	glass *bgpstuff.Client
+	v4    *netip.Addr
+	v6    *netip.Addr
 }
 
 type hop struct {
@@ -56,107 +57,25 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
+	v4, v6, err := getLocalAddress()
+	if err != nil {
+		log.Fatalf("Failed to get local address: %v", err)
+	}
+
 	grpcServer := grpc.NewServer()
 	glass := bgpstuff.NewBGPClient(false)
 	pb.RegisterTraceRPKIServer(grpcServer, &server{
 		glass: glass,
+		v4:    v4,
+		v6:    v6,
 	})
 	reflection.Register(grpcServer)
 
-	log.Println("gRPC server is listening on :50051")
+	log.Printf("gRPC server is listening on :50051. Local v4 is %s, local v6 is %s\n", v4, v6)
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("Failed to serve: %v", err)
 	}
 }
-
-/*
-func (s *server) GetTraceRPKI(ctx context.Context, req *tracerpki.TraceRPKIRequest) (*tracerpki.TraceRPKIResponse, error) {
-	destAddr, err := getDestinationAddresses(req.GetHost())
-	if err != nil {
-		return nil, err
-	}
-
-	localV4, localV6, err := getSocketAddress()
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("local v4 is %s, and local v6 is %s\n", localV4, localV6)
-
-	// Create the UDP sender and the ICMP receiver
-	sender, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
-	if err != nil {
-		panic(err)
-	}
-	receiver, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_ICMP)
-	if err != nil {
-		panic(err)
-	}
-	defer syscall.Close(receiver)
-	defer syscall.Close(sender)
-
-	// set timeouts
-	timeout := syscall.NsecToTimeval(1000000 * int64(*timeoutMS))
-
-	log.Printf("tracerpki to %s (%s), %d hops max, using %s as source\n", req.GetHost(), destAddr, maxTTL, localV4)
-
-	for ttl := uint(1); ttl < maxTTL; ttl++ {
-		start := time.Now()
-		hop := hop{hop: ttl}
-
-		// set the ttl and timeouts on the socket
-		syscall.SetsockoptInt(sender, 0x0, syscall.IP_TTL, int(ttl))
-		syscall.SetsockoptTimeval(receiver, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &timeout)
-		//err = syscall.SetsockoptInt(sender, syscall.SOL_IP, syscall.IP_RECVERR, 1)
-		//if err != nil {
-		//	fmt.Errorf("error IP_RECVERR: %v", err)
-		//}
-
-		syscall.Bind(receiver, &syscall.SockaddrInet4{Port: startPort, Addr: localV4.As4()})
-		syscall.Sendto(sender, []byte{}, 0, &syscall.SockaddrInet4{Port: startPort, Addr: destAddr[0].As4()})
-		// Increment the source port each time. We don't have to, but traceroute seems to do this
-		// startPort++
-
-		// now for some messages?
-		// 52 = packetsize
-		p := make([]byte, 52)
-		// n = packet size
-		_, from, err := syscall.Recvfrom(receiver, p, 0)
-		// err can be returned if timeout is reached
-		if err != nil {
-			fmt.Printf("%d\t*\n", ttl)
-			continue
-		}
-		hop.duration = time.Since(start)
-		ip := from.(*syscall.SockaddrInet4).Addr
-		hop.address = netip.AddrFrom4(ip)
-		// not all addresses will have reverse names. Therefore no need to check for an error. If there is an error, just don't bother displaying a hostname.
-		host, _ := net.LookupAddr(hop.address.String())
-		if len(host) > 0 {
-			hop.rDNS = host[0]
-		} else {
-			hop.rDNS = "*"
-		}
-
-		hop.asNumber = getOrigin(s.glass, hop.address.String())
-		hop.asName = getASName(s.glass, hop.asNumber)
-		hop.rpkiStatus = getRPKIStatus(s.glass, hop.address.String())
-
-		hop.printHop()
-
-		if ip == destAddr[0].As4() {
-			log.Printf("at if ip == destAddr[0]")
-			return nil, nil
-		}
-
-	}
-	fmt.Println("maximum hops reached")
-	return nil, nil
-	_ = traceroute(req.GetHost(), 30)
-
-	return nil, nil
-
-}
-*/
 
 func getOrigin(glass *bgpstuff.Client, addr string) int {
 	origin, _ := glass.GetOrigin(addr)
@@ -171,10 +90,14 @@ func getASName(glass *bgpstuff.Client, as int) string {
 func getRPKIStatus(glass *bgpstuff.Client, addr string) string {
 	// TODO: I need the full route, not just a single IP
 	rpki, _ := glass.GetROA(addr)
+	if rpki == "UNKNOWN" {
+		return "NOT SIGNED"
+	}
 	return rpki
 }
 
-func getSocketAddress() (*netip.Addr, *netip.Addr, error) {
+// getSocketAddress returns the local v4 and v6 addresses to use for the traceroute
+func getLocalAddress() (*netip.Addr, *netip.Addr, error) {
 	iAddrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return nil, nil, err
@@ -192,112 +115,143 @@ func getSocketAddress() (*netip.Addr, *netip.Addr, error) {
 			if v4.Compare(netip.Addr{}) == 0 && addr.Addr().Is4() {
 				v4 = addr.Addr()
 			}
-			if v6.Compare(netip.Addr{}) == 0 && addr.Addr().Is6() {
+			if v6.Compare(netip.Addr{}) == 0 && addr.Addr().Is6() && !addr.Addr().IsPrivate() {
 				v6 = addr.Addr()
 			}
 		}
 	}
-	fmt.Printf("going to return %s and %s\n", v4, v6)
 	return &v4, &v6, nil
+}
+
+func probe(addr *net.IPAddr, ttl int) (time.Duration, string, error) {
+	start := time.Now()
+
+	var sock int
+	var err error
+	var dst syscall.Sockaddr
+	var family, proto int
+
+	if addr.IP.To4() != nil {
+		family = syscall.AF_INET
+		proto = syscall.IPPROTO_UDP
+		sock, err = syscall.Socket(family, syscall.SOCK_DGRAM, proto)
+		if err != nil {
+			return 0, "", err
+		}
+		defer syscall.Close(sock)
+
+		err = syscall.SetsockoptInt(sock, syscall.IPPROTO_IP, syscall.IP_TTL, ttl)
+		if err != nil {
+			return 0, "", err
+		}
+
+		dst4 := &syscall.SockaddrInet4{Port: 33434}
+		copy(dst4.Addr[:], addr.IP.To4())
+		dst = dst4
+	} else {
+		family = syscall.AF_INET6
+		proto = syscall.IPPROTO_UDP
+		sock, err = syscall.Socket(family, syscall.SOCK_DGRAM, proto)
+		if err != nil {
+			return 0, "", err
+		}
+		defer syscall.Close(sock)
+
+		err = syscall.SetsockoptInt(sock, syscall.IPPROTO_IPV6, syscall.IPV6_UNICAST_HOPS, ttl)
+		if err != nil {
+			return 0, "", err
+		}
+
+		dst6 := &syscall.SockaddrInet6{Port: 33434}
+		copy(dst6.Addr[:], addr.IP.To16())
+		dst = dst6
+	}
+
+	if err := syscall.Sendto(sock, make([]byte, packetSize), 0, dst); err != nil {
+		return 0, "", err
+	}
+
+	icmpProto := syscall.IPPROTO_ICMP
+	if family == syscall.AF_INET6 {
+		icmpProto = syscall.IPPROTO_ICMPV6
+	}
+
+	rcvSock, err := syscall.Socket(family, syscall.SOCK_RAW, icmpProto)
+	if err != nil {
+		return 0, "", err
+	}
+	defer syscall.Close(rcvSock)
+
+	if err := syscall.SetsockoptTimeval(rcvSock, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &syscall.Timeval{Sec: 1, Usec: 0}); err != nil {
+		return 0, "", err
+	}
+
+	buf := make([]byte, 512)
+	n, from, err := syscall.Recvfrom(rcvSock, buf, 0)
+	if err != nil {
+		return 0, "", err
+	}
+
+	duration := time.Since(start)
+
+	sender := ""
+	switch from := from.(type) {
+	case *syscall.SockaddrInet4:
+		sender = net.IP(from.Addr[:]).String()
+	case *syscall.SockaddrInet6:
+		sender = net.IP(from.Addr[:]).String()
+	}
+
+	if n == 0 || sender == "" {
+		return 0, "", errors.New("invalid response")
+	}
+
+	return duration, sender, nil
 }
 
 func (s *server) GetTraceRPKI(ctx context.Context, req *pb.TraceRPKIRequest) (*pb.TraceRPKIResponse, error) {
 
-	// TODO: Split this out into a v4 and v6 version as requested
-	// Also, maybe a UDP and ICMP version?
-	// Where are we going?
-	raddr, err := net.ResolveIPAddr("ip4", req.GetHost())
+	addr, err := net.ResolveIPAddr("ip", req.GetHost())
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve address: %v", err)
-	}
-
-	// Where are we coming from?
-	localV4, _, err := getSocketAddress()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get source address: %v", err)
+		return nil, fmt.Errorf("Failed to resolve host: %v\n", err)
 	}
 
 	var hops []hop
-	// TODO: Start TTL should be server specific
-	for ttl := 2; ttl <= maxTTL; ttl++ {
-		start := time.Now()
 
-		conn, err := icmp.ListenPacket("ip4:icmp", localV4.String())
+	fmt.Printf("Tracing route to %s [%s]\n", req.GetHost(), addr.String())
+	for ttl := 2; ttl <= maxHops; ttl++ {
+		// Also, maybe a UDP and ICMP version?
+		elapsed, h, err := probe(addr, ttl)
 		if err != nil {
-			return nil, fmt.Errorf("failed to listen to packet: %v", err)
-		}
-		defer conn.Close()
-
-		// Set TTL for the outgoing packet
-		if err := conn.IPv4PacketConn().SetTTL(ttl); err != nil {
-			return nil, fmt.Errorf("failed to set TTL: %v", err)
-		}
-
-		// Create ICMP Echo Request
-		message := icmp.Message{
-			Type: ipv4.ICMPTypeEcho,
-			Code: 0,
-			Body: &icmp.Echo{
-				ID:   os.Getpid() & 0xffff,
-				Seq:  ttl,
-				Data: payload,
-			},
-		}
-
-		messageBytes, err := message.Marshal(nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ICMP message: %v", err)
-		}
-
-		// Send the ICMP Echo Request
-		_, err = conn.WriteTo(messageBytes, &net.IPAddr{IP: raddr.IP})
-		if err != nil {
-			return nil, fmt.Errorf("failed to write packet: %v", err)
-		}
-
-		// Set a read deadline
-		conn.SetReadDeadline(time.Now().Add(timeout))
-
-		// Buffer for incoming ICMP response
-		buffer := make([]byte, 1500)
-		n, peer, err := conn.ReadFrom(buffer)
-		if err != nil {
-			fmt.Printf("%2d  * * * (timeout)\n", ttl)
-			continue
-		}
-
-		elapsed := time.Since(start)
-
-		// Parse the response
-		parsedMessage, err := icmp.ParseMessage(protocolICMP, buffer[:n])
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ICMP message: %v", err)
-		}
-
-		if parsedMessage.Type == ipv4.ICMPTypeTimeExceeded {
-			fmt.Printf("%2d  %v  %v\n", ttl, peer, elapsed)
-			hops = append(hops, hop{hop: ttl, address: peer.String(), time: elapsed})
-		} else if parsedMessage.Type == ipv4.ICMPTypeEchoReply {
-			fmt.Printf("%2d  %v  %v\n", ttl, peer, elapsed)
-			hops = append(hops, hop{hop: ttl, address: peer.String(), time: elapsed})
-			fmt.Println("Trace complete.")
-			break
+			fmt.Printf("%2d  *\n", ttl)
+			hops = append(hops, hop{hop: ttl, address: h, time: elapsed})
+		} else {
+			fmt.Printf("%2d  %s  %v\n", ttl, h, elapsed)
+			hops = append(hops, hop{hop: ttl, address: h, time: elapsed})
+			if h == addr.String() {
+				break
+			}
 		}
 	}
 	fmt.Printf("Hops: %v\n", hops)
-
-	return printRPKIHops(s.glass, hops)
+	return popultateRPKIData(s.glass, hops)
 }
 
-func printRPKIHops(glass *bgpstuff.Client, hops []hop) (*pb.TraceRPKIResponse, error) {
+func popultateRPKIData(glass *bgpstuff.Client, hops []hop) (*pb.TraceRPKIResponse, error) {
 	var rpkiHops []*pb.Hop
 	var response pb.TraceRPKIResponse
 	for _, h := range hops {
+		log.Printf("Looking up details for hop: %v\n", h)
+		log.Println("Checking AS Number")
 		asNumber := getOrigin(glass, h.address)
+		log.Println("Checking AS Name")
 		asName := getASName(glass, asNumber)
+		log.Println("Checking RPKI Status")
 		rpkiStatus := getRPKIStatus(glass, h.address)
 		var rDNS string
+		log.Println("Checking reverse DNS")
 		host, _ := net.LookupAddr(h.address)
+		log.Println("Reverse DNS done")
 		if len(host) > 0 {
 			rDNS = host[0]
 		} else {

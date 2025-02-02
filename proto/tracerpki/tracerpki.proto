@@ -10,7 +10,14 @@ service TraceRPKI {
 message TraceRPKIRequest {
     string host = 1;
     string locale = 2;
+    Family family = 3;
 }
+
+enum Family {
+    IPv6 = 0;
+    IPv4 = 1;
+}
+
 
 message TraceRPKIResponse {
     repeated hop hops = 1;
