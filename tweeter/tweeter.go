@@ -525,14 +525,6 @@ func current(bgp bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 		account: "bgp4table",
 		message: v4,
 	}
-	if counts.GetActive_4() >= 1000000 {
-		mil, err := os.ReadFile("million.png")
-		if err == nil {
-			v4Tweet.media = mil
-		} else {
-			log.Printf("error reading million.png: %v", err)
-		}
-	}
 	v6Tweet := tweet{
 		account: "bgp6table",
 		message: v6,
@@ -892,7 +884,7 @@ func rpki(c config) ([]tweet, error) {
 	req := &gpb.RPKIRequest{
 		Metadatas: []*gpb.Metadata{v4Meta, v6Meta},
 		Rpkis:     rpkis,
-		Copyright: "data by @mellowdrifter | www.mellowd.dev",
+		Copyright: "data by daz.bgpstuff.net/ | www.mellowd.dev",
 	}
 
 	// Dial the grapher to retrive graphs via matplotlib

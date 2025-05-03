@@ -1,23 +1,25 @@
-go 1.24rc2
+go 1.24.2
 
-toolchain go1.24rc2
+toolchain go1.24.2
 
-use ./common
+use (
+  ./common
 
-use ./asname
+  ./asname
 
-use ./proto/glass
+  ./proto/glass
 
-use ./proto/bgpsql
+  ./proto/bgpsql
 
-use ./proto/grapher
+  ./proto/grapher
 
-use ./proto/tracerpki
+  ./proto/tracerpki
 
-use ./bgpsql
+  ./bgpsql
 
-use ./tweeter
+  ./tweeter
 
-use ./bsky
+  ./bsky
 
-use ./tracerpki
+  ./tracerpki
+)
