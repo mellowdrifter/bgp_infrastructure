@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/tracerpki"
+	pb "github.com/mellowdrifter/bgp_infrastructure/internal/tracerpki"
 	bgpstuff "github.com/mellowdrifter/go-bgpstuff.net"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"

@@ -10,8 +10,8 @@ import (
 	"path"
 
 	_ "github.com/go-sql-driver/mysql"
-	com "github.com/mellowdrifter/bgp_infrastructure/common"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
 	"google.golang.org/grpc"
 	ini "gopkg.in/ini.v1"
 )

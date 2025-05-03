@@ -3,7 +3,7 @@ package glass
 import (
 	"context"
 
-	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/glass"
+	gpb "github.com/mellowdrifter/bgp_infrastructure/internal/glass"
 	"google.golang.org/grpc"
 )
 

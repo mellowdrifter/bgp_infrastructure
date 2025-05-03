@@ -19,8 +19,8 @@ import (
 
 	"github.com/ChimeraCoder/anaconda"
 	"github.com/mellowdrifter/bgp_infrastructure/bsky"
-	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
-	gpb "github.com/mellowdrifter/bgp_infrastructure/proto/grapher"
+	bpb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	gpb "github.com/mellowdrifter/bgp_infrastructure/internal/grapher"
 	"github.com/mellowdrifter/gotwi"
 	"github.com/mellowdrifter/gotwi/tweet/managetweet"
 	"github.com/mellowdrifter/gotwi/tweet/managetweet/types"

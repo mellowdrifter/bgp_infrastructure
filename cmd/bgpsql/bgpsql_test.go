@@ -11,8 +11,8 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	_ "github.com/mattn/go-sqlite3"
-	com "github.com/mellowdrifter/bgp_infrastructure/common"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
 )
 
 func readOne(f string) *pb.Values {

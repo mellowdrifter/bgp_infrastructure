@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
 )
 
 const count = 11
