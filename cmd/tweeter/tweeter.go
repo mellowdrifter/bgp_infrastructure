@@ -35,8 +35,8 @@ import (
 const (
 	// If I see IPv4 and IPv6 values less than these values, there is an issue.
 	// This value can be revised once every 6 months or so.
-	minV4 = 950000
-	minV6 = 200000
+	minV4 = 980000
+	minV6 = 210000
 )
 
 type tweet struct {
@@ -742,7 +742,6 @@ func subnets(c config) ([]tweet, error) {
 	return []tweet{v4Tweet, v6Tweet}, nil
 }
 
-// TODO: Remove outliers from graphs because it's looks rubbish!
 func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	log.Println("Running movement")
 
