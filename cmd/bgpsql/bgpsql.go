@@ -43,7 +43,7 @@ func readConfig() config {
 	}
 
 	var cfg config
-	cfg.port = fmt.Sprintf(":" + cf.Section("grpc").Key("port").String())
+	cfg.port = fmt.Sprintf(":%s", cf.Section("grpc").Key("port").String())
 	cfg.logfile = cf.Section("log").Key("file").String()
 	cfg.dbname = cf.Section("sql").Key("database").String()
 	cfg.user = cf.Section("sql").Key("username").String()
@@ -201,7 +201,6 @@ func (s *server) GetAsnames(ctx context.Context, e *pb.Empty) (*pb.GetAsnamesRes
 }
 
 func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb.Result, error) {
-	// return nil, grpc.Errorf(codes.Unimplemented, "RPC not yet implemented")
 	log.Println("Running UpdateAsname")
 	fmt.Printf("There are a total of %d AS numbers\n", len(asn.GetAsnNames()))
 

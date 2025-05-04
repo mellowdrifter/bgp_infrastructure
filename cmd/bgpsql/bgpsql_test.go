@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -17,7 +17,7 @@ import (
 
 func readOne(f string) *pb.Values {
 	file := fmt.Sprintf("./testdata/%s", f)
-	in, err := ioutil.ReadFile(file)
+	in, err := os.ReadFile(file)
 	if err != nil {
 		log.Fatalln("Error reading file:", err)
 	}
@@ -33,7 +33,7 @@ func readOne(f string) *pb.Values {
 
 func readAnnual(f string) []*com.BgpUpdate {
 	file := fmt.Sprintf("./testdata/%s", f)
-	in, err := ioutil.ReadFile(file)
+	in, err := os.ReadFile(file)
 	if err != nil {
 		log.Fatalln("Error reading file:", err)
 	}
@@ -195,7 +195,6 @@ func createTestDatabase() {
 	}
 }
 
-// func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error) {
 func TestAddLatest(t *testing.T) {
 	createTestDatabase()
 

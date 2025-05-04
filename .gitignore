@@ -12,3 +12,4 @@ cmd/asname/asname
 cmd/tweeter/tweeter
 cmd/tracerpki/tracerpki
 cmd/bgpsql/bgpsql
+internal/xapi/test/test
