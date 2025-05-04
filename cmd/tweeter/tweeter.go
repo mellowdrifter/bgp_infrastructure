@@ -18,8 +18,8 @@ import (
 	"math/rand"
 
 	"github.com/ChimeraCoder/anaconda"
-	"github.com/mellowdrifter/bgp_infrastructure/bsky"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	"github.com/mellowdrifter/bgp_infrastructure/internal/bskyapi"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/internal/grapher"
 	"github.com/mellowdrifter/gotwi"
 	"github.com/mellowdrifter/gotwi/tweet/managetweet"
@@ -1040,8 +1040,8 @@ func postBsky(t tweet, cf *ini.File) error {
 	hand := cf.Section("bsky").Key("handle").String()
 	pass := cf.Section("bsky").Key("password").String()
 
-	c := bsky.NewClient(
-		bsky.Account{
+	c := bskyapi.NewClient(
+		bskyapi.Account{
 			Username: user,
 			Handle:   hand,
 			Password: pass,
@@ -1061,22 +1061,22 @@ func postBsky(t tweet, cf *ini.File) error {
 		if err != nil {
 			return err
 		}
-		post := bsky.ImagePostContent{
+		post := bskyapi.ImagePostContent{
 			Type:      "app.bsky.feed.post",
 			Text:      t.message,
 			CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		}
-		post.Embed = bsky.PostEmbed{
+		post.Embed = bskyapi.PostEmbed{
 			Type: "app.bsky.embed.images",
-			Images: []bsky.EmbedImage{
+			Images: []bskyapi.EmbedImage{
 				{
-					Image: bsky.Blob{
+					Image: bskyapi.Blob{
 						Type:     "blob",
-						Ref:      bsky.BlobRef{Link: ul.Ref},
+						Ref:      bskyapi.BlobRef{Link: ul.Ref},
 						MimeType: fmt.Sprintf("image/%s", ul.Fmt),
 						Size:     len(t.media),
 					},
-					AspectRatio: bsky.AspectRatio{Width: ul.Cfg.Width, Height: ul.Cfg.Height},
+					AspectRatio: bskyapi.AspectRatio{Width: ul.Cfg.Width, Height: ul.Cfg.Height},
 				},
 			},
 		}
@@ -1087,7 +1087,7 @@ func postBsky(t tweet, cf *ini.File) error {
 		return nil
 	}
 
-	post := bsky.TextPostContent{
+	post := bskyapi.TextPostContent{
 		Type:      "app.bsky.feed.post",
 		Text:      t.message,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
