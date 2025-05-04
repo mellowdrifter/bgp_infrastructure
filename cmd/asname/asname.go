@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// gRPC dial and send data
-	conn, err := grpc.Dial(bgpinfo, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(bgpinfo, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Unable to dial gRPC server: %s", err)
 	}
