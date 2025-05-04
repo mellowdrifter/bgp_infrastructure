@@ -1,4 +1,4 @@
-FROM python:3.12.4-bookworm  AS build-env
+FROM python:3.13.3-slim-bookworm AS build-env
 
 ADD ./ ./
 
