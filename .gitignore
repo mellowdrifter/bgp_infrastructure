@@ -13,3 +13,5 @@ cmd/tweeter/tweeter
 cmd/tracerpki/tracerpki
 cmd/bgpsql/bgpsql
 internal/xapi/test/test
+!internal/xapi/*.go
+!internal/bskyapi/*.go
