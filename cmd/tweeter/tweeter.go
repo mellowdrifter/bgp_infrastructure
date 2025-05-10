@@ -497,12 +497,12 @@ func current(bgp bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 	}
 
 	suffixes := []func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error){
-		func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
-			return asnMostBlocks(context.Background(), bgp, counts)
-		},
-		func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
-			return asnMostInvalids(context.Background(), bgp, counts)
-		},
+		//func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+		//	return asnMostBlocks(context.Background(), bgp, counts)
+		//},
+		//func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
+		//	return asnMostInvalids(context.Background(), bgp, counts)
+		//},
 		func(b bpb.BgpInfoClient, counts *bpb.PrefixCountResponse) (string, string, error) {
 			return largeSubnetPercentage(context.Background(), bgp, counts)
 		},
@@ -916,6 +916,10 @@ func rpki(c config) ([]tweet, error) {
 	}
 
 	return []tweet{v4Tweet, v6Tweet}, nil
+}
+
+func postToX(t tweet, cf *ini.File) error {
+	return nil
 }
 
 func postTweet(t tweet, cf *ini.File) error {
