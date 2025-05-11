@@ -30,7 +30,12 @@ func main() {
 	)
 
 	// Upload image
-	mediaID, err := client.UploadImage("test.png")
+	b, err := os.ReadFile("test.png")
+	if err != nil {
+		log.Fatalf("failed to read file: %v\n", err)
+	}
+	// Upload image
+	mediaID, err := client.UploadImage(b)
 	if err != nil {
 		log.Fatalf("Upload failed: %v", err)
 	}
