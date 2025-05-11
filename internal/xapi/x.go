@@ -8,8 +8,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/dghubble/oauth1"
 )
@@ -37,24 +35,20 @@ func NewClient(consumerKey, consumerSecret, accessToken, accessSecret string) *C
 }
 
 // UploadImage uploads an image and returns media_id
-func (c *Client) UploadImage(imagePath string) (string, error) {
-	file, err := os.Open(imagePath)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
+func (c *Client) UploadImage(imageData []byte) (string, error) {
 
 	var b bytes.Buffer
 	writer := multipart.NewWriter(&b)
-	part, err := writer.CreateFormFile("media", filepath.Base(imagePath))
+	part, err := writer.CreateFormFile("media", "image.png")
 	if err != nil {
 		return "", err
 	}
-	_, err = io.Copy(part, file)
-	if err != nil {
+	if _, err := part.Write(imageData); err != nil {
 		return "", err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
 
 	req, err := http.NewRequest("POST", "https://upload.twitter.com/1.1/media/upload.json", &b)
 	if err != nil {
@@ -72,10 +66,11 @@ func (c *Client) UploadImage(imagePath string) (string, error) {
 		MediaID int64 `json:"media_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return "", err
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("media upload failed: %v - %s", err, string(bodyBytes))
 	}
 	if res.MediaID == 0 {
-		return "", errors.New("failed to upload media")
+		return "", errors.New("upload failed: no media_id returned")
 	}
 	return fmt.Sprintf("%d", res.MediaID), nil
 }

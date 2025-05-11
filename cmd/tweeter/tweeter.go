@@ -17,13 +17,10 @@ import (
 
 	"math/rand"
 
-	"github.com/ChimeraCoder/anaconda"
 	bpb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
 	"github.com/mellowdrifter/bgp_infrastructure/internal/bskyapi"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/internal/grapher"
-	"github.com/mellowdrifter/gotwi"
-	"github.com/mellowdrifter/gotwi/tweet/managetweet"
-	"github.com/mellowdrifter/gotwi/tweet/managetweet/types"
+	"github.com/mellowdrifter/bgp_infrastructure/internal/xapi"
 
 	"github.com/mattn/go-mastodon"
 	"google.golang.org/grpc"
@@ -195,7 +192,7 @@ func (t *tweeter) dryrun() http.HandlerFunc {
 			fmt.Fprintf(w, "<p><b>tweet %d: %s</b></p>\n", i, tweet.message)
 			if len(tweet.media) > 0 {
 				image64 := base64.StdEncoding.EncodeToString(tweet.media)
-				fmt.Fprintf(w, fmt.Sprintf(`<img src="data:image/png;base64,%s">`, image64))
+				fmt.Fprintf(w, `<img src="data:image/png;base64,%s">`, image64)
 			}
 		}
 	}
@@ -229,10 +226,16 @@ func (t *tweeter) post() http.HandlerFunc {
 			// bsky is not showing the second post often. Maybe I should sleep between posts?
 			time.Sleep(10 * time.Second)
 			// Tweet it
-			if err := postTweet(tweet, t.cfg.file); err != nil {
+			if err := postToX(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Printf("error when tweeting: %v", err)
 			}
+			/*
+				if err := postTweet(tweet, t.cfg.file); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					log.Printf("error when tweeting: %v", err)
+				}
+			*/
 			// Post it
 			if err := postBsky(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -919,9 +922,31 @@ func rpki(c config) ([]tweet, error) {
 }
 
 func postToX(t tweet, cf *ini.File) error {
+	client := xapi.NewClient(
+		cf.Section("x_tester").Key("consumer_key").String(),
+		cf.Section("x_tester").Key("consumer_secret").String(),
+		cf.Section("x_tester").Key("access_token").String(),
+		cf.Section("x_tester").Key("access_secret").String(),
+	)
+	var mediaID string
+	var err error
+	if t.media != nil {
+		mediaID, err = client.UploadImage(t.media)
+		if err != nil {
+			return fmt.Errorf("error uploading image: %v", err)
+		}
+	}
+
+	// Post the tweet
+	tweetID, err := client.PostTweet(t.message, mediaID)
+	if err != nil {
+		return err
+	}
+	log.Printf("Tweet posted with ID: %s", tweetID)
 	return nil
 }
 
+/*
 func postTweet(t tweet, cf *ini.File) error {
 
 	in := &gotwi.NewClientInput{
@@ -981,7 +1006,6 @@ func postTweet(t tweet, cf *ini.File) error {
 			v.Set("media_ids", cm.MediaIDString)
 
 		}
-	*/
 
 	// post it!
 	_, err = managetweet.Create(context.TODO(), c, p)
@@ -990,6 +1014,7 @@ func postTweet(t tweet, cf *ini.File) error {
 	}
 	return nil
 }
+*/
 
 func postToot(t tweet, cf *ini.File) error {
 	ctx := context.TODO()
