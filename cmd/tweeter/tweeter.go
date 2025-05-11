@@ -923,10 +923,10 @@ func rpki(c config) ([]tweet, error) {
 
 func postToX(t tweet, cf *ini.File) error {
 	client := xapi.NewClient(
-		cf.Section("x_tester").Key("consumer_key").String(),
-		cf.Section("x_tester").Key("consumer_secret").String(),
-		cf.Section("x_tester").Key("access_token").String(),
-		cf.Section("x_tester").Key("access_secret").String(),
+		cf.Section(t.account).Key("consumer_key").String(),
+		cf.Section(t.account).Key("consumer_secret").String(),
+		cf.Section(t.account).Key("access_token").String(),
+		cf.Section(t.account).Key("access_secret").String(),
 	)
 	var mediaID string
 	var err error
@@ -938,7 +938,12 @@ func postToX(t tweet, cf *ini.File) error {
 	}
 
 	// Post the tweet
-	tweetID, err := client.PostTweet(t.message, mediaID)
+	var tweetID string
+	if t.media == nil {
+		tweetID, err = client.PostTweet(t.message)
+	} else {
+		tweetID, err = client.PostTweet(t.message, mediaID)
+	}
 	if err != nil {
 		return err
 	}

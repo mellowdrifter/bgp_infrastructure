@@ -77,11 +77,11 @@ func (c *Client) UploadImage(imageData []byte) (string, error) {
 
 // PostTweet posts a tweet with optional media IDs
 func (c *Client) PostTweet(text string, mediaIDs ...string) (string, error) {
-	body := map[string]interface{}{
+	body := map[string]any{
 		"text": text,
 	}
 	if len(mediaIDs) > 0 {
-		body["media"] = map[string]interface{}{
+		body["media"] = map[string]any{
 			"media_ids": mediaIDs,
 		}
 	}
