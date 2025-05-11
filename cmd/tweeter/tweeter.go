@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -22,7 +21,6 @@ import (
 	gpb "github.com/mellowdrifter/bgp_infrastructure/internal/grapher"
 	"github.com/mellowdrifter/bgp_infrastructure/internal/xapi"
 
-	"github.com/mattn/go-mastodon"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -110,6 +108,7 @@ func main() {
 	srv.mux = http.NewServeMux()
 	srv.cfg = cfg
 
+	// TODO: add a few handlers to test each, without setting tweet bits.
 	srv.mux.HandleFunc("/post", srv.post())
 	srv.mux.HandleFunc("/testbksy", srv.testbsky())
 	srv.mux.HandleFunc("/", srv.dryrun())
@@ -223,19 +222,13 @@ func (t *tweeter) post() http.HandlerFunc {
 		}
 
 		for _, tweet := range tweetList {
-			// bsky is not showing the second post often. Maybe I should sleep between posts?
+			// Sleep between posts
 			time.Sleep(10 * time.Second)
 			// Tweet it
 			if err := postToX(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Printf("error when tweeting: %v", err)
 			}
-			/*
-				if err := postTweet(tweet, t.cfg.file); err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					log.Printf("error when tweeting: %v", err)
-				}
-			*/
 			// Post it
 			if err := postBsky(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -951,124 +944,6 @@ func postToX(t tweet, cf *ini.File) error {
 	return nil
 }
 
-/*
-func postTweet(t tweet, cf *ini.File) error {
-
-	in := &gotwi.NewClientInput{
-		AuthenticationMethod: gotwi.AuthenMethodOAuth1UserContext,
-		OAuthToken:           cf.Section(t.account).Key("accessToken").String(),
-		OAuthTokenSecret:     cf.Section(t.account).Key("accessSecret").String(),
-		APIKey:               cf.Section(t.account).Key("apiKey").String(),
-		APISecret:            cf.Section(t.account).Key("apiSecret").String(),
-	}
-	api := anaconda.NewTwitterApiWithCredentials(
-		cf.Section(t.account).Key("accessToken").String(),
-		cf.Section(t.account).Key("accessSecret").String(),
-		cf.Section(t.account).Key("apiKey").String(),
-		cf.Section(t.account).Key("apiSecret").String(),
-	)
-
-	c, err := gotwi.NewClient(in)
-	if err != nil {
-		return err
-	}
-
-	p := &types.CreateInput{
-		Text: gotwi.String(t.message),
-	}
-
-	// Images need to be uploaded and referred to in an actual tweet
-	var media anaconda.Media
-	if t.media != nil {
-		// TODO: Why am I ignoring errors here?
-		media, _ = api.UploadMedia(base64.StdEncoding.EncodeToString(t.media))
-		p.Media = &types.CreateInputMedia{
-			MediaIDs: []string{media.MediaIDString},
-		}
-	}
-
-	/*
-		// Videos are a lot more complicated
-		// https://developer.twitter.com/en/docs/tutorials/uploading-media
-		// Note: This only deals with small files
-		// TODO: Make this deal with larger files too!
-		if t.video != nil {
-			size := len(t.video)
-			// Step 1 - Init
-			// TODO: Why am I ignoring errors here?
-			cm, _ := api.UploadVideoInit(size, "video/mp4")
-
-			// Step 2 -- Append
-			encoded := base64.StdEncoding.EncodeToString(t.video)
-			// TODO: check for errors
-			api.UploadVideoAppend(cm.MediaIDString, 0, encoded)
-
-			// Step 3 - Finalise
-			// TODO: check for errors
-			api.UploadVideoFinalize(cm.MediaIDString)
-
-			// attach
-			v.Set("media_ids", cm.MediaIDString)
-
-		}
-
-	// post it!
-	_, err = managetweet.Create(context.TODO(), c, p)
-	if err != nil {
-		return fmt.Errorf("error: unable to post tweet %v", err)
-	}
-	return nil
-}
-*/
-
-func postToot(t tweet, cf *ini.File) error {
-	ctx := context.TODO()
-	// read mastodon account credentials
-	account := "bgp6mastodon"
-	if t.account == "bgp4table" {
-		account = "bgp4mastodon"
-	}
-	server := cf.Section(account).Key("server").String()
-	clientID := cf.Section(account).Key("clientID").String()
-	clientSecret := cf.Section(account).Key("clientSecret").String()
-	accessToken := cf.Section(account).Key("accessToken").String()
-	email := cf.Section(account).Key("email").String()
-	password := cf.Section(account).Key("password").String()
-
-	// set up mastodon client
-	c := mastodon.NewClient(&mastodon.Config{
-		Server:       server,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		AccessToken:  accessToken,
-	})
-
-	// authenticate client
-	if err := c.Authenticate(ctx, email, password); err != nil {
-		return err
-	}
-
-	toot := mastodon.Toot{}
-	toot.Status = t.message
-
-	// Images need to be uploaded and referred to in an actual toot
-	if t.media != nil {
-		// TODO: change this to uploadmediafrombytes once upgraded
-		att, err := c.UploadMediaFromReader(ctx, bytes.NewReader(t.media))
-		if err != nil {
-			return err
-		}
-		toot.MediaIDs = append(toot.MediaIDs, att.ID)
-	}
-
-	// post it!
-	if _, err := c.PostStatus(ctx, &toot); err != nil {
-		return fmt.Errorf("error: unable to post toot %v", err)
-	}
-
-	return nil
-}
-
 func postBsky(t tweet, cf *ini.File) error {
 	user := cf.Section("bsky").Key("username").String()
 	hand := cf.Section("bsky").Key("handle").String()
@@ -1095,6 +970,7 @@ func postBsky(t tweet, cf *ini.File) error {
 		if err != nil {
 			return err
 		}
+		// TODO: This should all be in the library. Send a message, send a message and image.
 		post := bskyapi.ImagePostContent{
 			Type:      "app.bsky.feed.post",
 			Text:      t.message,
