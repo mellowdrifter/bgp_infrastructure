@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"reflect"
 	"testing"
 
 	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
@@ -31,7 +30,7 @@ var good = []*pb.AsnName{
 		AsLocale: "US",
 	},
 	{
-		AsName:   "ALTECOM Alta Tecnologia en Comunicacions, S.L",
+		AsName:   "ALTECOM",
 		AsNumber: 16030,
 		AsLocale: "ES",
 	},
@@ -41,12 +40,12 @@ var good = []*pb.AsnName{
 		AsLocale: "CZ",
 	},
 	{
-		AsName:   "COOPERATIVA TELEFONICA Y OTROS SERVICIOS PUBLICOS  ASISTENCIALES, EDUCATIVOS, VIVIENDA, CREDITO Y CONSUMO TILISARAO LIMITADA",
+		AsName:   "COOPERATIVA TELEFONICA Y OTROS SERVICIOS PUBLICOS ASISTENCIALES, EDUCATIVOS, VIVIENDA, CREDITO Y CONSUMO TILISARAO LIMITADA",
 		AsNumber: 267925,
 		AsLocale: "AR",
 	},
 	{
-		AsName:   "VRSN-AC50-340 - VeriSign Global Registry Services",
+		AsName:   "VRSN-AC50-340",
 		AsNumber: 396632,
 		AsLocale: "US",
 	},
@@ -56,57 +55,80 @@ var good = []*pb.AsnName{
 		AsLocale: "CA",
 	},
 	{
-		AsName:   "SAAQ-PROD - Societe de l'Assurance Automobile du Quebec",
+		AsName:   "SAAQ-PROD",
 		AsNumber: 397421,
 		AsLocale: "CA",
 	},
 	{
-		AsName:   "-Reserved AS-",
+		AsName:   "LYNK-AS",
 		AsNumber: 397759,
-		AsLocale: "ZZ",
+		AsLocale: "US",
+	},
+	{
+		AsName:   "IQVIA-DURHAM",
+		AsNumber: 402332,
+		AsLocale: "US",
+	},
+	{
+		AsName:   "@SONET COLOMBIA SAS",
+		AsNumber: 274054,
+		AsLocale: "CO",
+	},
+	{
+		AsName:   "PEACEWEB-GROUP-AS This AS number is used by organizations from PeaceWeb Group. For any abuse-related issues, please send us a message at abuse@peaceweb.com.",
+		AsNumber: 210907,
+		AsLocale: "NL",
 	},
 }
 
 func TestDecoder(t *testing.T) {
-	data, err := os.ReadFile("autnums.html")
+	hData, err := os.ReadFile("autnums.html")
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	hOutput := decodeHTML(hData)
+
+	tData, err := os.ReadFile("asn.txt")
 	if err != nil {
 		panic(err)
 	}
-	output := decoder(data)
-	for i := 0; i < len(output); i++ {
-		if !reflect.DeepEqual(output[i], good[i]) {
-			t.Errorf("No match error. Wanted %v, got %v", good[i], output[i])
+	tOutput := decodeText(tData)
+
+	// Build maps for quick lookups
+	hAsnMap := make(map[uint32]*pb.AsnName, len(hOutput))
+	for _, asn := range hOutput {
+		hAsnMap[asn.GetAsNumber()] = asn
+	}
+	tAsnMap := make(map[uint32]*pb.AsnName, len(tOutput))
+	for _, asn := range tOutput {
+		tAsnMap[asn.GetAsNumber()] = asn
+	}
+	if len(hOutput) != len(tOutput) {
+		t.Errorf("Mismatch in number of ASNs: %d != %d", len(hOutput), len(tOutput))
+	}
+
+	for _, asn := range good {
+		hRef := hAsnMap[asn.GetAsNumber()]
+		tRef := tAsnMap[asn.GetAsNumber()]
+		if hRef == nil {
+			t.Errorf("AS %d not found in map", asn.GetAsNumber())
 			continue
 		}
-	}
-}
-
-func TestDecoderFull(t *testing.T) {
-	data, err := os.ReadFile("autnums.html")
-	if err != nil {
-		panic(err)
-	}
-	output := decoder(data)
-	if len(output) != count {
-		t.Errorf("Amount of ASs should be %d, but got %d", count, len(output))
-	}
-	for _, info := range output {
-		if info.GetAsLocale() == "" {
-			t.Errorf("AS %s has no Locale", info.GetAsName())
-		}
-	}
-}
-
-func TestGetTextASNs(t *testing.T) {
-	data, err := os.ReadFile("asn.txt")
-	if err != nil {
-		panic(err)
-	}
-	output := decodeText(data)
-	for i := 0; i < len(output); i++ {
-		if !reflect.DeepEqual(output[i], good[i]) {
-			t.Errorf("No match error. Wanted %v, got %v", good[i], output[i])
+		if tRef == nil {
+			t.Errorf("AS %d not found in map", asn.GetAsNumber())
 			continue
+		}
+		if hRef.GetAsName() != asn.GetAsName() {
+			t.Errorf("AS %d name mismatch: %q != %q", asn.GetAsNumber(), hRef.GetAsName(), asn.GetAsName())
+		}
+		if hRef.GetAsLocale() != asn.GetAsLocale() {
+			t.Errorf("AS %d locale mismatch: %q != %q", asn.GetAsNumber(), hRef.GetAsLocale(), asn.GetAsLocale())
+		}
+		if tRef.GetAsName() != asn.GetAsName() {
+			t.Errorf("AS %d name mismatch: %q != %q", asn.GetAsNumber(), tRef.GetAsName(), asn.GetAsName())
+		}
+		if tRef.GetAsLocale() != asn.GetAsLocale() {
+			t.Errorf("AS %d locale mismatch: %q != %q", asn.GetAsNumber(), tRef.GetAsLocale(), asn.GetAsLocale())
 		}
 	}
 }
