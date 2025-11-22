@@ -1,5 +1,4 @@
 build:
-	gofumpt -w *.go
 	go build -o clidecode
 
 cover:

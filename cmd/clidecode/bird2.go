@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	c "github.com/mellowdrifter/bgp_infrastructure/common"
+	c "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
 )
 
 // Bird2Conn will be a connection to a Bird2 instance. In reality this
@@ -279,39 +279,11 @@ func (b Bird2Conn) GetASPathFromIP(ip net.IP) (ASPath, bool, error) {
 		return aspath, false, nil
 	}
 
-	path, set := decodeASPaths(out)
+	path, set := c.DecodeASPaths(out)
 	aspath.Path = path
 	aspath.Set = set
 
 	return aspath, true, nil
-}
-
-// decodeASPaths will return a slice of AS & AS-Sets from a string as-path output.
-func decodeASPaths(in string) ([]uint32, []uint32) {
-	if strings.ContainsAny(in, "{}") {
-		in = strings.Replace(in, "{", "{ ", 1)
-		in = strings.Replace(in, "}", " }", 1)
-	}
-	paths := strings.Fields(in)
-	var path, set []uint32
-
-	// Need to separate as-set
-	var isSet bool
-	for _, as := range paths {
-		if strings.ContainsAny(as, "{}") {
-			isSet = true
-			continue
-		}
-
-		switch {
-		case isSet == false:
-			path = append(path, c.StringToUint32(as))
-		case isSet == true:
-			set = append(set, c.StringToUint32(as))
-		}
-	}
-
-	return path, set
 }
 
 // GetRoute will return the current FIB entry, if any, from a source IP.

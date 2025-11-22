@@ -94,50 +94,43 @@ func Uint32ToString(u uint32) string {
 	return val
 }
 
-// SetListOfStrings returns a slice of strings with no duplicates.
-// Go has no built-in set function, so doing it here
-func SetListOfStrings(input []string) []string {
-	u := make([]string, 0, len(input))
-	m := make(map[string]bool)
-	for _, val := range input {
-		if _, ok := m[val]; !ok {
-			m[val] = true
-			u = append(u, val)
-		}
-	}
-	return u
-}
-
 // InFirstButNotSecond returns the second slice subtracted from the first.
 // Go has no built-in function to do this.
-func InFirstButNotSecond(first, second []string) []string {
-	var third []string
-	iterMap := make(map[string]bool)
-	for _, element := range second {
+func InFirstButNotSecond[T comparable](a, b []T) []T {
+	var result []T
+	iterMap := make(map[T]bool)
+	for _, element := range b {
 		iterMap[element] = true
 	}
-	for _, element := range first {
+	for _, element := range a {
 		if _, ok := iterMap[element]; !ok {
-			third = append(third, element)
+			result = append(result, element)
 		}
 	}
-	return third
+	return result
 }
 
 // Intersection returns a slice that is an intersection of two slices.
-// Go has no built-in function to do this.
-func Intersection(first, second []string) []string {
-	var third []string
-	iterMap := make(map[string]bool)
-	for _, element := range second {
-		iterMap[element] = true
+// Go has no built-in function to do this yet.
+func Intersection[E comparable](s1, s2 []E) []E {
+	var result []E
+	s2len := len(s2)
+	s1len := len(s1)
+	if s1len == 0 || s2len == 0 {
+		return result
 	}
-	for _, element := range first {
-		if _, ok := iterMap[element]; ok {
-			third = append(third, element)
+	s2Map := make(map[E]bool, s2len)
+	for i := range s2len {
+		el := s2[i]
+		s2Map[el] = true
+	}
+	for i := range s1len {
+		element := s1[i]
+		if _, ok := s2Map[element]; ok {
+			result = append(result, element)
 		}
 	}
-	return third
+	return result
 }
 
 // TimeFunction logs total time to execute a function.
@@ -490,4 +483,32 @@ func StructToProto(b *BgpUpdate) *pb.Values {
 			V6Unknown: b.Roaunknown6,
 		},
 	}
+}
+
+// DecodeASPaths will return a slice of AS & AS-Sets from a string as-path output.
+func DecodeASPaths(in string) ([]uint32, []uint32) {
+	if strings.ContainsAny(in, "{}") {
+		in = strings.Replace(in, "{", "{ ", 1)
+		in = strings.Replace(in, "}", " }", 1)
+	}
+	paths := strings.Fields(in)
+	var path, set []uint32
+
+	// Need to separate as-set
+	var isSet bool
+	for _, as := range paths {
+		if strings.ContainsAny(as, "{}") {
+			isSet = true
+			continue
+		}
+
+		switch {
+		case isSet == false:
+			path = append(path, StringToUint32(as))
+		case isSet == true:
+			set = append(set, StringToUint32(as))
+		}
+	}
+
+	return path, set
 }

@@ -311,3 +311,45 @@ func TestASDotToASPlain(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeASPaths(t *testing.T) {
+	tests := []struct {
+		name        string
+		asPaths     string
+		expected    []uint32
+		expectedSet []uint32
+	}{
+		{
+			name:     "Single AS path",
+			asPaths:  "1",
+			expected: []uint32{1},
+		},
+		{
+			name:     "Multiple AS paths",
+			asPaths:  "37100 9002 63897 135391",
+			expected: []uint32{37100, 9002, 63897, 135391},
+		},
+		{
+			name:        "Includes AS-Set",
+			asPaths:     "4826 1299 23520 14813 14813 14813 14813 14813 {11139}",
+			expected:    []uint32{4826, 1299, 23520, 14813, 14813, 14813, 14813, 14813},
+			expectedSet: []uint32{11139},
+		},
+		{
+			name:        "Includes Multiple AS-Set",
+			asPaths:     "4826 3356 202 19113 {19113 1234}",
+			expected:    []uint32{4826, 3356, 202, 19113},
+			expectedSet: []uint32{19113, 1234},
+		},
+	}
+
+	for _, tt := range tests {
+		path, set := DecodeASPaths(tt.asPaths)
+		if !reflect.DeepEqual(path, tt.expected) {
+			t.Errorf("Error on %s. Expected %v, got %v", tt.name, tt.expected, path)
+		}
+		if !reflect.DeepEqual(set, tt.expectedSet) {
+			t.Errorf("Error on %s. Expected set %v, got %v", tt.name, tt.expectedSet, set)
+		}
+	}
+}
