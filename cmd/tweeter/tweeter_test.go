@@ -16,7 +16,7 @@ func TestDeltaMessage(t *testing.T) {
 			name:   "test1",
 			hour:   780710 - 780896,
 			week:   780710 - 770567,
-			output: "This is 186 fewer prefixes than 6 hours ago and 10143 more than a week ago",
+			output: "This is 186 fewer prefixes than 6 hours ago and 10143 more than a week ago.",
 		},
 	}
 
@@ -37,7 +37,7 @@ func TestWhatToTweet(t *testing.T) {
 		{
 			name: "Midnight",
 			time: "2006-01-01T00:00:00Z",
-			want: toTweet{},
+			want: toTweet{test: true},
 		},
 		{
 			name: "Monday, 20:00",
@@ -124,7 +124,7 @@ func TestWhatToTweet(t *testing.T) {
 		{
 			name: "Monday, 21:00, third day of July 2023",
 			time: "2023-07-03T21:00:00Z",
-			want: toTweet{},
+			want: toTweet{test: true},
 		},
 	}
 

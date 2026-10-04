@@ -71,17 +71,38 @@ type tweeter struct {
 	cfg config
 }
 
+func fileExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
+
 func Setup() (config, error) {
-	// load in config
-	exe, err := os.Executable()
-	if err != nil {
-		return config{}, err
+	// Locate config file in priority order:
+	// 1. Env var CONFIG_FILE
+	// 2. Secret Manager volume mount: /config/config.ini
+	// 3. /etc/tweeter/config.ini
+	// 4. <executable_dir>/config.ini
+	// 5. ./config.ini
+	var configPath string
+	if envPath := os.Getenv("CONFIG_FILE"); envPath != "" && fileExists(envPath) {
+		configPath = envPath
+	} else if fileExists("/config/config.ini") {
+		configPath = "/config/config.ini"
+	} else if fileExists("/etc/tweeter/config.ini") {
+		configPath = "/etc/tweeter/config.ini"
+	} else if exe, err := os.Executable(); err == nil && fileExists(fmt.Sprintf("%s/config.ini", path.Dir(exe))) {
+		configPath = fmt.Sprintf("%s/config.ini", path.Dir(exe))
+	} else if fileExists("config.ini") {
+		configPath = "config.ini"
+	} else {
+		configPath = "/config/config.ini"
 	}
-	path := fmt.Sprintf("%s/config.ini", path.Dir(exe))
-	cf, err := ini.ShadowLoad(path)
+
+	cf, err := ini.ShadowLoad(configPath)
 	if err != nil {
-		log.Fatalf("failed to read config file: %v\n", err)
+		log.Fatalf("failed to read config file (%s): %v\n", configPath, err)
 	}
+	log.Printf("Successfully loaded configuration from %s\n", configPath)
 
 	var config config
 
@@ -388,12 +409,9 @@ func getConnection(srv string) (*grpc.ClientConn, error) {
 	return conn, err
 }
 
-// getTLSConnection is the same as getConnection, but it uses TLS as an option
-// as is required by Google Cloud Run.
+// getTLSConnection creates a secure TLS connection to gRPC services (such as Cloud Run grapher).
 func getTLSConnection(srv string) (*grpc.ClientConn, error) {
-	creds := credentials.NewTLS(&tls.Config{
-		InsecureSkipVerify: true,
-	})
+	creds := credentials.NewTLS(&tls.Config{})
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 	}
