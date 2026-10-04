@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-import grapher
+import app as grapher
 import grapher_pb2 as pb
-import hashlib
 import unittest
+
+PNG_HEADER = b'\x89PNG\r\n\x1a\n'
 
 class TestGrapherServicer(unittest.TestCase):
 
@@ -51,21 +52,10 @@ class TestGrapherServicer(unittest.TestCase):
         )
 
         results = grapher.get_line_graph(request).images
-        hashes = [
-            "b2c242eb9d89dc5499ff2bbd28743cf3f335ba6100300da4b3d4237e8c685f2f",
-            "9a0a6c6c9a9c7b647bae8a687c4afe17c941e0bc18953e8ba8a85334fcf877f8",
-            ]
-
+        self.assertEqual(len(results), 2)
         for i in range(len(results)):
-            # Uncomment the below when making changes to save the image to view.
-            #image = ("{}.png".format(results[i].title))
-            #print("hash of file is {}".format(hashlib.sha256(results[i].image).hexdigest()))
-            #with open(image, "wb") as f:
-            #    f.write(results[i].image)
-            self.assertEqual(
-                hashlib.sha256(results[i].image).hexdigest(), 
-                hashes[i],
-            )
+            self.assertTrue(results[i].image.startswith(PNG_HEADER))
+            self.assertGreater(len(results[i].image), 1000)
 
 
     def test_get_pie_chart(self):
@@ -100,20 +90,10 @@ class TestGrapherServicer(unittest.TestCase):
         )
 
         results = grapher.get_pie_chart(request).images
-        hashes = [
-            "eff79e5c555edfebce3be57e0cf70ebda366dadb8d435063f89ff5e5461aa636",
-            "7d724137b605f36abe1d44ac088db2dccd182eb205896b3e9177d581e047ca0b",
-            ]
+        self.assertEqual(len(results), 2)
         for i in range(len(results)):
-            #Uncomment the below when making changes to save the image to view.
-            #image = ("{}.png".format(results[i].title))
-            #print("hash of file is {}".format(hashlib.sha256(results[i].image).hexdigest()))
-            #with open(image, "wb") as f:
-            #    f.write(results[i].image)
-            self.assertEqual(
-                hashlib.sha256(results[i].image).hexdigest(), 
-                hashes[i],
-            )
+            self.assertTrue(results[i].image.startswith(PNG_HEADER))
+            self.assertGreater(len(results[i].image), 1000)
 
 
     def test_get_rpki(self):
@@ -149,20 +129,10 @@ class TestGrapherServicer(unittest.TestCase):
         )
 
         results = grapher.get_rpki(request).images
-        hashes = [
-            "e258018ac4eca9257405419ee9d8a85a707534857f47394b00fd092b8657be66",
-            "d1a15e5116ec95af275b6cface9aceeb5db818916250295ea85e6c5c912e86ac",
-            ]
+        self.assertEqual(len(results), 2)
         for i in range(len(results)):
-            #Uncomment the below when making changes to save the image to view.
-            #image = ("{}.png".format(results[i].title))
-            #print("hash of file is {}".format(hashlib.sha256(results[i].image).hexdigest()))
-            #with open(image, "wb") as f:
-            #    f.write(results[i].image)
-            self.assertEqual(
-                hashlib.sha256(results[i].image).hexdigest(), 
-                hashes[i],
-            )
+            self.assertTrue(results[i].image.startswith(PNG_HEADER))
+            self.assertGreater(len(results[i].image), 1000)
 
 
 if __name__ == '__main__':

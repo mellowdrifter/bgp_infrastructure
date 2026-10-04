@@ -1,6 +1,6 @@
 grpcio
 grpcio-tools
 protobuf
-matplotlib==3.10.1
+matplotlib==3.11.2
 google
 google-cloud

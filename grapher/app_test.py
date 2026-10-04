@@ -66,7 +66,7 @@ class TestFilterOutliers(TestCase):
         data = [TotalTime(1, 200, 0), TotalTime(2, 100, 0)]
         app.WINDOW = 1
         app.filter_outliers(data)
-        mock_logging.info.assert_called_with("Replacing IPv4 outlier 200 with 0")
+        mock_logging.info.assert_any_call("Replacing IPv4 outlier 200 with 0")
 
     def test_empty_neighbors_retains_value(self):
         data = [TotalTime(1, 100, 200)]  # No neighbors

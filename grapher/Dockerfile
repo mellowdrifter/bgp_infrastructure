@@ -1,8 +1,11 @@
-FROM python:3.13.3-slim-bookworm AS build-env
+FROM python:3.13-slim-bookworm
 
-ADD ./ ./
+WORKDIR /app
 
-RUN pip3 install --upgrade pip && \
-    pip install -r ./requirements.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY . ./
 
 CMD [ "python3", "./app.py"]
