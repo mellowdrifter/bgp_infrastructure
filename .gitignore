@@ -15,3 +15,7 @@ cmd/bgpsql/bgpsql
 internal/xapi/test/test
 !internal/xapi/*.go
 !internal/bskyapi/*.go
+
+# Sensitive infrastructure documentation - strictly local, never commit
+bgp_infra.md
+fix_bgp_infra.md
