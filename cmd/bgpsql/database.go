@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -12,32 +13,98 @@ import (
 	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
 )
 
+var infoMetricColumns = []string{
+	"V4COUNT", "V6COUNT", "V4TOTAL", "V6TOTAL", "PEERS_CONFIGURED", "PEERS_UP",
+	"PEERS6_CONFIGURED", "PEERS6_UP", "V4_24", "V4_23", "V4_22",
+	"V4_21", "V4_20", "V4_19", "V4_18", "V4_17", "V4_16", "V4_15", "V4_14", "V4_13", "V4_12",
+	"V4_11", "V4_10", "V4_09", "V4_08", "V6_48", "V6_47", "V6_46",
+	"V6_45", "V6_44", "V6_43", "V6_42", "V6_41", "V6_40", "V6_39",
+	"V6_38", "V6_37", "V6_36", "V6_35", "V6_34", "V6_33", "V6_32",
+	"V6_31", "V6_30", "V6_29", "V6_28", "V6_27", "V6_26", "V6_25",
+	"V6_24", "V6_23", "V6_22", "V6_21", "V6_20", "V6_19", "V6_18",
+	"V6_17", "V6_16", "V6_15", "V6_14", "V6_13", "V6_12", "V6_11",
+	"V6_10", "V6_09", "V6_08", "AS4_LEN", "AS6_LEN", "AS10_LEN",
+	"AS4_ONLY", "AS6_ONLY", "AS_BOTH", "LARGEC4", "LARGEC6",
+	"ROAVALIDV4", "ROAINVALIDV4", "ROAUNKNOWNV4",
+	"ROAVALIDV6", "ROAINVALIDV6", "ROAUNKNOWNV6",
+}
+
+var (
+	mysqlAddLatestQuery  string
+	sqliteAddLatestQuery string
+)
+
+func init() {
+	cols := append([]string{"source", "TIME", "quality", "quality_note"}, infoMetricColumns...)
+	colList := strings.Join(cols, ", ")
+
+	placeholders := make([]string, len(cols))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	valList := strings.Join(placeholders, ", ")
+
+	// MySQL / MariaDB: ON DUPLICATE KEY UPDATE col=VALUES(col)..., ingested_at=CURRENT_TIMESTAMP
+	mysqlUpdates := make([]string, 0, len(infoMetricColumns)+3)
+	mysqlUpdates = append(mysqlUpdates, "quality = VALUES(quality)", "quality_note = VALUES(quality_note)")
+	for _, col := range infoMetricColumns {
+		mysqlUpdates = append(mysqlUpdates, fmt.Sprintf("%s = VALUES(%s)", col, col))
+	}
+	mysqlUpdates = append(mysqlUpdates, "ingested_at = CURRENT_TIMESTAMP")
+	mysqlAddLatestQuery = fmt.Sprintf("INSERT INTO INFO (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s",
+		colList, valList, strings.Join(mysqlUpdates, ", "))
+
+	// SQLite (for unit tests): ON CONFLICT(source, TIME) DO UPDATE SET col=excluded.col..., ingested_at=CURRENT_TIMESTAMP
+	sqliteUpdates := make([]string, 0, len(infoMetricColumns)+3)
+	sqliteUpdates = append(sqliteUpdates, "quality = excluded.quality", "quality_note = excluded.quality_note")
+	for _, col := range infoMetricColumns {
+		sqliteUpdates = append(sqliteUpdates, fmt.Sprintf("%s = excluded.%s", col, col))
+	}
+	sqliteUpdates = append(sqliteUpdates, "ingested_at = CURRENT_TIMESTAMP")
+	sqliteAddLatestQuery = fmt.Sprintf("INSERT INTO INFO (%s) VALUES (%s) ON CONFLICT(source, TIME) DO UPDATE SET %s",
+		colList, valList, strings.Join(sqliteUpdates, ", "))
+}
+
 // add latest BGP update information to database
 func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 	if db == nil {
 		log.Fatalf("db object is nil")
 	}
-	stmt, _ := db.Prepare(`INSERT INTO INFO (TIME, V4COUNT, V6COUNT,
-		V4TOTAL, V6TOTAL, PEERS_CONFIGURED,PEERS_UP,
-		PEERS6_CONFIGURED, PEERS6_UP, V4_24, V4_23, V4_22,
-		V4_21, V4_20, V4_19,
-		V4_18, V4_17, V4_16, V4_15, V4_14, V4_13, V4_12,
-		V4_11, V4_10, V4_09, V4_08, V6_48, V6_47, V6_46,
-		V6_45, V6_44, V6_43, V6_42, V6_41, V6_40, V6_39,
-		V6_38, V6_37, V6_36, V6_35, V6_34, V6_33, V6_32,
-		V6_31, V6_30, V6_29, V6_28, V6_27, V6_26, V6_25,
-		V6_24, V6_23, V6_22, V6_21, V6_20, V6_19, V6_18,
-		V6_17, V6_16, V6_15, V6_14, V6_13, V6_12, V6_11,
-		V6_10, V6_09, V6_08, AS4_LEN, AS6_LEN, AS10_LEN,
-		AS4_ONLY, AS6_ONLY, AS_BOTH, LARGEC4, LARGEC6,
-		ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
-		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6) values (?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+
+	source := b.Source
+	if source == "" {
+		source = "bgp1"
+	}
+
+	sampleTime := b.SampleTime
+	if sampleTime == 0 {
+		sampleTime = b.Time
+	}
+	sampleTime = sampleTime - (sampleTime % 300)
+
+	quality := b.Quality
+	if quality == "" {
+		quality = "ok"
+	}
+	var qualityNote sql.NullString
+	if b.QualityNote != "" {
+		qualityNote = sql.NullString{String: b.QualityNote, Valid: true}
+	}
+
+	query := mysqlAddLatestQuery
+	if db.Driver() != nil && strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "sqlite") {
+		query = sqliteAddLatestQuery
+	}
+
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("unable to prepare statement: %w", err)
+	}
 	defer stmt.Close()
-	res, err := stmt.Exec(b.Time, b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
+
+	res, err := stmt.Exec(
+		source, sampleTime, quality, qualityNote,
+		b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
 		b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
 		b.V4_23, b.V4_22, b.V4_21, b.V4_20, b.V4_19, b.V4_18, b.V4_17, b.V4_16,
 		b.V4_15, b.V4_14, b.V4_13, b.V4_12, b.V4_11, b.V4_10, b.V4_09, b.V4_08,
@@ -50,7 +117,7 @@ func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 		b.LargeC6, b.Roavalid4, b.Roainvalid4, b.Roaunknown4, b.Roavalid6,
 		b.Roainvalid6, b.Roaunknown6)
 	if err != nil {
-		return fmt.Errorf("Unable to update database: %w", err)
+		return fmt.Errorf("unable to update database: %w", err)
 	}
 	log.Printf("updated database: %v", res)
 	return nil

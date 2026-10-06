@@ -25,7 +25,11 @@ type BgpStat struct {
 
 // BgpUpdate holds all the information required for an update
 type BgpUpdate struct {
+	Source                              string
+	SampleTime                          uint64
 	Time                                uint64
+	Quality                             string
+	QualityNote                         string
 	V4Count, V6Count                    uint32
 	V4Total, V6Total                    uint32
 	PeersConfigured                     uint32
@@ -299,8 +303,18 @@ func ProtoToStruct(v *pb.Values) *BgpUpdate {
 	mask := v.GetMasks()
 	p := v.GetPrefixCount()
 	roa := v.GetRoas()
+
+	rawTime := v.GetSampleTime()
+	if rawTime == 0 {
+		rawTime = v.GetTime()
+	}
+	sampleTime := rawTime - (rawTime % 300)
+
 	update := &BgpUpdate{
-		Time:             v.GetTime(),
+		Source:           v.GetSource(),
+		SampleTime:       sampleTime,
+		Time:             sampleTime,
+		Quality:          "ok",
 		V4Count:          p.GetActive_4(),
 		V6Count:          p.GetActive_6(),
 		V4Total:          p.GetTotal_4(),
@@ -388,8 +402,14 @@ func ProtoToStruct(v *pb.Values) *BgpUpdate {
 
 // StructToProto converts a BgpUpdate to a bgpinfo.Values proto.
 func StructToProto(b *BgpUpdate) *pb.Values {
+	sampleTime := b.SampleTime
+	if sampleTime == 0 {
+		sampleTime = b.Time
+	}
 	return &pb.Values{
-		Time: b.Time,
+		Time:       b.Time,
+		Source:     b.Source,
+		SampleTime: sampleTime,
 		PrefixCount: &pb.PrefixCount{
 			Active_4: b.V4Count,
 			Active_6: b.V6Count,

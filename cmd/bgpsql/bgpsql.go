@@ -17,11 +17,13 @@ import (
 )
 
 type config struct {
-	port    string
-	logfile string
-	dbname  string
-	user    string
-	pass    string
+	port          string
+	logfile       string
+	dbname        string
+	user          string
+	pass          string
+	defaultSource string
+	valCfg        validationConfig
 }
 
 type server struct {
@@ -48,6 +50,35 @@ func readConfig() config {
 	cfg.dbname = cf.Section("sql").Key("database").String()
 	cfg.user = cf.Section("sql").Key("username").String()
 	cfg.pass = cf.Section("sql").Key("password").String()
+	cfg.defaultSource = cf.Section("sql").Key("source").MustString("bgp1")
+
+	// Read validation thresholds with safe defaults
+	val := defaultValidationConfig()
+	valSec := cf.Section("validation")
+	if valSec != nil {
+		if v := valSec.Key("v4_min").MustUint(0); v != 0 {
+			val.v4Min = uint32(v)
+		}
+		if v := valSec.Key("v4_max").MustUint(0); v != 0 {
+			val.v4Max = uint32(v)
+		}
+		if v := valSec.Key("v6_min").MustUint(0); v != 0 {
+			val.v6Min = uint32(v)
+		}
+		if v := valSec.Key("v6_max").MustUint(0); v != 0 {
+			val.v6Max = uint32(v)
+		}
+		if v := valSec.Key("max_delta_pct").MustFloat64(0); v != 0 {
+			val.maxDeltaPct = v
+		}
+		if v := valSec.Key("max_peer_diff_pct").MustFloat64(0); v != 0 {
+			val.maxPeerDiffPct = v
+		}
+		if v := valSec.Key("min_peer_ratio").MustFloat64(0); v != 0 {
+			val.minPeerRatio = v
+		}
+	}
+	cfg.valCfg = val
 
 	return cfg
 }
@@ -100,6 +131,23 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 
 	// get correct struct
 	update := com.ProtoToStruct(v)
+
+	// Fallback to server's configured default source if not provided in proto
+	if update.Source == "" {
+		if s.cfg.defaultSource != "" {
+			update.Source = s.cfg.defaultSource
+		} else {
+			update.Source = "bgp1"
+		}
+	}
+
+	// Validate sample at ingest
+	quality, note := validateSample(ctx, s.db, update, s.cfg.valCfg)
+	update.Quality = quality
+	update.QualityNote = note
+	if quality == "suspect" {
+		log.Printf("Ingest validation flagged sample as SUSPECT for %s (TIME=%d): %s", update.Source, update.Time, note)
+	}
 
 	// update database
 	err := addLatestHelper(update, s.db)

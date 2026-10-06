@@ -23,6 +23,8 @@ message values {
     masks masks = 5;
     large_community large_community = 6;
     roas roas = 7;
+    string source = 8;
+    uint64 sample_time = 9;
 }
 
 message list_of_values {

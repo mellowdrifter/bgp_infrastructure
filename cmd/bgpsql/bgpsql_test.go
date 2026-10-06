@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -54,41 +55,9 @@ func readAnnual(f string) []*com.BgpUpdate {
 
 func populate(db *sql.DB) {
 	values := readAnnual("annual.pb")
-	stmt, _ := db.Prepare(`INSERT INTO INFO (TIME, V4COUNT, V6COUNT,
-		V4TOTAL, V6TOTAL, PEERS_CONFIGURED,PEERS_UP,
-		PEERS6_CONFIGURED, PEERS6_UP, V4_24, V4_23, V4_22,
-		V4_21, V4_20, V4_19,
-		V4_18, V4_17, V4_16, V4_15, V4_14, V4_13, V4_12,
-		V4_11, V4_10, V4_09, V4_08, V6_48, V6_47, V6_46,
-		V6_45, V6_44, V6_43, V6_42, V6_41, V6_40, V6_39,
-		V6_38, V6_37, V6_36, V6_35, V6_34, V6_33, V6_32,
-		V6_31, V6_30, V6_29, V6_28, V6_27, V6_26, V6_25,
-		V6_24, V6_23, V6_22, V6_21, V6_20, V6_19, V6_18,
-		V6_17, V6_16, V6_15, V6_14, V6_13, V6_12, V6_11,
-		V6_10, V6_09, V6_08, AS4_LEN, AS6_LEN, AS10_LEN,
-		AS4_ONLY, AS6_ONLY, AS_BOTH, LARGEC4, LARGEC6,
-		ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
-		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6) values (?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	defer stmt.Close()
 	for _, b := range values {
-		_, err := stmt.Exec(b.Time, b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
-			b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
-			b.V4_23, b.V4_22, b.V4_21, b.V4_20, b.V4_19, b.V4_18, b.V4_17, b.V4_16,
-			b.V4_15, b.V4_14, b.V4_13, b.V4_12, b.V4_11, b.V4_10, b.V4_09, b.V4_08,
-			b.V6_48, b.V6_47, b.V6_46, b.V6_45, b.V6_44, b.V6_43, b.V6_42, b.V6_41,
-			b.V6_40, b.V6_39, b.V6_38, b.V6_37, b.V6_36, b.V6_35, b.V6_34, b.V6_33,
-			b.V6_32, b.V6_31, b.V6_30, b.V6_29, b.V6_28, b.V6_27, b.V6_26, b.V6_25,
-			b.V6_24, b.V6_23, b.V6_22, b.V6_21, b.V6_20, b.V6_19, b.V6_18, b.V6_17,
-			b.V6_16, b.V6_15, b.V6_14, b.V6_13, b.V6_12, b.V6_11, b.V6_10, b.V6_09,
-			b.V6_08, b.As4, b.As6, b.As10, b.As4Only, b.As6Only, b.AsBoth, b.LargeC4,
-			b.LargeC6, b.Roavalid4, b.Roainvalid4, b.Roaunknown4, b.Roavalid6,
-			b.Roainvalid6, b.Roaunknown6)
-		if err != nil {
-			log.Fatalln("Error on statement:", err)
+		if err := addLatestHelper(b, db); err != nil {
+			log.Fatalln("Error on populate addLatestHelper:", err)
 		}
 	}
 }
@@ -101,6 +70,7 @@ func createTestDatabase() {
 	tx.Exec(`DROP TABLE IF EXISTS ASNUMNAME`)
 	tx.Exec(`DROP TABLE IF EXISTS ASNUMNAME_NEW`)
 	tx.Exec(`CREATE TABLE INFO (
+		source VARCHAR(16) NOT NULL DEFAULT 'bgp1',
 		TIME int(12) NOT NULL DEFAULT 0,
 		V4COUNT int(10) NOT NULL,
 		V6COUNT int(7) NOT NULL,
@@ -166,7 +136,7 @@ func createTestDatabase() {
 		V6_08 int(7) DEFAULT NULL,
 		PEERS6_UP int(3) DEFAULT NULL,
 		PEERS6_CONFIGURED int(3) DEFAULT NULL,
-		TWEET bit(1) DEFAULT NULL,
+		TWEET bit(1) NOT NULL DEFAULT 0,
 		V4TOTAL int(12) DEFAULT NULL,
 		V6TOTAL int(10) DEFAULT NULL,
 		AS4_LEN int(10) DEFAULT NULL,
@@ -183,11 +153,14 @@ func createTestDatabase() {
 		ROAVALIDV6 int(10) DEFAULT NULL,
 		ROAINVALIDV6 int(10) DEFAULT NULL,
 		ROAUNKNOWNV6 int(10) DEFAULT NULL,
-		PRIMARY KEY (TIME)
-		)`)
+		quality TEXT NOT NULL DEFAULT 'ok',
+		quality_note TEXT DEFAULT NULL,
+		ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (source, TIME)
+	)`)
 	tx.Exec(`CREATE TABLE ASNUMNAME (
 		ASNUMBER INTEGER NOT NULL,
-        ASNAME TEXT NOT NULL,
+		ASNAME TEXT NOT NULL,
 		LOCALE TEXT DEFAULT NULL
 	)`)
 	if err := tx.Commit(); err != nil {
@@ -199,20 +172,55 @@ func TestAddLatest(t *testing.T) {
 	createTestDatabase()
 
 	var bgpinfoServer server
+	bgpinfoServer.cfg = config{
+		defaultSource: "bgp1",
+		valCfg: validationConfig{
+			v4Min:          700000,
+			v4Max:          1600000,
+			v6Min:          50000,
+			v6Max:          600000,
+			maxDeltaPct:    5.0,
+			maxPeerDiffPct: 5.0,
+			minPeerRatio:   0.4,
+		},
+	}
 
 	db, _ := sql.Open("sqlite3", "./testdata/bgpinfo.db")
 	bgpinfoServer.db = db
 
 	want := readOne("latest.pb")
-	bgpinfoServer.AddLatest(context.Background(), want)
+	alignedTime := want.GetTime() - (want.GetTime() % 300)
+
+	resp, err := bgpinfoServer.AddLatest(context.Background(), want)
+	if err != nil {
+		t.Fatalf("AddLatest failed: %v", err)
+	}
+	if !resp.GetSuccess() {
+		t.Fatalf("AddLatest returned success=false")
+	}
 
 	var gotStruct com.BgpUpdate
+	var gotSource string
+	var gotQuality string
+	var gotQualityNote sql.NullString
 
-	query := fmt.Sprintf(`SELECT * FROM INFO WHERE TIME = '%d'`, want.GetTime())
+	query := fmt.Sprintf(`SELECT source, TIME, quality, quality_note, V4COUNT, V6COUNT, PEERS_CONFIGURED, PEERS_UP,
+		V4_24, V4_23, V4_22, V4_21, V4_20, V4_19, V4_18, V4_17, V4_16, V4_15, V4_14, V4_13,
+		V4_12, V4_11, V4_10, V4_09, V4_08, V6_48, V6_47, V6_46, V6_45, V6_44, V6_43, V6_42,
+		V6_41, V6_40, V6_39, V6_38, V6_37, V6_36, V6_35, V6_34, V6_33, V6_32, V6_31, V6_30,
+		V6_29, V6_28, V6_27, V6_26, V6_25, V6_24, V6_23, V6_22, V6_21, V6_20, V6_19, V6_18,
+		V6_17, V6_16, V6_15, V6_14, V6_13, V6_12, V6_11, V6_10, V6_09, V6_08, PEERS6_UP,
+		PEERS6_CONFIGURED, TWEET, V4TOTAL, V6TOTAL, AS4_LEN, AS6_LEN, AS10_LEN, AS4_ONLY,
+		AS6_ONLY, AS_BOTH, LARGEC4, LARGEC6, ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
+		ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6
+		FROM INFO WHERE TIME = '%d'`, alignedTime)
+
 	row := db.QueryRow(query)
-
-	err := row.Scan(
+	err = row.Scan(
+		&gotSource,
 		&gotStruct.Time,
+		&gotQuality,
+		&gotQualityNote,
 		&gotStruct.V4Count,
 		&gotStruct.V6Count,
 		&gotStruct.PeersConfigured,
@@ -296,12 +304,214 @@ func TestAddLatest(t *testing.T) {
 		&gotStruct.Roaunknown6,
 	)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatalf("Row scan error: %v", err)
 	}
 
+	if gotSource != "bgp1" {
+		t.Errorf("Expected fallback source 'bgp1', got '%s'", gotSource)
+	}
+	if gotQuality != "ok" {
+		t.Errorf("Expected quality 'ok', got '%s' (note: %v)", gotQuality, gotQualityNote.String)
+	}
+	if gotStruct.Time != alignedTime {
+		t.Errorf("Expected aligned time %d, got %d", alignedTime, gotStruct.Time)
+	}
+
+	gotStruct.Source = gotSource
 	got := com.StructToProto(&gotStruct)
 
-	if !proto.Equal(got, want) {
-		t.Errorf("Error on TestAddLatest. Got %#v, Want %#v", got, want)
+	// Compare with expected proto having aligned time and default source
+	expectedProto := proto.Clone(want).(*pb.Values)
+	expectedProto.Time = alignedTime
+	expectedProto.Source = "bgp1"
+	expectedProto.SampleTime = alignedTime
+
+	if !proto.Equal(got, expectedProto) {
+		t.Errorf("Error on TestAddLatest values mismatch. Got %#v, Want %#v", got, expectedProto)
+	}
+
+	// Test Idempotency: re-inserting the same sample with updated metrics should update in-place without duplicate key error
+	wantUpdated := proto.Clone(want).(*pb.Values)
+	wantUpdated.PrefixCount.Active_4 = 999999
+	wantUpdated.Source = "bgp1"
+	wantUpdated.SampleTime = alignedTime
+
+	resp, err = bgpinfoServer.AddLatest(context.Background(), wantUpdated)
+	if err != nil {
+		t.Fatalf("Idempotent re-insert failed: %v", err)
+	}
+	if !resp.GetSuccess() {
+		t.Fatalf("Idempotent re-insert returned success=false")
+	}
+
+	var updatedV4 uint32
+	err = db.QueryRow("SELECT V4COUNT FROM INFO WHERE source = 'bgp1' AND TIME = ?", alignedTime).Scan(&updatedV4)
+	if err != nil {
+		t.Fatalf("Failed to query updated V4COUNT: %v", err)
+	}
+	if updatedV4 != 999999 {
+		t.Errorf("Expected updated V4COUNT 999999, got %d", updatedV4)
+	}
+
+	// Test explicit source: inserting with source 'bgp3' at same aligned timestamp
+	wantBgp3 := proto.Clone(want).(*pb.Values)
+	wantBgp3.Source = "bgp3"
+	wantBgp3.SampleTime = alignedTime
+
+	resp, err = bgpinfoServer.AddLatest(context.Background(), wantBgp3)
+	if err != nil {
+		t.Fatalf("AddLatest with explicit source bgp3 failed: %v", err)
+	}
+	if !resp.GetSuccess() {
+		t.Fatalf("AddLatest with source bgp3 returned success=false")
+	}
+
+	var rowCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM INFO WHERE TIME = ?", alignedTime).Scan(&rowCount)
+	if err != nil {
+		t.Fatalf("Failed to query row count: %v", err)
+	}
+	if rowCount != 2 {
+		t.Errorf("Expected 2 rows (bgp1 and bgp3) at TIME=%d, got %d", alignedTime, rowCount)
+	}
+}
+
+func TestValidationBounds(t *testing.T) {
+	createTestDatabase()
+
+	var s server
+	s.cfg = config{
+		defaultSource: "bgp1",
+		valCfg: validationConfig{
+			v4Min:          800000,
+			v4Max:          1600000,
+			v6Min:          150000,
+			v6Max:          600000,
+			maxDeltaPct:    3.0,
+			maxPeerDiffPct: 5.0,
+			minPeerRatio:   0.5,
+		},
+	}
+	db, _ := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	s.db = db
+
+	want := readOne("latest.pb")
+	// Active_4 in latest.pb is 785490, which is < 800000
+	_, err := s.AddLatest(context.Background(), want)
+	if err != nil {
+		t.Fatalf("AddLatest failed: %v", err)
+	}
+
+	alignedTime := want.GetTime() - (want.GetTime() % 300)
+	var quality, note string
+	err = db.QueryRow("SELECT quality, quality_note FROM INFO WHERE source = 'bgp1' AND TIME = ?", alignedTime).Scan(&quality, &note)
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+
+	if quality != "suspect" {
+		t.Errorf("Expected quality 'suspect' for v4 count < 800000, got '%s'", quality)
+	}
+	if !strings.Contains(note, "outside bounds") {
+		t.Errorf("Expected note to contain 'outside bounds', got: '%s'", note)
+	}
+}
+
+func TestValidationPeers(t *testing.T) {
+	createTestDatabase()
+
+	var s server
+	s.cfg = config{
+		defaultSource: "bgp1",
+		valCfg: validationConfig{
+			v4Min:          700000,
+			v4Max:          1600000,
+			v6Min:          50000,
+			v6Max:          600000,
+			maxDeltaPct:    5.0,
+			maxPeerDiffPct: 5.0,
+			minPeerRatio:   0.5,
+		},
+	}
+	db, _ := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	s.db = db
+
+	sample := readOne("latest.pb")
+	sample.Peers.PeerCount_4 = 10
+	sample.Peers.PeerUp_4 = 2 // only 2 of 10 peers up (20% < 50%)
+
+	_, err := s.AddLatest(context.Background(), sample)
+	if err != nil {
+		t.Fatalf("AddLatest failed: %v", err)
+	}
+
+	alignedTime := sample.GetTime() - (sample.GetTime() % 300)
+	var quality, note string
+	err = db.QueryRow("SELECT quality, quality_note FROM INFO WHERE source = 'bgp1' AND TIME = ?", alignedTime).Scan(&quality, &note)
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+
+	if quality != "suspect" {
+		t.Errorf("Expected quality 'suspect' for degraded peers, got '%s'", quality)
+	}
+	if !strings.Contains(note, "peers degraded") {
+		t.Errorf("Expected note to mention 'peers degraded', got: '%s'", note)
+	}
+}
+
+func TestValidationDeltaAndConsensus(t *testing.T) {
+	createTestDatabase()
+
+	var s server
+	s.cfg = config{
+		defaultSource: "bgp1",
+		valCfg: validationConfig{
+			v4Min:          700000,
+			v4Max:          1600000,
+			v6Min:          50000,
+			v6Max:          600000,
+			maxDeltaPct:    3.0,
+			maxPeerDiffPct: 5.0,
+			minPeerRatio:   0.5,
+		},
+	}
+	db, _ := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	s.db = db
+
+	// T0: Baseline sample
+	t0 := uint64(1700000100)
+	s0 := readOne("latest.pb")
+	s0.Time = t0
+	s0.Source = "bgp1"
+	s0.PrefixCount.Active_4 = 1000000
+	_, err := s.AddLatest(context.Background(), s0)
+	if err != nil {
+		t.Fatalf("AddLatest s0 failed: %v", err)
+	}
+
+	// T1: 5 minutes later, v4 drops by 10% (1,000,000 -> 900,000)
+	t1 := t0 + 300
+	s1 := readOne("latest.pb")
+	s1.Time = t1
+	s1.Source = "bgp1"
+	s1.PrefixCount.Active_4 = 900000
+	_, err = s.AddLatest(context.Background(), s1)
+	if err != nil {
+		t.Fatalf("AddLatest s1 failed: %v", err)
+	}
+
+	alignedT1 := t1 - (t1 % 300)
+	var quality, note string
+	err = db.QueryRow("SELECT quality, quality_note FROM INFO WHERE source = 'bgp1' AND TIME = ?", alignedT1).Scan(&quality, &note)
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+
+	if quality != "suspect" {
+		t.Errorf("Expected quality 'suspect' for 10%% drop, got '%s'", quality)
+	}
+	if !strings.Contains(note, "v4 shifted") {
+		t.Errorf("Expected note to mention 'v4 shifted', got: '%s'", note)
 	}
 }
