@@ -180,6 +180,15 @@ func (m *mockBgpClient) GetAsname(_ context.Context, _ *bpb.GetAsnameRequest, _ 
 func (m *mockBgpClient) GetAsnames(_ context.Context, _ *bpb.Empty, _ ...grpc.CallOption) (*bpb.GetAsnamesResponse, error) {
 	return nil, nil
 }
+func (m *mockBgpClient) GetSampleIndex(_ context.Context, _ *bpb.SampleIndexRequest, _ ...grpc.CallOption) (*bpb.SampleIndexResponse, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) GetSampleBatch(_ context.Context, _ *bpb.SampleBatchRequest, _ ...grpc.CallOption) (*bpb.SampleBatchResponse, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) AddSampleBatch(_ context.Context, _ *bpb.SampleBatchResponse, _ ...grpc.CallOption) (*bpb.Result, error) {
+	return nil, nil
+}
 
 func TestStalenessGuard(t *testing.T) {
 	now := time.Now().Unix()

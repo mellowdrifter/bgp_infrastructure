@@ -260,3 +260,33 @@ func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb
 
 	return res, nil
 }
+
+func (s *server) GetSampleIndex(ctx context.Context, req *pb.SampleIndexRequest) (*pb.SampleIndexResponse, error) {
+	log.Printf("Running GetSampleIndex (since=%d, until=%d)\n", req.GetSinceTime(), req.GetUntilTime())
+	res, err := getSampleIndexHelper(req.GetSinceTime(), req.GetUntilTime(), s.db)
+	if err != nil {
+		log.Printf("Got error in GetSampleIndex: %v\n", err)
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *server) GetSampleBatch(ctx context.Context, req *pb.SampleBatchRequest) (*pb.SampleBatchResponse, error) {
+	log.Printf("Running GetSampleBatch (count=%d)\n", len(req.GetKeys()))
+	res, err := getSampleBatchHelper(req.GetKeys(), s.db)
+	if err != nil {
+		log.Printf("Got error in GetSampleBatch: %v\n", err)
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *server) AddSampleBatch(ctx context.Context, req *pb.SampleBatchResponse) (*pb.Result, error) {
+	log.Printf("Running AddSampleBatch (count=%d)\n", len(req.GetSamples()))
+	res, err := addSampleBatchHelper(req.GetSamples(), s.db)
+	if err != nil {
+		log.Printf("Got error in AddSampleBatch: %v\n", err)
+		return nil, err
+	}
+	return res, nil
+}

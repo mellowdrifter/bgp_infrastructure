@@ -12,6 +12,7 @@ cmd/asname/asname
 cmd/tweeter/tweeter
 cmd/tracerpki/tracerpki
 cmd/bgpsql/bgpsql
+cmd/reconcile/bgpreconcile
 internal/xapi/test/test
 !internal/xapi/*.go
 !internal/bskyapi/*.go

@@ -408,3 +408,140 @@ func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
 		Success: true,
 	}, nil
 }
+
+func getSampleIndexHelper(since, until uint64, db *sql.DB) (*pb.SampleIndexResponse, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+
+	query := `SELECT source, TIME, quality FROM INFO WHERE TIME >= ?`
+	args := []interface{}{since}
+	if until > 0 {
+		query += ` AND TIME <= ?`
+		args = append(args, until)
+	}
+	query += ` ORDER BY TIME ASC`
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sample index: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []*pb.SampleKey
+	for rows.Next() {
+		var k pb.SampleKey
+		if err := rows.Scan(&k.Source, &k.Time, &k.Quality); err != nil {
+			return nil, fmt.Errorf("failed to scan sample key: %w", err)
+		}
+		keys = append(keys, &k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return &pb.SampleIndexResponse{Keys: keys}, nil
+}
+
+const sampleSelectCols = `source, TIME, quality, quality_note, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL,
+	PEERS_CONFIGURED, PEERS_UP, PEERS6_CONFIGURED, PEERS6_UP, V4_24, V4_23, V4_22, V4_21,
+	V4_20, V4_19, V4_18, V4_17, V4_16, V4_15, V4_14, V4_13, V4_12, V4_11, V4_10, V4_09,
+	V4_08, V6_48, V6_47, V6_46, V6_45, V6_44, V6_43, V6_42, V6_41, V6_40, V6_39, V6_38,
+	V6_37, V6_36, V6_35, V6_34, V6_33, V6_32, V6_31, V6_30, V6_29, V6_28, V6_27, V6_26,
+	V6_25, V6_24, V6_23, V6_22, V6_21, V6_20, V6_19, V6_18, V6_17, V6_16, V6_15, V6_14,
+	V6_13, V6_12, V6_11, V6_10, V6_09, V6_08, AS4_LEN, AS6_LEN, AS10_LEN, AS4_ONLY,
+	AS6_ONLY, AS_BOTH, LARGEC4, LARGEC6, ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4,
+	ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6`
+
+type nullUint32 uint32
+
+func (n *nullUint32) Scan(src interface{}) error {
+	if src == nil {
+		*n = 0
+		return nil
+	}
+	var ni sql.NullInt64
+	if err := ni.Scan(src); err != nil {
+		return err
+	}
+	if ni.Valid {
+		*n = nullUint32(ni.Int64)
+	} else {
+		*n = 0
+	}
+	return nil
+}
+
+func scanFullBgpUpdate(scanner interface{ Scan(...interface{}) error }) (*com.BgpUpdate, error) {
+	var b com.BgpUpdate
+	var qualityNote sql.NullString
+	err := scanner.Scan(
+		&b.Source, &b.Time, &b.Quality, &qualityNote,
+		&b.V4Count, &b.V6Count, (*nullUint32)(&b.V4Total), (*nullUint32)(&b.V6Total),
+		(*nullUint32)(&b.PeersConfigured), (*nullUint32)(&b.PeersUp), (*nullUint32)(&b.Peers6Configured), (*nullUint32)(&b.Peers6Up),
+		(*nullUint32)(&b.V4_24), (*nullUint32)(&b.V4_23), (*nullUint32)(&b.V4_22), (*nullUint32)(&b.V4_21), (*nullUint32)(&b.V4_20), (*nullUint32)(&b.V4_19),
+		(*nullUint32)(&b.V4_18), (*nullUint32)(&b.V4_17), (*nullUint32)(&b.V4_16), (*nullUint32)(&b.V4_15), (*nullUint32)(&b.V4_14), (*nullUint32)(&b.V4_13),
+		(*nullUint32)(&b.V4_12), (*nullUint32)(&b.V4_11), (*nullUint32)(&b.V4_10), (*nullUint32)(&b.V4_09), (*nullUint32)(&b.V4_08),
+		(*nullUint32)(&b.V6_48), (*nullUint32)(&b.V6_47), (*nullUint32)(&b.V6_46), (*nullUint32)(&b.V6_45), (*nullUint32)(&b.V6_44), (*nullUint32)(&b.V6_43),
+		(*nullUint32)(&b.V6_42), (*nullUint32)(&b.V6_41), (*nullUint32)(&b.V6_40), (*nullUint32)(&b.V6_39), (*nullUint32)(&b.V6_38), (*nullUint32)(&b.V6_37),
+		(*nullUint32)(&b.V6_36), (*nullUint32)(&b.V6_35), (*nullUint32)(&b.V6_34), (*nullUint32)(&b.V6_33), (*nullUint32)(&b.V6_32), (*nullUint32)(&b.V6_31),
+		(*nullUint32)(&b.V6_30), (*nullUint32)(&b.V6_29), (*nullUint32)(&b.V6_28), (*nullUint32)(&b.V6_27), (*nullUint32)(&b.V6_26), (*nullUint32)(&b.V6_25),
+		(*nullUint32)(&b.V6_24), (*nullUint32)(&b.V6_23), (*nullUint32)(&b.V6_22), (*nullUint32)(&b.V6_21), (*nullUint32)(&b.V6_20), (*nullUint32)(&b.V6_19),
+		(*nullUint32)(&b.V6_18), (*nullUint32)(&b.V6_17), (*nullUint32)(&b.V6_16), (*nullUint32)(&b.V6_15), (*nullUint32)(&b.V6_14), (*nullUint32)(&b.V6_13),
+		(*nullUint32)(&b.V6_12), (*nullUint32)(&b.V6_11), (*nullUint32)(&b.V6_10), (*nullUint32)(&b.V6_09), (*nullUint32)(&b.V6_08),
+		(*nullUint32)(&b.As4), (*nullUint32)(&b.As6), (*nullUint32)(&b.As10), (*nullUint32)(&b.As4Only), (*nullUint32)(&b.As6Only), (*nullUint32)(&b.AsBoth),
+		(*nullUint32)(&b.LargeC4), (*nullUint32)(&b.LargeC6),
+		(*nullUint32)(&b.Roavalid4), (*nullUint32)(&b.Roainvalid4), (*nullUint32)(&b.Roaunknown4),
+		(*nullUint32)(&b.Roavalid6), (*nullUint32)(&b.Roainvalid6), (*nullUint32)(&b.Roaunknown6),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if qualityNote.Valid {
+		b.QualityNote = qualityNote.String
+	}
+	b.SampleTime = b.Time
+	return &b, nil
+}
+
+func getSampleBatchHelper(keys []*pb.SampleKey, db *sql.DB) (*pb.SampleBatchResponse, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+
+	stmt, err := db.Prepare(fmt.Sprintf("SELECT %s FROM INFO WHERE source = ? AND TIME = ?", sampleSelectCols))
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare select statement: %w", err)
+	}
+	defer stmt.Close()
+
+	var samples []*pb.Values
+	for _, k := range keys {
+		row := stmt.QueryRow(k.GetSource(), k.GetTime())
+		update, err := scanFullBgpUpdate(row)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row for %s@%d: %w", k.GetSource(), k.GetTime(), err)
+		}
+		samples = append(samples, com.StructToProto(update))
+	}
+
+	return &pb.SampleBatchResponse{Samples: samples}, nil
+}
+
+func addSampleBatchHelper(samples []*pb.Values, db *sql.DB) (*pb.Result, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+
+	for _, s := range samples {
+		update := com.ProtoToStruct(s)
+		if err := addLatestHelper(update, db); err != nil {
+			return &pb.Result{Success: false}, fmt.Errorf("failed to insert reconciled sample %s@%d: %w", update.Source, update.Time, err)
+		}
+	}
+
+	return &pb.Result{Success: true}, nil
+}

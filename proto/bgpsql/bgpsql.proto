@@ -12,6 +12,9 @@ service bgp_info {
     rpc update_asnames(asnames_request) returns (result);
     rpc get_asname(get_asname_request) returns (get_asname_response);
     rpc get_asnames(empty) returns (get_asnames_response);
+    rpc get_sample_index(sample_index_request) returns (sample_index_response);
+    rpc get_sample_batch(sample_batch_request) returns (sample_batch_response);
+    rpc add_sample_batch(sample_batch_response) returns (result);
 }
 
 message values {
@@ -25,6 +28,31 @@ message values {
     roas roas = 7;
     string source = 8;
     uint64 sample_time = 9;
+    string quality = 10;
+    string quality_note = 11;
+}
+
+message sample_key {
+    string source = 1;
+    uint64 time = 2;
+    string quality = 3;
+}
+
+message sample_index_request {
+    uint64 since_time = 1;
+    uint64 until_time = 2;
+}
+
+message sample_index_response {
+    repeated sample_key keys = 1;
+}
+
+message sample_batch_request {
+    repeated sample_key keys = 1;
+}
+
+message sample_batch_response {
+    repeated values samples = 1;
 }
 
 message list_of_values {

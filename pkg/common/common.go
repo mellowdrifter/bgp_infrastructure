@@ -310,11 +310,17 @@ func ProtoToStruct(v *pb.Values) *BgpUpdate {
 	}
 	sampleTime := rawTime - (rawTime % 300)
 
+	quality := v.GetQuality()
+	if quality == "" {
+		quality = "ok"
+	}
+
 	update := &BgpUpdate{
 		Source:           v.GetSource(),
 		SampleTime:       sampleTime,
 		Time:             sampleTime,
-		Quality:          "ok",
+		Quality:          quality,
+		QualityNote:      v.GetQualityNote(),
 		V4Count:          p.GetActive_4(),
 		V6Count:          p.GetActive_6(),
 		V4Total:          p.GetTotal_4(),
@@ -407,9 +413,11 @@ func StructToProto(b *BgpUpdate) *pb.Values {
 		sampleTime = b.Time
 	}
 	return &pb.Values{
-		Time:       b.Time,
-		Source:     b.Source,
-		SampleTime: sampleTime,
+		Time:        b.Time,
+		Source:      b.Source,
+		SampleTime:  sampleTime,
+		Quality:     b.Quality,
+		QualityNote: b.QualityNote,
 		PrefixCount: &pb.PrefixCount{
 			Active_4: b.V4Count,
 			Active_6: b.V6Count,

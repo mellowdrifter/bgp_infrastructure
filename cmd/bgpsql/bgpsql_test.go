@@ -668,3 +668,139 @@ func TestCuratedMovementTotalsDeduplicated(t *testing.T) {
 	}
 }
 
+func TestReconcileIndexAndBatch(t *testing.T) {
+	createTestDatabase()
+
+	db, err := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	if err != nil {
+		t.Fatalf("Open test DB failed: %v", err)
+	}
+	defer db.Close()
+
+	t0 := uint64(1710000000)
+	t1 := t0 + 300
+	t2 := t1 + 300
+
+	// Insert samples
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, quality_note, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL) VALUES ('bgp1', ?, 'ok', 'clean', 1000000, 200000, 1000000, 200000)`, t0)
+	if err != nil {
+		t.Fatalf("Insert t0 failed: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, quality_note, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL) VALUES ('bgp3', ?, 'ok', 'clean', 1000500, 200500, 1000500, 200500)`, t0)
+	if err != nil {
+		t.Fatalf("Insert t0 bgp3 failed: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, quality_note, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL) VALUES ('bgp1', ?, 'suspect', 'step change', 900000, 190000, 900000, 190000)`, t1)
+	if err != nil {
+		t.Fatalf("Insert t1 failed: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, quality_note, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL) VALUES ('bgp3', ?, 'ok', 'clean', 1000600, 200600, 1000600, 200600)`, t2)
+	if err != nil {
+		t.Fatalf("Insert t2 failed: %v", err)
+	}
+
+	// 1. Test getSampleIndexHelper
+	indexResp, err := getSampleIndexHelper(t0, t2, db)
+	if err != nil {
+		t.Fatalf("getSampleIndexHelper failed: %v", err)
+	}
+	if len(indexResp.GetKeys()) != 4 {
+		t.Fatalf("Expected 4 keys in index, got %d", len(indexResp.GetKeys()))
+	}
+	// Verify t1 key has quality='suspect'
+	foundSuspect := false
+	for _, k := range indexResp.GetKeys() {
+		if k.GetTime() == t1 && k.GetSource() == "bgp1" && k.GetQuality() == "suspect" {
+			foundSuspect = true
+		}
+	}
+	if !foundSuspect {
+		t.Errorf("Expected to find suspect key for bgp1@%d", t1)
+	}
+
+	// 2. Test getSampleBatchHelper
+	batchKeys := []*pb.SampleKey{
+		{Source: "bgp1", Time: t0},
+		{Source: "bgp3", Time: t2},
+	}
+	batchResp, err := getSampleBatchHelper(batchKeys, db)
+	if err != nil {
+		t.Fatalf("getSampleBatchHelper failed: %v", err)
+	}
+	if len(batchResp.GetSamples()) != 2 {
+		t.Fatalf("Expected 2 samples, got %d", len(batchResp.GetSamples()))
+	}
+	if batchResp.GetSamples()[0].GetPrefixCount().GetActive_4() != 1000000 {
+		t.Errorf("Expected v4 1000000 for bgp1 sample, got %d", batchResp.GetSamples()[0].GetPrefixCount().GetActive_4())
+	}
+	if batchResp.GetSamples()[1].GetSource() != "bgp3" {
+		t.Errorf("Expected source bgp3, got %s", batchResp.GetSamples()[1].GetSource())
+	}
+
+	// 3. Test addSampleBatchHelper into target database
+	targetDB, err := sql.Open("sqlite3", "./testdata/bgpinfo_target.db")
+	if err != nil {
+		t.Fatalf("Open target DB failed: %v", err)
+	}
+	defer func() {
+		targetDB.Close()
+		os.Remove("./testdata/bgpinfo_target.db")
+	}()
+
+	targetDB.Exec(`CREATE TABLE INFO (
+		source VARCHAR(16) NOT NULL DEFAULT 'bgp1',
+		TIME int(12) NOT NULL DEFAULT 0,
+		quality TEXT NOT NULL DEFAULT 'ok',
+		quality_note TEXT DEFAULT NULL,
+		V4COUNT int(10) NOT NULL,
+		V6COUNT int(7) NOT NULL,
+		V4TOTAL int(12) DEFAULT NULL,
+		V6TOTAL int(10) DEFAULT NULL,
+		PEERS_CONFIGURED int(3) DEFAULT NULL,
+		PEERS_UP int(3) DEFAULT NULL,
+		PEERS6_CONFIGURED int(3) DEFAULT NULL,
+		PEERS6_UP int(3) DEFAULT NULL,
+		V4_24 int(10) DEFAULT NULL, V4_23 int(10) DEFAULT NULL, V4_22 int(10) DEFAULT NULL,
+		V4_21 int(10) DEFAULT NULL, V4_20 int(10) DEFAULT NULL, V4_19 int(10) DEFAULT NULL,
+		V4_18 int(10) DEFAULT NULL, V4_17 int(10) DEFAULT NULL, V4_16 int(10) DEFAULT NULL,
+		V4_15 int(10) DEFAULT NULL, V4_14 int(10) DEFAULT NULL, V4_13 int(10) DEFAULT NULL,
+		V4_12 int(10) DEFAULT NULL, V4_11 int(10) DEFAULT NULL, V4_10 int(10) DEFAULT NULL,
+		V4_09 int(10) DEFAULT NULL, V4_08 int(10) DEFAULT NULL, V6_48 int(7) DEFAULT NULL,
+		V6_47 int(7) DEFAULT NULL, V6_46 int(7) DEFAULT NULL, V6_45 int(7) DEFAULT NULL,
+		V6_44 int(7) DEFAULT NULL, V6_43 int(7) DEFAULT NULL, V6_42 int(7) DEFAULT NULL,
+		V6_41 int(7) DEFAULT NULL, V6_40 int(7) DEFAULT NULL, V6_39 int(7) DEFAULT NULL,
+		V6_38 int(7) DEFAULT NULL, V6_37 int(7) DEFAULT NULL, V6_36 int(7) DEFAULT NULL,
+		V6_35 int(7) DEFAULT NULL, V6_34 int(7) DEFAULT NULL, V6_33 int(7) DEFAULT NULL,
+		V6_32 int(7) DEFAULT NULL, V6_31 int(7) DEFAULT NULL, V6_30 int(7) DEFAULT NULL,
+		V6_29 int(7) DEFAULT NULL, V6_28 int(7) DEFAULT NULL, V6_27 int(7) DEFAULT NULL,
+		V6_26 int(7) DEFAULT NULL, V6_25 int(7) DEFAULT NULL, V6_24 int(7) DEFAULT NULL,
+		V6_23 int(7) DEFAULT NULL, V6_22 int(7) DEFAULT NULL, V6_21 int(7) DEFAULT NULL,
+		V6_20 int(7) DEFAULT NULL, V6_19 int(7) DEFAULT NULL, V6_18 int(7) DEFAULT NULL,
+		V6_17 int(7) DEFAULT NULL, V6_16 int(7) DEFAULT NULL, V6_15 int(7) DEFAULT NULL,
+		V6_14 int(7) DEFAULT NULL, V6_13 int(7) DEFAULT NULL, V6_12 int(7) DEFAULT NULL,
+		V6_11 int(7) DEFAULT NULL, V6_10 int(7) DEFAULT NULL, V6_09 int(7) DEFAULT NULL,
+		V6_08 int(7) DEFAULT NULL, AS4_LEN int(10) DEFAULT NULL, AS6_LEN int(10) DEFAULT NULL,
+		AS10_LEN int(10) DEFAULT NULL, AS4_ONLY int(10) DEFAULT NULL, AS6_ONLY int(10) DEFAULT NULL,
+		AS_BOTH int(10) DEFAULT NULL, LARGEC4 int(6) DEFAULT NULL, LARGEC6 int(6) DEFAULT NULL,
+		ROAVALIDV4 int(10) DEFAULT NULL, ROAINVALIDV4 int(10) DEFAULT NULL, ROAUNKNOWNV4 int(10) DEFAULT NULL,
+		ROAVALIDV6 int(10) DEFAULT NULL, ROAINVALIDV6 int(10) DEFAULT NULL, ROAUNKNOWNV6 int(10) DEFAULT NULL,
+		ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (source, TIME)
+	)`)
+
+	addRes, err := addSampleBatchHelper(batchResp.GetSamples(), targetDB)
+	if err != nil {
+		t.Fatalf("addSampleBatchHelper failed: %v", err)
+	}
+	if !addRes.GetSuccess() {
+		t.Fatalf("addSampleBatchHelper returned success=false")
+	}
+
+	// Verify rows exist in targetDB
+	var rowCount int
+	err = targetDB.QueryRow("SELECT COUNT(*) FROM INFO").Scan(&rowCount)
+	if err != nil || rowCount != 2 {
+		t.Errorf("Expected 2 rows in targetDB, got %d (err: %v)", rowCount, err)
+	}
+}
+
