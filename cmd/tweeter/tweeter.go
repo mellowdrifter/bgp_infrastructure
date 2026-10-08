@@ -16,7 +16,7 @@ import (
 
 	"math/rand"
 
-	bpb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"github.com/mellowdrifter/bgp_infrastructure/internal/bskyapi"
 	gpb "github.com/mellowdrifter/bgp_infrastructure/internal/grapher"
 	"github.com/mellowdrifter/bgp_infrastructure/internal/xapi"

@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/encoding/charmap"
 	"gopkg.in/ini.v1"
 
-	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

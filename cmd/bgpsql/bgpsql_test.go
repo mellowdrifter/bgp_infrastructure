@@ -12,7 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	_ "github.com/mattn/go-sqlite3"
-	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
 )
 

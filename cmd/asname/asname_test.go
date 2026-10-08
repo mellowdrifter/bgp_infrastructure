@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	pb "github.com/mellowdrifter/bgp_infrastructure/internal/bgpsql"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 )
 
 const count = 11
