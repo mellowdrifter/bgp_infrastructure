@@ -500,6 +500,17 @@ func current(bgp bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 		return nil, err
 	}
 
+	// Staleness guard (DATA-6): curated sample must not be older than 15 minutes (900 seconds)
+	const maxStalenessSeconds = 15 * 60
+	sampleTime := int64(counts.GetTime())
+	if sampleTime <= 0 {
+		return nil, fmt.Errorf("curated sample timestamp is missing or zero, refusing to tweet")
+	}
+	sampleAge := time.Now().Unix() - sampleTime
+	if sampleAge > maxStalenessSeconds {
+		return nil, fmt.Errorf("curated sample is %d seconds old (exceeds 15m limit), refusing to tweet", sampleAge)
+	}
+
 	// Check for sane IP values
 	if counts.GetActive_4() < minV4 {
 		return nil, fmt.Errorf("IPv4 count is %d, which is less than the minimum sane value of %d",
@@ -670,7 +681,17 @@ func subnets(c config) ([]tweet, error) {
 	cpb := bpb.NewBgpInfoClient(conn)
 	pieData, err := cpb.GetPieSubnets(context.Background(), &bpb.Empty{})
 	if err != nil {
-		log.Fatalf("Unable to send proto: %s", err)
+		return nil, fmt.Errorf("unable to get pie subnets: %w", err)
+	}
+
+	// Staleness guard (DATA-6): sample must not be older than 15 minutes
+	sampleTime := int64(pieData.GetTime())
+	if sampleTime <= 0 {
+		return nil, fmt.Errorf("curated sample timestamp for subnets is missing or zero, refusing to tweet")
+	}
+	sampleAge := time.Now().Unix() - sampleTime
+	if sampleAge > 15*60 {
+		return nil, fmt.Errorf("curated sample for subnets is %d seconds old (exceeds 15m limit), refusing to tweet", sampleAge)
 	}
 
 	v4Colours := []string{"burlywood", "lightgreen", "lightskyblue", "lightcoral", "gold"}
@@ -772,6 +793,9 @@ func movement(c config, p bpb.MovementRequest_TimePeriod) ([]tweet, error) {
 	graphData, err := cpb.GetMovementTotals(context.Background(), &bpb.MovementRequest{Period: p})
 	if err != nil {
 		return nil, err
+	}
+	if len(graphData.GetValues()) == 0 {
+		return nil, fmt.Errorf("no curated movement data returned, refusing to tweet")
 	}
 
 	// Determine image title and update message depending on time period given.

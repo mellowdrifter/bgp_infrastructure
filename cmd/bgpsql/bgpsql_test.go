@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 
@@ -66,6 +67,7 @@ func createTestDatabase() {
 	db, _ := sql.Open("sqlite3", "./testdata/bgpinfo.db")
 
 	tx, _ := db.Begin()
+	tx.Exec(`DROP VIEW IF EXISTS curated_samples`)
 	tx.Exec(`DROP TABLE IF EXISTS INFO`)
 	tx.Exec(`DROP TABLE IF EXISTS ASNUMNAME`)
 	tx.Exec(`DROP TABLE IF EXISTS ASNUMNAME_NEW`)
@@ -163,6 +165,24 @@ func createTestDatabase() {
 		ASNAME TEXT NOT NULL,
 		LOCALE TEXT DEFAULT NULL
 	)`)
+	tx.Exec(`CREATE VIEW curated_samples AS
+	SELECT 
+		i.source AS derived_from,
+		i.*
+	FROM INFO i
+	WHERE i.quality = 'ok'
+	  AND (
+		i.source = 'bgp3'
+		OR (
+		  i.source = 'bgp1'
+		  AND NOT EXISTS (
+			SELECT 1 FROM INFO i2 
+			WHERE i2.source = 'bgp3' 
+			  AND i2.TIME = i.TIME 
+			  AND i2.quality = 'ok'
+		  )
+		)
+	  )`)
 	if err := tx.Commit(); err != nil {
 		log.Panic("Unable to create test database")
 	}
@@ -515,3 +535,136 @@ func TestValidationDeltaAndConsensus(t *testing.T) {
 		t.Errorf("Expected note to mention 'v4 shifted', got: '%s'", note)
 	}
 }
+
+func TestCuratedViewPreference(t *testing.T) {
+	createTestDatabase()
+
+	db, err := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	if err != nil {
+		t.Fatalf("Open test DB failed: %v", err)
+	}
+	defer db.Close()
+
+	ts := uint64(1710000000)
+
+	// Insert both bgp1 and bgp3 at the same timestamp with quality='ok'
+	// bgp1 has 1,000,000 v4 prefixes, bgp3 has 1,000,500 v4 prefixes
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, V4COUNT, V6COUNT, V4_24, V6_48, TWEET) VALUES ('bgp1', ?, 'ok', 1000000, 200000, 50000, 10000, 1)`, ts)
+	if err != nil {
+		t.Fatalf("Insert bgp1 failed: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, V4COUNT, V6COUNT, V4_24, V6_48, TWEET) VALUES ('bgp3', ?, 'ok', 1000500, 200500, 50500, 10500, 1)`, ts)
+	if err != nil {
+		t.Fatalf("Insert bgp3 failed: %v", err)
+	}
+
+	// Verify curated_samples view selects bgp3
+	var derivedFrom string
+	var v4 uint32
+	err = db.QueryRow("SELECT derived_from, V4COUNT FROM curated_samples WHERE TIME = ?", ts).Scan(&derivedFrom, &v4)
+	if err != nil {
+		t.Fatalf("Query curated_samples failed: %v", err)
+	}
+	if derivedFrom != "bgp3" || v4 != 1000500 {
+		t.Errorf("Expected bgp3 (1000500), got %s (%d)", derivedFrom, v4)
+	}
+
+	// Verify getPrefixCountHelper returns bgp3 data
+	resp, err := getPrefixCountHelper(db)
+	if err != nil {
+		t.Fatalf("getPrefixCountHelper failed: %v", err)
+	}
+	if resp.GetActive_4() != 1000500 {
+		t.Errorf("Expected getPrefixCountHelper to return bgp3 active_4 1000500, got %d", resp.GetActive_4())
+	}
+}
+
+func TestCuratedViewFallback(t *testing.T) {
+	createTestDatabase()
+
+	db, err := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	if err != nil {
+		t.Fatalf("Open test DB failed: %v", err)
+	}
+	defer db.Close()
+
+	ts := uint64(1710000000)
+
+	// bgp3 is degraded/suspect (restarting), bgp1 is ok
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, V4COUNT, V6COUNT, V4_24, V6_48, TWEET) VALUES ('bgp1', ?, 'ok', 1000000, 200000, 50000, 10000, 1)`, ts)
+	if err != nil {
+		t.Fatalf("Insert bgp1 failed: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, V4COUNT, V6COUNT, V4_24, V6_48, TWEET) VALUES ('bgp3', ?, 'suspect', 200000, 50000, 10000, 2000, 1)`, ts)
+	if err != nil {
+		t.Fatalf("Insert bgp3 failed: %v", err)
+	}
+
+	// Verify curated_samples view falls back to bgp1
+	var derivedFrom string
+	var v4 uint32
+	err = db.QueryRow("SELECT derived_from, V4COUNT FROM curated_samples WHERE TIME = ?", ts).Scan(&derivedFrom, &v4)
+	if err != nil {
+		t.Fatalf("Query curated_samples failed: %v", err)
+	}
+	if derivedFrom != "bgp1" || v4 != 1000000 {
+		t.Errorf("Expected fallback to bgp1 (1000000), got %s (%d)", derivedFrom, v4)
+	}
+
+	// Verify getPrefixCountHelper returns bgp1 data
+	resp, err := getPrefixCountHelper(db)
+	if err != nil {
+		t.Fatalf("getPrefixCountHelper failed: %v", err)
+	}
+	if resp.GetActive_4() != 1000000 {
+		t.Errorf("Expected getPrefixCountHelper fallback to 1000000, got %d", resp.GetActive_4())
+	}
+}
+
+func TestCuratedMovementTotalsDeduplicated(t *testing.T) {
+	createTestDatabase()
+
+	db, err := sql.Open("sqlite3", "./testdata/bgpinfo.db")
+	if err != nil {
+		t.Fatalf("Open test DB failed: %v", err)
+	}
+	defer db.Close()
+
+	baseTime := uint64(time.Now().Unix() - 66600 - 604800 + 3600) // within WEEK window
+	baseTime = baseTime - (baseTime % 300)
+
+	// Insert 10 dual-written timestamps
+	for i := 0; i < 10; i++ {
+		ts := baseTime + uint64(i*300)
+		_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, V4COUNT, V6COUNT) VALUES ('bgp1', ?, 'ok', ?, 200000)`, ts, 1000000+i)
+		if err != nil {
+			t.Fatalf("Insert bgp1 failed: %v", err)
+		}
+		_, err = db.Exec(`INSERT INTO INFO (source, TIME, quality, V4COUNT, V6COUNT) VALUES ('bgp3', ?, 'ok', ?, 200000)`, ts, 1050000+i)
+		if err != nil {
+			t.Fatalf("Insert bgp3 failed: %v", err)
+		}
+	}
+
+	req := &pb.MovementRequest{
+		Period: pb.MovementRequest_WEEK,
+	}
+	resp, err := getMovementTotalsHelper(req, db)
+	if err != nil {
+		t.Fatalf("getMovementTotalsHelper failed: %v", err)
+	}
+
+	// Verify no duplicate timestamps and strictly monotonic order
+	var lastTime uint64
+	for idx, val := range resp.GetValues() {
+		if idx > 0 && val.GetTime() <= lastTime {
+			t.Errorf("Timestamps not strictly increasing: prev=%d, curr=%d", lastTime, val.GetTime())
+		}
+		lastTime = val.GetTime()
+		// Since bgp3 values are 1050000+, verify bgp3 was selected
+		if val.GetV4Values() < 1050000 {
+			t.Errorf("Expected bgp3 value >= 1050000, got %d", val.GetV4Values())
+		}
+	}
+}
+

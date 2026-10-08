@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	bpb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
+	"google.golang.org/grpc"
 )
 
 func TestDeltaMessage(t *testing.T) {
@@ -139,3 +144,90 @@ func TestWhatToTweet(t *testing.T) {
 		}
 	}
 }
+
+type mockBgpClient struct {
+	resp *bpb.PrefixCountResponse
+	err  error
+}
+
+func (m *mockBgpClient) GetPrefixCount(_ context.Context, _ *bpb.Empty, _ ...grpc.CallOption) (*bpb.PrefixCountResponse, error) {
+	return m.resp, m.err
+}
+func (m *mockBgpClient) GetPieSubnets(_ context.Context, _ *bpb.Empty, _ ...grpc.CallOption) (*bpb.PieSubnetsResponse, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) GetMovementTotals(_ context.Context, _ *bpb.MovementRequest, _ ...grpc.CallOption) (*bpb.MovementTotalsResponse, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) GetRpki(_ context.Context, _ *bpb.Empty, _ ...grpc.CallOption) (*bpb.Roas, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) UpdateTweetBit(_ context.Context, _ *bpb.Timestamp, _ ...grpc.CallOption) (*bpb.Result, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) UpdateAsnames(_ context.Context, _ *bpb.AsnamesRequest, _ ...grpc.CallOption) (*bpb.Result, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) AddLatest(_ context.Context, _ *bpb.Values, _ ...grpc.CallOption) (*bpb.Result, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) AddValues(_ context.Context, _ *bpb.Values, _ ...grpc.CallOption) (*bpb.Result, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) GetAsname(_ context.Context, _ *bpb.GetAsnameRequest, _ ...grpc.CallOption) (*bpb.GetAsnameResponse, error) {
+	return nil, nil
+}
+func (m *mockBgpClient) GetAsnames(_ context.Context, _ *bpb.Empty, _ ...grpc.CallOption) (*bpb.GetAsnamesResponse, error) {
+	return nil, nil
+}
+
+func TestStalenessGuard(t *testing.T) {
+	now := time.Now().Unix()
+
+	// 1. Sample older than 15 minutes (e.g. 20 minutes old)
+	mockStale := &mockBgpClient{
+		resp: &bpb.PrefixCountResponse{
+			Time:     uint64(now - 1200),
+			Active_4: 1000000,
+			Active_6: 250000,
+		},
+	}
+	_, err := current(mockStale, true)
+	if err == nil || !strings.Contains(err.Error(), "exceeds 15m limit") {
+		t.Errorf("Expected 15m staleness error for 20m old sample, got: %v", err)
+	}
+
+	// 2. Sample timestamp zero
+	mockZero := &mockBgpClient{
+		resp: &bpb.PrefixCountResponse{
+			Time:     0,
+			Active_4: 1000000,
+			Active_6: 250000,
+		},
+	}
+	_, err = current(mockZero, true)
+	if err == nil || !strings.Contains(err.Error(), "missing or zero") {
+		t.Errorf("Expected missing/zero timestamp error, got: %v", err)
+	}
+
+	// 3. Fresh sample (2 minutes old)
+	mockFresh := &mockBgpClient{
+		resp: &bpb.PrefixCountResponse{
+			Time:        uint64(now - 120),
+			Active_4:    1000000,
+			Active_6:    250000,
+			Sixhoursv4:  1000000,
+			Sixhoursv6:  250000,
+			Weekagov4:   990000,
+			Weekagov6:   240000,
+		},
+	}
+	tweets, err := current(mockFresh, true)
+	if err != nil {
+		t.Errorf("Expected fresh sample to succeed, got error: %v", err)
+	}
+	if len(tweets) == 0 {
+		t.Errorf("Expected tweets to be returned for fresh sample")
+	}
+}
+

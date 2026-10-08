@@ -130,7 +130,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 	var data pb.PrefixCountResponse
 
 	// Latest data
-	sq1 := `SELECT TIME, V4COUNT, V6COUNT FROM INFO ORDER BY TIME DESC LIMIT 1`
+	sq1 := `SELECT TIME, V4COUNT, V6COUNT FROM curated_samples ORDER BY TIME DESC LIMIT 1`
 	err := db.QueryRow(sq1).Scan(
 		&data.Time,
 		&data.Active_4,
@@ -141,7 +141,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 	}
 
 	// Six hours ago (last tweeted data)
-	sq2 := `SELECT V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+	sq2 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
 			ORDER BY TIME DESC LIMIT 1`
 	err = db.QueryRow(sq2).Scan(
 		&data.Sixhoursv4,
@@ -153,7 +153,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 
 	// Last weeks numbers
 	lastWeek := int32(time.Now().Unix()) - 604800
-	sq3 := fmt.Sprintf(`SELECT V4COUNT, V6COUNT FROM INFO WHERE TWEET IS NOT NULL
+	sq3 := fmt.Sprintf(`SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
 				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
 	err = db.QueryRow(sq3).Scan(
 		&data.Weekagov4,
@@ -164,7 +164,7 @@ func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
 	}
 
 	// /24 and /48 counts
-	sq4 := `SELECT V4_24, V6_48 FROM INFO ORDER BY TIME DESC LIMIT 1`
+	sq4 := `SELECT V4_24, V6_48 FROM curated_samples ORDER BY TIME DESC LIMIT 1`
 	err = db.QueryRow(sq4).Scan(
 		&data.Slash24,
 		&data.Slash48,
@@ -188,7 +188,7 @@ func getPieSubnetsHelper(db *sql.DB) (*pb.PieSubnetsResponse, error) {
         V6_27,V6_26,V6_25,V6_24,V6_23,V6_22,V6_21,V6_20,
         V6_19,V6_18,V6_17,V6_16,V6_15,V6_14,V6_13,V6_12,
 		V6_11,V6_10,V6_09,V6_08,V6COUNT,
-        TIME FROM INFO ORDER BY TIME DESC LIMIT 1`).Scan(
+        TIME FROM curated_samples ORDER BY TIME DESC LIMIT 1`).Scan(
 		&masks.V4_08, &masks.V4_09, &masks.V4_10,
 		&masks.V4_11, &masks.V4_12, &masks.V4_13,
 		&masks.V4_14, &masks.V4_15, &masks.V4_16,
@@ -245,8 +245,8 @@ func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTot
 		start = strconv.Itoa(end - secondsInYear)
 		denomiator = 60
 	}
-	query := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM INFO WHERE TIME >=
-						'%s' AND TIME <= '%d'`, start, end)
+	query := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM curated_samples WHERE TIME >=
+						'%s' AND TIME <= '%d' ORDER BY TIME ASC`, start, end)
 
 	var tv []*pb.V4V6Time
 	rows, err := db.Query(query)
@@ -279,7 +279,7 @@ func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTot
 func getRPKIHelper(db *sql.DB) (*pb.Roas, error) {
 	var r pb.Roas
 	query := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
-	from INFO ORDER by TIME DESC LIMIT 1`
+	from curated_samples ORDER by TIME DESC LIMIT 1`
 	err := db.QueryRow(query).Scan(
 		&r.V4Valid,
 		&r.V4Invalid,
