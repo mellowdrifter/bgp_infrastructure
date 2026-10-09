@@ -35,7 +35,7 @@ func main() {
 	batchSize := flag.Int("batch-size", 100, "Batch size for sample transfer")
 	dryRun := flag.Bool("dry-run", false, "Only audit differences without copying rows")
 	healthcheckURL := flag.String("healthcheck-url", "", "Optional Healthchecks.io ping URL on success")
-	timeoutSec := flag.Int("timeout", 180, "Overall timeout in seconds")
+	timeoutSec := flag.Int("timeout", 600, "Overall timeout in seconds")
 	flag.Parse()
 
 	log.Printf("Starting BGP reconcile (window=%d days, local=%s, remote=%s, dry-run=%v)",
