@@ -1,21 +1,14 @@
 .vscode/*
 */__pycache__/*
 */.mypy_cache/*
-internal/*/*.go
-internal/*/*.py
 */.vscode/*
 **/config.ini
-**/go.sum
-**/*_pb2.py
-**/*_pb2_grpc.py
 cmd/asname/asname
 cmd/tweeter/tweeter
 cmd/tracerpki/tracerpki
 cmd/bgpsql/bgpsql
 cmd/reconcile/bgpreconcile
 internal/xapi/test/test
-!internal/xapi/*.go
-!internal/bskyapi/*.go
 
 # Sensitive infrastructure documentation - strictly local, never commit
 bgp_infra.md
