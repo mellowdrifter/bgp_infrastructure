@@ -65,12 +65,7 @@ func init() {
 		colList, valList, strings.Join(sqliteUpdates, ", "))
 }
 
-// add latest BGP update information to database
-func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
-	if db == nil {
-		log.Fatalf("db object is nil")
-	}
-
+func execAddSample(stmt *sql.Stmt, b *com.BgpUpdate) error {
 	source := b.Source
 	if source == "" {
 		source = "bgp1"
@@ -91,18 +86,7 @@ func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 		qualityNote = sql.NullString{String: b.QualityNote, Valid: true}
 	}
 
-	query := mysqlAddLatestQuery
-	if db.Driver() != nil && strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "sqlite") {
-		query = sqliteAddLatestQuery
-	}
-
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		return fmt.Errorf("unable to prepare statement: %w", err)
-	}
-	defer stmt.Close()
-
-	res, err := stmt.Exec(
+	_, err := stmt.Exec(
 		source, sampleTime, quality, qualityNote,
 		b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
 		b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
@@ -116,11 +100,27 @@ func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
 		b.V6_08, b.As4, b.As6, b.As10, b.As4Only, b.As6Only, b.AsBoth, b.LargeC4,
 		b.LargeC6, b.Roavalid4, b.Roainvalid4, b.Roaunknown4, b.Roavalid6,
 		b.Roainvalid6, b.Roaunknown6)
-	if err != nil {
-		return fmt.Errorf("unable to update database: %w", err)
+	return err
+}
+
+// add latest BGP update information to database
+func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
+	if db == nil {
+		log.Fatalf("db object is nil")
 	}
-	log.Printf("updated database: %v", res)
-	return nil
+
+	query := mysqlAddLatestQuery
+	if db.Driver() != nil && strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "sqlite") {
+		query = sqliteAddLatestQuery
+	}
+
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("unable to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	return execAddSample(stmt, b)
 }
 
 func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
@@ -536,11 +536,36 @@ func addSampleBatchHelper(samples []*pb.Values, db *sql.DB) (*pb.Result, error) 
 		return nil, fmt.Errorf("db object is nil")
 	}
 
+	if len(samples) == 0 {
+		return &pb.Result{Success: true}, nil
+	}
+
+	query := mysqlAddLatestQuery
+	if db.Driver() != nil && strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "sqlite") {
+		query = sqliteAddLatestQuery
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("unable to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
 	for _, s := range samples {
 		update := com.ProtoToStruct(s)
-		if err := addLatestHelper(update, db); err != nil {
+		if err := execAddSample(stmt, update); err != nil {
 			return &pb.Result{Success: false}, fmt.Errorf("failed to insert reconciled sample %s@%d: %w", update.Source, update.Time, err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit batch transaction: %w", err)
 	}
 
 	return &pb.Result{Success: true}, nil

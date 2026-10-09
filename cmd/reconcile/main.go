@@ -57,8 +57,16 @@ func main() {
 }
 
 func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, batchSize int, dryRun bool) (*reconcileStats, error) {
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(64*1024*1024),
+			grpc.MaxCallSendMsgSize(64*1024*1024),
+		),
+	}
+
 	// Connect to local bgpsql
-	localConn, err := grpc.DialContext(ctx, localAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	localConn, err := grpc.DialContext(ctx, localAddr, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial local bgpsql (%s): %w", localAddr, err)
 	}
@@ -66,7 +74,7 @@ func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, 
 	localClient := pb.NewBgpInfoClient(localConn)
 
 	// Connect to remote bgpsql
-	remoteConn, err := grpc.DialContext(ctx, remoteAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	remoteConn, err := grpc.DialContext(ctx, remoteAddr, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial remote bgpsql (%s): %w", remoteAddr, err)
 	}
@@ -74,12 +82,20 @@ func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, 
 	remoteClient := pb.NewBgpInfoClient(remoteConn)
 
 	now := time.Now()
-	startTime := now.Add(-time.Duration(days) * 24 * time.Hour)
-	sinceTime := uint64(startTime.Unix() - (startTime.Unix() % 300))
+	var sinceTime uint64
+	var windowStartTime time.Time
+	if days > 0 {
+		startTime := now.Add(-time.Duration(days) * 24 * time.Hour)
+		sinceTime = uint64(startTime.Unix() - (startTime.Unix() % 300))
+		windowStartTime = time.Unix(int64(sinceTime), 0).UTC()
+	} else {
+		sinceTime = 0
+		windowStartTime = time.Unix(1418915400, 0).UTC() // Earliest sample: 2014-12-18
+	}
 	untilTime := uint64(now.Unix())
 
 	stats := &reconcileStats{
-		windowStart:   time.Unix(int64(sinceTime), 0).UTC(),
+		windowStart:   windowStartTime,
 		windowEnd:     now.UTC(),
 		remainingGaps: make(map[string]int),
 		dryRun:        dryRun,
@@ -164,10 +180,15 @@ func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, 
 	}
 
 	// 4. Audit remaining true gaps per source
+	gapAuditStart := sinceTime
+	if gapAuditStart == 0 {
+		gapAuditStart = 1418915400 // Earliest sample: 2014-12-18
+	}
+
 	for _, src := range []string{"bgp1", "bgp3"} {
 		gaps := 0
 		// Check every 5-minute bucket up to 10 minutes ago
-		for t := sinceTime; t < untilTime-600; t += 300 {
+		for t := gapAuditStart; t < untilTime-600; t += 300 {
 			key := fmt.Sprintf("%s@%d", src, t)
 			_, onLocal := localMap[key]
 			_, onRemote := remoteMap[key]
@@ -183,6 +204,7 @@ func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, 
 
 func copyBatch(ctx context.Context, srcClient, dstClient pb.BgpInfoClient, keys []*pb.SampleKey, batchSize int) (int, error) {
 	totalCopied := 0
+	lastLogged := 0
 	for i := 0; i < len(keys); i += batchSize {
 		end := i + batchSize
 		if end > len(keys) {
@@ -210,6 +232,10 @@ func copyBatch(ctx context.Context, srcClient, dstClient pb.BgpInfoClient, keys 
 		}
 
 		totalCopied += len(batchResp.GetSamples())
+		if totalCopied-lastLogged >= 5000 || totalCopied == len(keys) {
+			log.Printf("Progress: copied %d/%d samples (%.1f%%)", totalCopied, len(keys), float64(totalCopied)/float64(len(keys))*100.0)
+			lastLogged = totalCopied
+		}
 	}
 	return totalCopied, nil
 }
