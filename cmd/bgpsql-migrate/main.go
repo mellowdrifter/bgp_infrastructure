@@ -120,6 +120,15 @@ func migrateInfo(srcDB *sql.DB, dstDB *sql.DB, isSrcMySQL bool, delta bool, batc
 			return 0, fmt.Errorf("failed to scan source row: %w", err)
 		}
 
+		for i, v := range destVals {
+			if b, ok := v.([]byte); ok {
+				destVals[i] = string(b)
+			}
+		}
+		if q, ok := destVals[2].(string); !ok || (q != "ok" && q != "suspect" && q != "bad") {
+			destVals[2] = "ok"
+		}
+
 		if _, err := stmt.Exec(destVals...); err != nil {
 			stmt.Close()
 			tx.Rollback()
