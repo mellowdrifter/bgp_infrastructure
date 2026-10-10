@@ -24,17 +24,25 @@ func (m *mockReconcileServer) GetSampleIndex(_ context.Context, req *pb.SampleIn
 				Source:  s.GetSource(),
 				Time:    s.GetTime(),
 				Quality: s.GetQuality(),
+				Tweeted: s.GetTweeted(),
 			})
 		}
 	}
 	return &pb.SampleIndexResponse{Keys: keys}, nil
 }
 
+func (m *mockReconcileServer) UpdateTweetBit(_ context.Context, req *pb.Timestamp) (*pb.Result, error) {
+	for _, s := range m.samples {
+		if s.GetTime() == req.GetTime() {
+			s.Tweeted = true
+		}
+	}
+	return &pb.Result{Success: true}, nil
+}
+
 func (m *mockReconcileServer) GetSampleBatch(_ context.Context, req *pb.SampleBatchRequest) (*pb.SampleBatchResponse, error) {
 	var out []*pb.Values
 	for _, k := range req.GetKeys() {
-		key := k.GetSource() + "@" + time.Unix(int64(k.GetTime()), 0).Format(time.RFC3339)
-		_ = key
 		for _, s := range m.samples {
 			if s.GetSource() == k.GetSource() && s.GetTime() == k.GetTime() {
 				out = append(out, s)
@@ -77,16 +85,17 @@ func TestRunReconciliation(t *testing.T) {
 	now := uint64(time.Now().Unix())
 	now = now - (now % 300)
 
-	s1 := &pb.Values{Source: "bgp1", Time: now - 600, Quality: "ok"}
-	s2 := &pb.Values{Source: "bgp3", Time: now - 600, Quality: "ok"}
-	s3 := &pb.Values{Source: "bgp1", Time: now - 300, Quality: "suspect"}
+	s1Local := &pb.Values{Source: "bgp1", Time: now - 600, Quality: "ok", Tweeted: true}
+	s1Remote := &pb.Values{Source: "bgp1", Time: now - 600, Quality: "ok", Tweeted: false}
+	s2 := &pb.Values{Source: "bgp3", Time: now - 600, Quality: "ok", Tweeted: false}
+	s3 := &pb.Values{Source: "bgp1", Time: now - 300, Quality: "suspect", Tweeted: false}
 
-	// Local has s1, s2
-	_, localAddr, stopLocal := startMockServer(t, []*pb.Values{s1, s2})
+	// Local has s1Local (tweeted), s2
+	_, localAddr, stopLocal := startMockServer(t, []*pb.Values{s1Local, s2})
 	defer stopLocal()
 
-	// Remote has s1, s3
-	_, remoteAddr, stopRemote := startMockServer(t, []*pb.Values{s1, s3})
+	// Remote has s1Remote (not tweeted), s3
+	mockRemote, remoteAddr, stopRemote := startMockServer(t, []*pb.Values{s1Remote, s3})
 	defer stopRemote()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -103,6 +112,12 @@ func TestRunReconciliation(t *testing.T) {
 	if stats.copiedToLocal != 0 || stats.copiedToRemote != 0 {
 		t.Errorf("Expected 0 copied in dry run, got local=%d, remote=%d", stats.copiedToLocal, stats.copiedToRemote)
 	}
+	if stats.tweetBitsToRemote != 1 {
+		t.Errorf("Expected 1 tweet bit to sync to remote in dry run, got %d", stats.tweetBitsToRemote)
+	}
+	if stats.tweetBitsSyncedToRemote != 0 {
+		t.Errorf("Expected 0 tweet bits synced in dry run, got %d", stats.tweetBitsSyncedToRemote)
+	}
 
 	// 2. Real reconciliation
 	stats, err = runReconciliation(ctx, localAddr, remoteAddr, 1, 10, false)
@@ -114,5 +129,11 @@ func TestRunReconciliation(t *testing.T) {
 	}
 	if stats.copiedToRemote != 1 {
 		t.Errorf("Expected 1 copied to remote (s2), got %d", stats.copiedToRemote)
+	}
+	if stats.tweetBitsSyncedToRemote != 1 {
+		t.Errorf("Expected 1 tweet bit synced to remote, got %d", stats.tweetBitsSyncedToRemote)
+	}
+	if !mockRemote.samples[fmt.Sprintf("bgp1@%d", now-600)].GetTweeted() {
+		t.Errorf("Expected remote sample bgp1@%d to have Tweeted=true after reconciliation", now-600)
 	}
 }

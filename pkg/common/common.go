@@ -315,12 +315,18 @@ func ProtoToStruct(v *pb.Values) *BgpUpdate {
 		quality = "ok"
 	}
 
+	var tweet uint32
+	if v.GetTweeted() {
+		tweet = 1
+	}
+
 	update := &BgpUpdate{
 		Source:           v.GetSource(),
 		SampleTime:       sampleTime,
 		Time:             sampleTime,
 		Quality:          quality,
 		QualityNote:      v.GetQualityNote(),
+		Tweet:            tweet,
 		V4Count:          p.GetActive_4(),
 		V6Count:          p.GetActive_6(),
 		V4Total:          p.GetTotal_4(),
@@ -418,6 +424,7 @@ func StructToProto(b *BgpUpdate) *pb.Values {
 		SampleTime:  sampleTime,
 		Quality:     b.Quality,
 		QualityNote: b.QualityNote,
+		Tweeted:     b.Tweet == 1,
 		PrefixCount: &pb.PrefixCount{
 			Active_4: b.V4Count,
 			Active_6: b.V6Count,

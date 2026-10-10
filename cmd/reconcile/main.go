@@ -16,16 +16,20 @@ import (
 )
 
 type reconcileStats struct {
-	windowStart     time.Time
-	windowEnd       time.Time
-	localCount      int
-	remoteCount     int
-	localSuspect    int
-	remoteSuspect   int
-	copiedToLocal   int
-	copiedToRemote  int
-	remainingGaps   map[string]int
-	dryRun          bool
+	windowStart             time.Time
+	windowEnd               time.Time
+	localCount              int
+	remoteCount             int
+	localSuspect            int
+	remoteSuspect           int
+	copiedToLocal           int
+	copiedToRemote          int
+	tweetBitsToLocal        int
+	tweetBitsToRemote       int
+	tweetBitsSyncedToLocal  int
+	tweetBitsSyncedToRemote int
+	remainingGaps           map[string]int
+	dryRun                  bool
 }
 
 func main() {
@@ -118,20 +122,28 @@ func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, 
 	stats.remoteCount = len(remoteIdx.GetKeys())
 
 	localMap := make(map[string]*pb.SampleKey, stats.localCount)
+	localTweetedTimes := make(map[uint64]bool)
 	for _, k := range localIdx.GetKeys() {
 		key := fmt.Sprintf("%s@%d", k.GetSource(), k.GetTime())
 		localMap[key] = k
 		if k.GetQuality() == "suspect" {
 			stats.localSuspect++
 		}
+		if k.GetTweeted() {
+			localTweetedTimes[k.GetTime()] = true
+		}
 	}
 
 	remoteMap := make(map[string]*pb.SampleKey, stats.remoteCount)
+	remoteTweetedTimes := make(map[uint64]bool)
 	for _, k := range remoteIdx.GetKeys() {
 		key := fmt.Sprintf("%s@%d", k.GetSource(), k.GetTime())
 		remoteMap[key] = k
 		if k.GetQuality() == "suspect" {
 			stats.remoteSuspect++
+		}
+		if k.GetTweeted() {
+			remoteTweetedTimes[k.GetTime()] = true
 		}
 	}
 
@@ -179,7 +191,65 @@ func runReconciliation(ctx context.Context, localAddr, remoteAddr string, days, 
 		}
 	}
 
-	// 4. Audit remaining true gaps per source
+	// 4. Reconcile tweet bits across nodes
+	var syncTweetToLocal []uint64
+	for t := range remoteTweetedTimes {
+		if !localTweetedTimes[t] {
+			syncTweetToLocal = append(syncTweetToLocal, t)
+		}
+	}
+	sort.Slice(syncTweetToLocal, func(i, j int) bool { return syncTweetToLocal[i] < syncTweetToLocal[j] })
+
+	var syncTweetToRemote []uint64
+	for t := range localTweetedTimes {
+		if !remoteTweetedTimes[t] {
+			syncTweetToRemote = append(syncTweetToRemote, t)
+		}
+	}
+	sort.Slice(syncTweetToRemote, func(i, j int) bool { return syncTweetToRemote[i] < syncTweetToRemote[j] })
+
+	stats.tweetBitsToLocal = len(syncTweetToLocal)
+	stats.tweetBitsToRemote = len(syncTweetToRemote)
+
+	log.Printf("Tweet bit comparison: %d missing on local, %d missing on remote", len(syncTweetToLocal), len(syncTweetToRemote))
+
+	if !dryRun {
+		// Sync tweet bits remote -> local
+		if len(syncTweetToLocal) > 0 {
+			log.Printf("Syncing %d tweet bits from remote -> local...", len(syncTweetToLocal))
+			for i, t := range syncTweetToLocal {
+				res, err := localClient.UpdateTweetBit(ctx, &pb.Timestamp{Time: t})
+				if err != nil {
+					return nil, fmt.Errorf("failed to sync tweet bit at time %d to local: %w", t, err)
+				}
+				if res != nil && res.GetSuccess() {
+					stats.tweetBitsSyncedToLocal++
+				}
+				if (i+1)%500 == 0 || i+1 == len(syncTweetToLocal) {
+					log.Printf("Progress: synced %d/%d tweet bits to local", i+1, len(syncTweetToLocal))
+				}
+			}
+		}
+
+		// Sync tweet bits local -> remote
+		if len(syncTweetToRemote) > 0 {
+			log.Printf("Syncing %d tweet bits from local -> remote...", len(syncTweetToRemote))
+			for i, t := range syncTweetToRemote {
+				res, err := remoteClient.UpdateTweetBit(ctx, &pb.Timestamp{Time: t})
+				if err != nil {
+					return nil, fmt.Errorf("failed to sync tweet bit at time %d to remote: %w", t, err)
+				}
+				if res != nil && res.GetSuccess() {
+					stats.tweetBitsSyncedToRemote++
+				}
+				if (i+1)%500 == 0 || i+1 == len(syncTweetToRemote) {
+					log.Printf("Progress: synced %d/%d tweet bits to remote", i+1, len(syncTweetToRemote))
+				}
+			}
+		}
+	}
+
+	// 5. Audit remaining true gaps per source
 	gapAuditStart := sinceTime
 	if gapAuditStart == 0 {
 		gapAuditStart = 1418915400 // Earliest sample: 2014-12-18
@@ -252,10 +322,12 @@ func printReport(s *reconcileStats, localAddr, remoteAddr string) {
 	fmt.Printf("Remote row count:   %d\n", s.remoteCount)
 	fmt.Println(strings.Repeat("-", 68))
 	if s.dryRun {
-		fmt.Println("Mode:               DRY RUN (no rows copied)")
+		fmt.Println("Mode:               DRY RUN (no rows or tweet bits copied)")
+		fmt.Printf("Tweet bits to sync: Remote->Local: %d | Local->Remote: %d\n", s.tweetBitsToLocal, s.tweetBitsToRemote)
 	} else {
 		fmt.Printf("Copied Remote->Local: %d rows\n", s.copiedToLocal)
 		fmt.Printf("Copied Local->Remote: %d rows\n", s.copiedToRemote)
+		fmt.Printf("Synced tweet bits:    Remote->Local: %d | Local->Remote: %d\n", s.tweetBitsSyncedToLocal, s.tweetBitsSyncedToRemote)
 	}
 	fmt.Printf("Suspect samples:    Local: %d | Remote: %d\n", s.localSuspect, s.remoteSuspect)
 	fmt.Println(strings.Repeat("-", 68))

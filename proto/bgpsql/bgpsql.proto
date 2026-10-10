@@ -30,12 +30,14 @@ message values {
     uint64 sample_time = 9;
     string quality = 10;
     string quality_note = 11;
+    bool tweeted = 12;
 }
 
 message sample_key {
     string source = 1;
     uint64 time = 2;
     string quality = 3;
+    bool tweeted = 4;
 }
 
 message sample_index_request {

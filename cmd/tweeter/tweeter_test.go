@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -235,8 +236,79 @@ func TestStalenessGuard(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected fresh sample to succeed, got error: %v", err)
 	}
-	if len(tweets) == 0 {
-		t.Errorf("Expected tweets to be returned for fresh sample")
+	if len(tweets) != 2 {
+		t.Fatalf("Expected 2 tweets to be returned for fresh sample, got %d", len(tweets))
+	}
+	if tweets[0].sampleTime != uint64(now-120) || tweets[1].sampleTime != uint64(now-120) {
+		t.Errorf("Expected sampleTime %d on tweets, got [0]=%d, [1]=%d", now-120, tweets[0].sampleTime, tweets[1].sampleTime)
+	}
+}
+
+type mockTweetBitServer struct {
+	bpb.UnimplementedBgpInfoServer
+	tweetTimes []uint64
+}
+
+func (m *mockTweetBitServer) UpdateTweetBit(_ context.Context, req *bpb.Timestamp) (*bpb.Result, error) {
+	m.tweetTimes = append(m.tweetTimes, req.GetTime())
+	return &bpb.Result{Success: true}, nil
+}
+
+func startMockTweetBitServer(t *testing.T) (*mockTweetBitServer, string, func()) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to listen: %v", err)
+	}
+
+	srv := grpc.NewServer()
+	mock := &mockTweetBitServer{}
+	bpb.RegisterBgpInfoServer(srv, mock)
+
+	go srv.Serve(lis)
+
+	cleanup := func() {
+		srv.Stop()
+		lis.Close()
+	}
+	return mock, lis.Addr().String(), cleanup
+}
+
+func TestSetTweetBitAll(t *testing.T) {
+	mock1, addr1, stop1 := startMockTweetBitServer(t)
+	defer stop1()
+
+	mock2, addr2, stop2 := startMockTweetBitServer(t)
+	defer stop2()
+
+	cfg := config{
+		servers: []string{addr1, addr2},
+		dryRun:  true,
+	}
+
+	targetTime := uint64(1700000000)
+
+	// 1. Dry run: neither server should have received an update
+	setTweetBitAll(cfg, targetTime)
+	if len(mock1.tweetTimes) != 0 || len(mock2.tweetTimes) != 0 {
+		t.Errorf("Expected 0 updates in dry run, got mock1=%d, mock2=%d", len(mock1.tweetTimes), len(mock2.tweetTimes))
+	}
+
+	// 2. Real run: both servers should receive the update
+	cfg.dryRun = false
+	setTweetBitAll(cfg, targetTime)
+	if len(mock1.tweetTimes) != 1 || mock1.tweetTimes[0] != targetTime {
+		t.Errorf("Expected mock1 to have received 1 update with time %d, got %v", targetTime, mock1.tweetTimes)
+	}
+	if len(mock2.tweetTimes) != 1 || mock2.tweetTimes[0] != targetTime {
+		t.Errorf("Expected mock2 to have received 1 update with time %d, got %v", targetTime, mock2.tweetTimes)
+	}
+
+	// 3. One server down: other server still succeeds
+	stop2()
+	mock1.tweetTimes = nil
+	setTweetBitAll(cfg, targetTime+300)
+	if len(mock1.tweetTimes) != 1 || mock1.tweetTimes[0] != targetTime+300 {
+		t.Errorf("Expected mock1 to receive update even when mock2 is down, got %v", mock1.tweetTimes)
 	}
 }
 

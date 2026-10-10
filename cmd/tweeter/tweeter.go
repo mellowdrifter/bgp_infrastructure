@@ -35,10 +35,11 @@ const (
 )
 
 type tweet struct {
-	account string
-	message string
-	media   []byte
-	video   []byte
+	account    string
+	message    string
+	media      []byte
+	video      []byte
+	sampleTime uint64
 }
 
 type toTweet struct {
@@ -245,15 +246,28 @@ func (t *tweeter) post() http.HandlerFunc {
 		for _, tweet := range tweetList {
 			// Sleep between posts
 			time.Sleep(10 * time.Second)
+
+			xSuccess := false
+			bskySuccess := false
+
 			// Tweet it
 			if err := postToX(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				log.Printf("error when tweeting: %v", err)
+				log.Printf("error when tweeting to X: %v", err)
+			} else {
+				xSuccess = true
 			}
 			// Post it
 			if err := postBsky(tweet, t.cfg.file); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				log.Printf("error when posting to bluesky: %v", err)
+			} else {
+				bskySuccess = true
+			}
+
+			// DATA-9: If either platform succeeded, update tweet bit across all bgpsql servers
+			if (xSuccess || bskySuccess) && tweet.sampleTime > 0 {
+				setTweetBitAll(t.cfg, tweet.sampleTime)
 			}
 		}
 	}
@@ -547,16 +561,14 @@ func current(bgp bpb.BgpInfoClient, dryrun bool) ([]tweet, error) {
 	}
 
 	v4Tweet := tweet{
-		account: "bgp4table",
-		message: v4,
+		account:    "bgp4table",
+		message:    v4,
+		sampleTime: counts.GetTime(),
 	}
 	v6Tweet := tweet{
-		account: "bgp6table",
-		message: v6,
-	}
-
-	if err := setTweetBit(bgp, counts.GetTime(), dryrun); err != nil {
-		log.Printf("Unable to set tweet bit, but continuing on: %v", err)
+		account:    "bgp6table",
+		message:    v6,
+		sampleTime: counts.GetTime(),
 	}
 
 	log.Printf("IPv4: %s\nIPv6: %s\n", v4, v6)
@@ -651,22 +663,30 @@ func deltaMessage(h, w int) string {
 	return update.String()
 }
 
-func setTweetBit(cpb bpb.BgpInfoClient, time uint64, dryrun bool) error {
-	log.Println("Running setTweetBit")
-
-	if dryrun {
+func setTweetBitAll(c config, tweetTime uint64) {
+	log.Printf("Updating tweet bit for TIME=%d across all configured bgpsql servers: %v", tweetTime, c.servers)
+	if c.dryRun {
 		log.Printf("dry run set, so not setting tweet bit")
-		return nil
+		return
 	}
 
-	timestamp := &bpb.Timestamp{
-		Time: time,
+	for _, srv := range c.servers {
+		conn, err := grpc.Dial(srv, grpc.WithInsecure())
+		if err != nil {
+			log.Printf("Failed to dial bgpsql at %s to set tweet bit: %v", srv, err)
+			continue
+		}
+		client := bpb.NewBgpInfoClient(conn)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err = client.UpdateTweetBit(ctx, &bpb.Timestamp{Time: tweetTime})
+		if err != nil {
+			log.Printf("Failed to set tweet bit on %s for TIME=%d: %v", srv, tweetTime, err)
+		} else {
+			log.Printf("Successfully set tweet bit on %s for TIME=%d", srv, tweetTime)
+		}
+		cancel()
+		conn.Close()
 	}
-	_, err := cpb.UpdateTweetBit(context.Background(), timestamp)
-	if err != nil {
-		return fmt.Errorf("error: received error when trying to set tweet bit")
-	}
-	return nil
 }
 
 func subnets(c config) ([]tweet, error) {

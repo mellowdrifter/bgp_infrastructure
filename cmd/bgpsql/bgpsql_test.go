@@ -196,12 +196,62 @@ func TestUpdateTweetBit(t *testing.T) {
 
 	populate(db)
 
-	res, err := updateTweetBitHelper(context.Background(), 1580515200, db)
+	targetTime := uint64(1565531700)
+
+	// 1. Initially update tweet bit via updateTweetBitHelper
+	res, err := updateTweetBitHelper(context.Background(), targetTime, db)
 	if err != nil {
 		t.Fatalf("updateTweetBitHelper failed: %v", err)
 	}
 	if !res.GetSuccess() {
 		t.Errorf("expected success true")
+	}
+
+	// 2. Verify getSampleIndexHelper returns Tweeted = true
+	idx, err := getSampleIndexHelper(context.Background(), targetTime, targetTime, db)
+	if err != nil {
+		t.Fatalf("getSampleIndexHelper failed: %v", err)
+	}
+	if len(idx.GetKeys()) == 0 {
+		t.Fatalf("expected at least 1 sample key for time %d", targetTime)
+	}
+	if !idx.GetKeys()[0].GetTweeted() {
+		t.Errorf("expected sample key Tweeted=true, got false")
+	}
+
+	// 3. Verify getSampleBatchHelper preserves Tweet=1
+	batchResp, err := getSampleBatchHelper(context.Background(), idx.GetKeys(), db)
+	if err != nil {
+		t.Fatalf("getSampleBatchHelper failed: %v", err)
+	}
+	if len(batchResp.GetSamples()) == 0 {
+		t.Fatalf("expected at least 1 sample in batch response")
+	}
+	if !batchResp.GetSamples()[0].GetTweeted() {
+		t.Errorf("expected sample batch Tweeted=true, got false")
+	}
+
+	// 4. Upsert an update with Tweet=0 for the same (source, time).
+	// DATA-9 requirement: upsert must NOT clear existing TWEET=1.
+	update := &com.BgpUpdate{
+		Source:  "bgp1",
+		Time:    targetTime,
+		Quality: "ok",
+		Tweet:   0,
+		V4Count: 800000,
+		V6Count: 100000,
+	}
+	if err := addLatestHelper(context.Background(), update, db); err != nil {
+		t.Fatalf("addLatestHelper upsert failed: %v", err)
+	}
+
+	// Check that TWEET is still 1 in the database
+	var tweetVal int
+	if err := db.QueryRow("SELECT COALESCE(TWEET, 0) FROM INFO WHERE source = ? AND TIME = ?", "bgp1", targetTime).Scan(&tweetVal); err != nil {
+		t.Fatalf("failed to query TWEET bit after upsert: %v", err)
+	}
+	if tweetVal != 1 {
+		t.Errorf("expected TWEET=1 preserved after upsert with Tweet=0, got %d", tweetVal)
 	}
 }
 

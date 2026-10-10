@@ -39,7 +39,7 @@ var (
 )
 
 func init() {
-	cols := append([]string{"source", "TIME", "quality", "quality_note"}, infoMetricColumns...)
+	cols := append([]string{"source", "TIME", "quality", "quality_note", "TWEET"}, infoMetricColumns...)
 	colList := strings.Join(cols, ", ")
 
 	placeholders := make([]string, len(cols))
@@ -49,22 +49,22 @@ func init() {
 	valList := strings.Join(placeholders, ", ")
 
 	// MySQL / MariaDB: ON DUPLICATE KEY UPDATE col=VALUES(col)..., ingested_at=CURRENT_TIMESTAMP
-	mysqlUpdates := make([]string, 0, len(infoMetricColumns)+3)
+	mysqlUpdates := make([]string, 0, len(infoMetricColumns)+4)
 	mysqlUpdates = append(mysqlUpdates, "quality = VALUES(quality)", "quality_note = VALUES(quality_note)")
 	for _, col := range infoMetricColumns {
 		mysqlUpdates = append(mysqlUpdates, fmt.Sprintf("%s = VALUES(%s)", col, col))
 	}
-	mysqlUpdates = append(mysqlUpdates, "ingested_at = CURRENT_TIMESTAMP")
+	mysqlUpdates = append(mysqlUpdates, "TWEET = IF(TWEET = 1, 1, VALUES(TWEET))", "ingested_at = CURRENT_TIMESTAMP")
 	mysqlAddLatestQuery = fmt.Sprintf("INSERT INTO INFO (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s",
 		colList, valList, strings.Join(mysqlUpdates, ", "))
 
 	// SQLite: ON CONFLICT(source, TIME) DO UPDATE SET col=excluded.col..., ingested_at=unixepoch()
-	sqliteUpdates := make([]string, 0, len(infoMetricColumns)+3)
+	sqliteUpdates := make([]string, 0, len(infoMetricColumns)+4)
 	sqliteUpdates = append(sqliteUpdates, "quality = excluded.quality", "quality_note = excluded.quality_note")
 	for _, col := range infoMetricColumns {
 		sqliteUpdates = append(sqliteUpdates, fmt.Sprintf("%s = excluded.%s", col, col))
 	}
-	sqliteUpdates = append(sqliteUpdates, "ingested_at = unixepoch()")
+	sqliteUpdates = append(sqliteUpdates, "TWEET = CASE WHEN TWEET = 1 THEN 1 ELSE excluded.TWEET END", "ingested_at = unixepoch()")
 	sqliteAddLatestQuery = fmt.Sprintf("INSERT INTO INFO (%s) VALUES (%s) ON CONFLICT(source, TIME) DO UPDATE SET %s",
 		colList, valList, strings.Join(sqliteUpdates, ", "))
 }
@@ -154,9 +154,13 @@ func execAddSample(ctx context.Context, stmt *sql.Stmt, b *com.BgpUpdate) error 
 	if b.QualityNote != "" {
 		qualityNote = sql.NullString{String: b.QualityNote, Valid: true}
 	}
+	tweetVal := uint32(0)
+	if b.Tweet == 1 {
+		tweetVal = 1
+	}
 
 	_, err := stmt.ExecContext(ctx,
-		source, sampleTime, quality, qualityNote,
+		source, sampleTime, quality, qualityNote, tweetVal,
 		b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
 		b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
 		b.V4_23, b.V4_22, b.V4_21, b.V4_20, b.V4_19, b.V4_18, b.V4_17, b.V4_16,
@@ -524,7 +528,7 @@ func getSampleIndexHelper(ctx context.Context, since, until uint64, db *sql.DB) 
 	ctx, cancel := queryContextWithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	query := `SELECT source, TIME, quality FROM INFO WHERE TIME >= ?`
+	query := `SELECT source, TIME, quality, COALESCE(TWEET, 0) FROM INFO WHERE TIME >= ?`
 	args := []interface{}{since}
 	if until > 0 {
 		query += ` AND TIME <= ?`
@@ -541,9 +545,11 @@ func getSampleIndexHelper(ctx context.Context, since, until uint64, db *sql.DB) 
 	var keys []*pb.SampleKey
 	for rows.Next() {
 		var k pb.SampleKey
-		if err := rows.Scan(&k.Source, &k.Time, &k.Quality); err != nil {
+		var tweetVal int
+		if err := rows.Scan(&k.Source, &k.Time, &k.Quality, &tweetVal); err != nil {
 			return nil, fmt.Errorf("failed to scan sample key: %w", err)
 		}
+		k.Tweeted = (tweetVal == 1)
 		keys = append(keys, &k)
 	}
 	if err := rows.Err(); err != nil {
@@ -553,7 +559,7 @@ func getSampleIndexHelper(ctx context.Context, since, until uint64, db *sql.DB) 
 	return &pb.SampleIndexResponse{Keys: keys}, nil
 }
 
-const sampleSelectCols = `source, TIME, quality, quality_note, V4COUNT, V6COUNT, V4TOTAL, V6TOTAL,
+const sampleSelectCols = `source, TIME, quality, quality_note, COALESCE(TWEET, 0), V4COUNT, V6COUNT, V4TOTAL, V6TOTAL,
 	PEERS_CONFIGURED, PEERS_UP, PEERS6_CONFIGURED, PEERS6_UP, V4_24, V4_23, V4_22, V4_21,
 	V4_20, V4_19, V4_18, V4_17, V4_16, V4_15, V4_14, V4_13, V4_12, V4_11, V4_10, V4_09,
 	V4_08, V6_48, V6_47, V6_46, V6_45, V6_44, V6_43, V6_42, V6_41, V6_40, V6_39, V6_38,
@@ -585,8 +591,9 @@ func (n *nullUint32) Scan(src interface{}) error {
 func scanFullBgpUpdate(scanner interface{ Scan(...interface{}) error }) (*com.BgpUpdate, error) {
 	var b com.BgpUpdate
 	var qualityNote sql.NullString
+	var tweetVal uint32
 	err := scanner.Scan(
-		&b.Source, &b.Time, &b.Quality, &qualityNote,
+		&b.Source, &b.Time, &b.Quality, &qualityNote, &tweetVal,
 		&b.V4Count, &b.V6Count, (*nullUint32)(&b.V4Total), (*nullUint32)(&b.V6Total),
 		(*nullUint32)(&b.PeersConfigured), (*nullUint32)(&b.PeersUp), (*nullUint32)(&b.Peers6Configured), (*nullUint32)(&b.Peers6Up),
 		(*nullUint32)(&b.V4_24), (*nullUint32)(&b.V4_23), (*nullUint32)(&b.V4_22), (*nullUint32)(&b.V4_21), (*nullUint32)(&b.V4_20), (*nullUint32)(&b.V4_19),
@@ -610,6 +617,7 @@ func scanFullBgpUpdate(scanner interface{ Scan(...interface{}) error }) (*com.Bg
 	if qualityNote.Valid {
 		b.QualityNote = qualityNote.String
 	}
+	b.Tweet = tweetVal
 	b.SampleTime = b.Time
 	return &b, nil
 }
