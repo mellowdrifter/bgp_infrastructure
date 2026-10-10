@@ -7,6 +7,7 @@ cmd/asname/asname
 cmd/tweeter/tweeter
 cmd/tracerpki/tracerpki
 cmd/bgpsql/bgpsql
+cmd/bgpsql-migrate/bgpsql-migrate
 cmd/reconcile/bgpreconcile
 internal/xapi/test/test
 

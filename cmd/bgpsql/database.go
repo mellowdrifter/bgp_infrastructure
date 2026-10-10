@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	_ "embed"
 	"fmt"
-	"log"
-	"strconv"
 	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
+	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/003_sqlite_schema.sql
+var sqliteSchemaDDL string
 
 var infoMetricColumns = []string{
 	"V4COUNT", "V6COUNT", "V4TOTAL", "V6TOTAL", "PEERS_CONFIGURED", "PEERS_UP",
@@ -54,18 +58,83 @@ func init() {
 	mysqlAddLatestQuery = fmt.Sprintf("INSERT INTO INFO (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s",
 		colList, valList, strings.Join(mysqlUpdates, ", "))
 
-	// SQLite (for unit tests): ON CONFLICT(source, TIME) DO UPDATE SET col=excluded.col..., ingested_at=CURRENT_TIMESTAMP
+	// SQLite: ON CONFLICT(source, TIME) DO UPDATE SET col=excluded.col..., ingested_at=unixepoch()
 	sqliteUpdates := make([]string, 0, len(infoMetricColumns)+3)
 	sqliteUpdates = append(sqliteUpdates, "quality = excluded.quality", "quality_note = excluded.quality_note")
 	for _, col := range infoMetricColumns {
 		sqliteUpdates = append(sqliteUpdates, fmt.Sprintf("%s = excluded.%s", col, col))
 	}
-	sqliteUpdates = append(sqliteUpdates, "ingested_at = CURRENT_TIMESTAMP")
+	sqliteUpdates = append(sqliteUpdates, "ingested_at = unixepoch()")
 	sqliteAddLatestQuery = fmt.Sprintf("INSERT INTO INFO (%s) VALUES (%s) ON CONFLICT(source, TIME) DO UPDATE SET %s",
 		colList, valList, strings.Join(sqliteUpdates, ", "))
 }
 
-func execAddSample(stmt *sql.Stmt, b *com.BgpUpdate) error {
+func queryContextWithTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func getUpsertQuery(driver string) string {
+	if strings.EqualFold(driver, "sqlite") {
+		return sqliteAddLatestQuery
+	}
+	return mysqlAddLatestQuery
+}
+
+func isDBDriverSQLite(db *sql.DB) bool {
+	if db != nil && db.Driver() != nil {
+		drvName := fmt.Sprintf("%T", db.Driver())
+		return strings.Contains(strings.ToLower(drvName), "sqlite")
+	}
+	return false
+}
+
+func openSQLitePools(dbPath string) (*sql.DB, *sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-16000)", dbPath)
+
+	writeDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open write db: %w", err)
+	}
+	writeDB.SetMaxOpenConns(1)
+
+	// Ensure WAL mode is active
+	if _, err := writeDB.Exec("PRAGMA journal_mode=WAL;"); err != nil {
+		writeDB.Close()
+		return nil, nil, fmt.Errorf("failed to set WAL mode: %w", err)
+	}
+
+	readDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		writeDB.Close()
+		return nil, nil, fmt.Errorf("failed to open read db: %w", err)
+	}
+	readDB.SetMaxOpenConns(4)
+	readDB.SetMaxIdleConns(4)
+
+	return writeDB, readDB, nil
+}
+
+func initSQLiteSchema(db *sql.DB) error {
+	var userVersion int
+	err := db.QueryRow("PRAGMA user_version;").Scan(&userVersion)
+	if err != nil {
+		return fmt.Errorf("failed to check user_version: %w", err)
+	}
+	if userVersion < 3 {
+		if _, err := db.Exec(sqliteSchemaDDL); err != nil {
+			return fmt.Errorf("failed to execute sqlite schema migration: %w", err)
+		}
+	}
+	return nil
+}
+
+func execAddSample(ctx context.Context, stmt *sql.Stmt, b *com.BgpUpdate) error {
 	source := b.Source
 	if source == "" {
 		source = "bgp1"
@@ -86,7 +155,7 @@ func execAddSample(stmt *sql.Stmt, b *com.BgpUpdate) error {
 		qualityNote = sql.NullString{String: b.QualityNote, Valid: true}
 	}
 
-	_, err := stmt.Exec(
+	_, err := stmt.ExecContext(ctx,
 		source, sampleTime, quality, qualityNote,
 		b.V4Count, b.V6Count, b.V4Total, b.V6Total, b.PeersConfigured,
 		b.PeersUp, b.Peers6Configured, b.Peers6Up, b.V4_24,
@@ -104,90 +173,105 @@ func execAddSample(stmt *sql.Stmt, b *com.BgpUpdate) error {
 }
 
 // add latest BGP update information to database
-func addLatestHelper(b *com.BgpUpdate, db *sql.DB) error {
+func addLatestHelper(ctx context.Context, b *com.BgpUpdate, db *sql.DB, driver ...string) error {
 	if db == nil {
-		log.Fatalf("db object is nil")
+		return fmt.Errorf("db object is nil")
 	}
 
-	query := mysqlAddLatestQuery
-	if db.Driver() != nil && strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "sqlite") {
-		query = sqliteAddLatestQuery
-	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-	stmt, err := db.Prepare(query)
+	drv := "mysql"
+	if len(driver) > 0 && driver[0] != "" {
+		drv = driver[0]
+	} else if isDBDriverSQLite(db) {
+		drv = "sqlite"
+	}
+	query := getUpsertQuery(drv)
+
+	stmt, err := db.PrepareContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("unable to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
-	return execAddSample(stmt, b)
+	return execAddSample(ctx, stmt, b)
 }
 
-func getPrefixCountHelper(db *sql.DB) (*pb.PrefixCountResponse, error) {
+func getPrefixCountHelper(ctx context.Context, db *sql.DB) (*pb.PrefixCountResponse, error) {
 	if db == nil {
-		log.Fatalf("db object is nil")
+		return nil, fmt.Errorf("db object is nil")
 	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	var data pb.PrefixCountResponse
 
 	// Latest data
 	sq1 := `SELECT TIME, V4COUNT, V6COUNT FROM curated_samples ORDER BY TIME DESC LIMIT 1`
-	err := db.QueryRow(sq1).Scan(
+	err := db.QueryRowContext(ctx, sq1).Scan(
 		&data.Time,
 		&data.Active_4,
 		&data.Active_6,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
+		return nil, fmt.Errorf("unable to retrieve data: %w", err)
 	}
 
 	// Six hours ago (last tweeted data)
 	sq2 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
 			ORDER BY TIME DESC LIMIT 1`
-	err = db.QueryRow(sq2).Scan(
+	err = db.QueryRowContext(ctx, sq2).Scan(
 		&data.Sixhoursv4,
 		&data.Sixhoursv6,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
+		return nil, fmt.Errorf("unable to retrieve data: %w", err)
 	}
 
 	// Last weeks numbers
 	lastWeek := int32(time.Now().Unix()) - 604800
-	sq3 := fmt.Sprintf(`SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
-				AND TIME < '%d' ORDER BY TIME DESC LIMIT 1`, lastWeek)
-	err = db.QueryRow(sq3).Scan(
+	sq3 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
+			AND TIME < ? ORDER BY TIME DESC LIMIT 1`
+	err = db.QueryRowContext(ctx, sq3, lastWeek).Scan(
 		&data.Weekagov4,
 		&data.Weekagov6,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
+		return nil, fmt.Errorf("unable to retrieve data: %w", err)
 	}
 
 	// /24 and /48 counts
 	sq4 := `SELECT V4_24, V6_48 FROM curated_samples ORDER BY TIME DESC LIMIT 1`
-	err = db.QueryRow(sq4).Scan(
+	err = db.QueryRowContext(ctx, sq4).Scan(
 		&data.Slash24,
 		&data.Slash48,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to retrieve data: %w", err)
+		return nil, fmt.Errorf("unable to retrieve data: %w", err)
 	}
 
 	return &data, nil
 }
 
-func getPieSubnetsHelper(db *sql.DB) (*pb.PieSubnetsResponse, error) {
+func getPieSubnetsHelper(ctx context.Context, db *sql.DB) (*pb.PieSubnetsResponse, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	var masks pb.Masks
 	var pie pb.PieSubnetsResponse
 
-	err := db.QueryRow(`SELECT V4_08,V4_09,V4_10,V4_11,V4_12,V4_13,V4_14,
+	err := db.QueryRowContext(ctx, `SELECT V4_08,V4_09,V4_10,V4_11,V4_12,V4_13,V4_14,
         V4_15,V4_16,V4_17,V4_18,V4_19,V4_20,V4_21,V4_22,
         V4_23,V4_24,V4COUNT,V6_48,V6_47,V6_46,V6_45,V6_44,
         V6_43,V6_42,V6_41,V6_40,V6_39,V6_38,V6_37,V6_36,
         V6_35,V6_34,V6_33,V6_32,V6_31,V6_30,V6_29,V6_28,
         V6_27,V6_26,V6_25,V6_24,V6_23,V6_22,V6_21,V6_20,
         V6_19,V6_18,V6_17,V6_16,V6_15,V6_14,V6_13,V6_12,
-		V6_11,V6_10,V6_09,V6_08,V6COUNT,
+        V6_11,V6_10,V6_09,V6_08,V6COUNT,
         TIME FROM curated_samples ORDER BY TIME DESC LIMIT 1`).Scan(
 		&masks.V4_08, &masks.V4_09, &masks.V4_10,
 		&masks.V4_11, &masks.V4_12, &masks.V4_13,
@@ -221,7 +305,13 @@ func getPieSubnetsHelper(db *sql.DB) (*pb.PieSubnetsResponse, error) {
 	return &pie, nil
 }
 
-func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTotalsResponse, error) {
+func getMovementTotalsHelper(ctx context.Context, m *pb.MovementRequest, db *sql.DB) (*pb.MovementTotalsResponse, error) {
+	if db == nil {
+		return &pb.MovementTotalsResponse{}, fmt.Errorf("db object is nil")
+	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// time helpers
 	secondsInWeek := 604800
 	secondsInMonth := 2628000
@@ -229,27 +319,30 @@ func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTot
 	secondsInYear := secondsIn6Months * 2
 	end := int(time.Now().Unix() - 66600)
 
-	var start string
-	var denomiator int
+	var start int
+	var denominator int
 	switch m.GetPeriod() {
 	case pb.MovementRequest_WEEK:
-		start = strconv.Itoa(end - secondsInWeek)
-		denomiator = 2
+		start = end - secondsInWeek
+		denominator = 2
 	case pb.MovementRequest_MONTH:
-		start = strconv.Itoa(end - secondsInMonth)
-		denomiator = 7
+		start = end - secondsInMonth
+		denominator = 7
 	case pb.MovementRequest_SIXMONTH:
-		start = strconv.Itoa(end - secondsIn6Months)
-		denomiator = 30
+		start = end - secondsIn6Months
+		denominator = 30
 	case pb.MovementRequest_ANNUAL:
-		start = strconv.Itoa(end - secondsInYear)
-		denomiator = 60
+		start = end - secondsInYear
+		denominator = 60
+	default:
+		start = end - secondsInWeek
+		denominator = 2
 	}
-	query := fmt.Sprintf(`SELECT TIME, V4COUNT, V6COUNT FROM curated_samples WHERE TIME >=
-						'%s' AND TIME <= '%d' ORDER BY TIME ASC`, start, end)
+
+	query := `SELECT TIME, V4COUNT, V6COUNT FROM curated_samples WHERE TIME >= ? AND TIME <= ? ORDER BY TIME ASC`
 
 	var tv []*pb.V4V6Time
-	rows, err := db.Query(query)
+	rows, err := db.QueryContext(ctx, query, start, end)
 	if err != nil {
 		return &pb.MovementTotalsResponse{}, err
 	}
@@ -257,9 +350,9 @@ func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTot
 
 	i := 0
 	for rows.Next() {
-		// We don't need all values. Only each 1/denomiator value
+		// We don't need all values. Only each 1/denominator value
 		i++
-		if i%denomiator != 0 {
+		if i%denominator != 0 {
 			continue
 		}
 
@@ -270,17 +363,26 @@ func getMovementTotalsHelper(m *pb.MovementRequest, db *sql.DB) (*pb.MovementTot
 		}
 		tv = append(tv, &v)
 	}
+	if err := rows.Err(); err != nil {
+		return &pb.MovementTotalsResponse{}, err
+	}
 
 	return &pb.MovementTotalsResponse{
 		Values: tv,
 	}, nil
 }
 
-func getRPKIHelper(db *sql.DB) (*pb.Roas, error) {
+func getRPKIHelper(ctx context.Context, db *sql.DB) (*pb.Roas, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	var r pb.Roas
-	query := `select ROAVALIDV4,ROAINVALIDV4,ROAUNKNOWNV4,ROAVALIDV6,ROAINVALIDV6,ROAUNKNOWNV6
-	from curated_samples ORDER by TIME DESC LIMIT 1`
-	err := db.QueryRow(query).Scan(
+	query := `SELECT ROAVALIDV4, ROAINVALIDV4, ROAUNKNOWNV4, ROAVALIDV6, ROAINVALIDV6, ROAUNKNOWNV6
+		FROM curated_samples ORDER BY TIME DESC LIMIT 1`
+	err := db.QueryRowContext(ctx, query).Scan(
 		&r.V4Valid,
 		&r.V4Invalid,
 		&r.V4Unknown,
@@ -294,11 +396,16 @@ func getRPKIHelper(db *sql.DB) (*pb.Roas, error) {
 	return &r, nil
 }
 
-func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse, error) {
+func getAsnameHelper(ctx context.Context, a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	var n pb.GetAsnameResponse
-	query := fmt.Sprintf(`select ASNAME, LOCALE from ASNUMNAME WHERE ASNUMBER = '%d'`,
-		a.GetAsNumber())
-	err := db.QueryRow(query).Scan(
+	query := `SELECT ASNAME, LOCALE FROM ASNUMNAME WHERE ASNUMBER = ?`
+	err := db.QueryRowContext(ctx, query, a.GetAsNumber()).Scan(
 		&n.AsName,
 		&n.AsLocale,
 	)
@@ -317,10 +424,16 @@ func getAsnameHelper(a *pb.GetAsnameRequest, db *sql.DB) (*pb.GetAsnameResponse,
 	}
 }
 
-func getAsnamesHelper(db *sql.DB) (*pb.GetAsnamesResponse, error) {
+func getAsnamesHelper(ctx context.Context, db *sql.DB) (*pb.GetAsnamesResponse, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db object is nil")
+	}
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	var n pb.GetAsnamesResponse
-	query := fmt.Sprintf(`select ASNUMBER, ASNAME, LOCALE from ASNUMNAME`)
-	rows, err := db.Query(query)
+	query := `SELECT ASNUMBER, ASNAME, LOCALE FROM ASNUMNAME`
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return &n, err
 	}
@@ -329,7 +442,6 @@ func getAsnamesHelper(db *sql.DB) (*pb.GetAsnamesResponse, error) {
 	for rows.Next() {
 		var a pb.AsnumberAsnames
 		err = rows.Scan(&a.AsNumber, &a.AsName, &a.AsLocale)
-		// TODO: This is messy
 		if err != nil {
 			return nil, err
 		}
@@ -343,50 +455,43 @@ func getAsnamesHelper(db *sql.DB) (*pb.GetAsnamesResponse, error) {
 	return &n, nil
 }
 
-func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
-	// Temp table may be sitting around from a failed attempt.
-	stmt, _ := db.Prepare(`DROP TABLE IF EXISTS ASNUMNAME_NEW`)
-	stmt.Exec()
+// updateASNHelper atomically replaces the ASNUMNAME table in a single transaction.
+func updateASNHelper(ctx context.Context, asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
+	if db == nil {
+		return &pb.Result{Success: false}, fmt.Errorf("db object is nil")
+	}
+	ctx, cancel := queryContextWithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
-	// Create temporary holding table.
-	stmt, _ = db.Prepare(`CREATE TABLE ASNUMNAME_NEW (
-  				ASNUMBER INTEGER NOT NULL,
-  				ASNAME TEXT NOT NULL,
-  				LOCALE TEXT DEFAULT NULL)`)
-
-	_, err := stmt.Exec()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return &pb.Result{
-			Success: false,
-		}, fmt.Errorf("unable to create temp database: %w", err)
+		return &pb.Result{Success: false}, fmt.Errorf("unable to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Clear table atomically within the transaction
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ASNUMNAME`); err != nil {
+		return &pb.Result{Success: false}, fmt.Errorf("unable to clear ASNUMNAME: %w", err)
 	}
 
-	// Dump the new values into the new temp table.
-	tx, _ := db.Begin()
-	stmt, _ = tx.Prepare(`INSERT INTO ASNUMNAME_NEW (
-		ASNUMBER, ASNAME, LOCALE) VALUES (?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO ASNUMNAME (ASNUMBER, ASNAME, LOCALE) VALUES (?, ?, ?)`)
+	if err != nil {
+		return &pb.Result{Success: false}, fmt.Errorf("unable to prepare insert statement: %w", err)
+	}
+	defer stmt.Close()
+
 	for _, as := range asn.GetAsnNames() {
-		_, err := stmt.Exec(as.GetAsNumber(), as.GetAsName(), as.GetAsLocale())
-		if err != nil {
-			return &pb.Result{
-				Success: false,
-			}, fmt.Errorf("error on statement execute: %w", err)
+		var locale interface{}
+		if as.GetAsLocale() != "" {
+			locale = as.GetAsLocale()
+		}
+		if _, err := stmt.ExecContext(ctx, as.GetAsNumber(), as.GetAsName(), locale); err != nil {
+			return &pb.Result{Success: false}, fmt.Errorf("error inserting AS%d: %w", as.GetAsNumber(), err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return &pb.Result{
-			Success: false,
-		}, fmt.Errorf("unable to complete transaction: %w", err)
-	}
 
-	// Now rename and shift in order to only have one table.
-	tx, _ = db.Begin()
-	tx.Exec(`DROP TABLE IF EXISTS ASNUMNAME`)
-	tx.Exec(`ALTER TABLE ASNUMNAME_NEW RENAME TO ASNUMNAME`)
 	if err := tx.Commit(); err != nil {
-		return &pb.Result{
-			Success: false,
-		}, fmt.Errorf("unable to complete transaction: %w", err)
+		return &pb.Result{Success: false}, fmt.Errorf("unable to commit ASNUMNAME transaction: %w", err)
 	}
 
 	return &pb.Result{
@@ -394,11 +499,14 @@ func updateASNHelper(asn *pb.AsnamesRequest, db *sql.DB) (*pb.Result, error) {
 	}, nil
 }
 
-func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
+func updateTweetBitHelper(ctx context.Context, t uint64, db *sql.DB) (*pb.Result, error) {
 	if db == nil {
-		log.Fatalf("db object is nil")
+		return nil, fmt.Errorf("db object is nil")
 	}
-	_, err := db.Exec(fmt.Sprintf(`UPDATE INFO SET TWEET = 1 WHERE TIME = %d`, t))
+	ctx, cancel := queryContextWithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	_, err := db.ExecContext(ctx, `UPDATE INFO SET TWEET = 1 WHERE TIME = ?`, t)
 	if err != nil {
 		return &pb.Result{
 			Success: false,
@@ -409,10 +517,12 @@ func updateTweetBitHelper(t uint64, db *sql.DB) (*pb.Result, error) {
 	}, nil
 }
 
-func getSampleIndexHelper(since, until uint64, db *sql.DB) (*pb.SampleIndexResponse, error) {
+func getSampleIndexHelper(ctx context.Context, since, until uint64, db *sql.DB) (*pb.SampleIndexResponse, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db object is nil")
 	}
+	ctx, cancel := queryContextWithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
 	query := `SELECT source, TIME, quality FROM INFO WHERE TIME >= ?`
 	args := []interface{}{since}
@@ -422,7 +532,7 @@ func getSampleIndexHelper(since, until uint64, db *sql.DB) (*pb.SampleIndexRespo
 	}
 	query += ` ORDER BY TIME ASC`
 
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query sample index: %w", err)
 	}
@@ -504,12 +614,14 @@ func scanFullBgpUpdate(scanner interface{ Scan(...interface{}) error }) (*com.Bg
 	return &b, nil
 }
 
-func getSampleBatchHelper(keys []*pb.SampleKey, db *sql.DB) (*pb.SampleBatchResponse, error) {
+func getSampleBatchHelper(ctx context.Context, keys []*pb.SampleKey, db *sql.DB) (*pb.SampleBatchResponse, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db object is nil")
 	}
+	ctx, cancel := queryContextWithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
-	stmt, err := db.Prepare(fmt.Sprintf("SELECT %s FROM INFO WHERE source = ? AND TIME = ?", sampleSelectCols))
+	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("SELECT %s FROM INFO WHERE source = ? AND TIME = ?", sampleSelectCols))
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare select statement: %w", err)
 	}
@@ -517,7 +629,7 @@ func getSampleBatchHelper(keys []*pb.SampleKey, db *sql.DB) (*pb.SampleBatchResp
 
 	var samples []*pb.Values
 	for _, k := range keys {
-		row := stmt.QueryRow(k.GetSource(), k.GetTime())
+		row := stmt.QueryRowContext(ctx, k.GetSource(), k.GetTime())
 		update, err := scanFullBgpUpdate(row)
 		if err == sql.ErrNoRows {
 			continue
@@ -531,7 +643,7 @@ func getSampleBatchHelper(keys []*pb.SampleKey, db *sql.DB) (*pb.SampleBatchResp
 	return &pb.SampleBatchResponse{Samples: samples}, nil
 }
 
-func addSampleBatchHelper(samples []*pb.Values, db *sql.DB) (*pb.Result, error) {
+func addSampleBatchHelper(ctx context.Context, samples []*pb.Values, db *sql.DB, driver ...string) (*pb.Result, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db object is nil")
 	}
@@ -540,18 +652,24 @@ func addSampleBatchHelper(samples []*pb.Values, db *sql.DB) (*pb.Result, error) 
 		return &pb.Result{Success: true}, nil
 	}
 
-	query := mysqlAddLatestQuery
-	if db.Driver() != nil && strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "sqlite") {
-		query = sqliteAddLatestQuery
-	}
+	ctx, cancel := queryContextWithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
-	tx, err := db.Begin()
+	drv := "mysql"
+	if len(driver) > 0 && driver[0] != "" {
+		drv = driver[0]
+	} else if isDBDriverSQLite(db) {
+		drv = "sqlite"
+	}
+	query := getUpsertQuery(drv)
+
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(query)
+	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("unable to prepare statement: %w", err)
 	}
@@ -559,7 +677,7 @@ func addSampleBatchHelper(samples []*pb.Values, db *sql.DB) (*pb.Result, error) 
 
 	for _, s := range samples {
 		update := com.ProtoToStruct(s)
-		if err := execAddSample(stmt, update); err != nil {
+		if err := execAddSample(ctx, stmt, update); err != nil {
 			return &pb.Result{Success: false}, fmt.Errorf("failed to insert reconciled sample %s@%d: %w", update.Source, update.Time, err)
 		}
 	}

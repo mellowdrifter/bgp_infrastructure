@@ -8,17 +8,21 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
-	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	com "github.com/mellowdrifter/bgp_infrastructure/pkg/common"
+	pb "github.com/mellowdrifter/bgp_infrastructure/proto/bgpsql"
 	"google.golang.org/grpc"
 	ini "gopkg.in/ini.v1"
+	_ "modernc.org/sqlite"
 )
 
 type config struct {
 	port          string
 	logfile       string
+	driver        string // "mysql" or "sqlite"
+	dbpath        string // for sqlite
 	dbname        string
 	user          string
 	pass          string
@@ -27,8 +31,16 @@ type config struct {
 }
 
 type server struct {
-	cfg config
-	db  *sql.DB
+	cfg    config
+	db     *sql.DB // writer DB (or single DB for MySQL)
+	readDB *sql.DB // reader pool for SQLite (or nil if using db)
+}
+
+func (s *server) readerDB() *sql.DB {
+	if s.readDB != nil {
+		return s.readDB
+	}
+	return s.db
 }
 
 // readConfig is here to read all the config.ini options. Ensure they are correct.
@@ -47,6 +59,8 @@ func readConfig() config {
 	var cfg config
 	cfg.port = fmt.Sprintf(":%s", cf.Section("grpc").Key("port").String())
 	cfg.logfile = cf.Section("log").Key("file").String()
+	cfg.driver = cf.Section("sql").Key("driver").MustString("mysql")
+	cfg.dbpath = cf.Section("sql").Key("path").MustString("/var/lib/bgpsql/bgp.db")
 	cfg.dbname = cf.Section("sql").Key("database").String()
 	cfg.user = cf.Section("sql").Key("username").String()
 	cfg.pass = cf.Section("sql").Key("password").String()
@@ -95,20 +109,39 @@ func main() {
 	defer f.Close()
 	log.SetOutput(f)
 
-	// Create sql handle and test database connection
-	sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s",
-		bgpinfoServer.cfg.user, bgpinfoServer.cfg.pass,
-		bgpinfoServer.cfg.dbname)
-	db, err := sql.Open("mysql", sqlserver)
-	if err != nil {
-		log.Fatalf("can't open database. Got %v", err)
+	// Open database pools based on configured driver
+	if strings.EqualFold(bgpinfoServer.cfg.driver, "sqlite") {
+		writerDB, readerDB, err := openSQLitePools(bgpinfoServer.cfg.dbpath)
+		if err != nil {
+			log.Fatalf("can't open sqlite database: %v", err)
+		}
+		bgpinfoServer.db = writerDB
+		bgpinfoServer.readDB = readerDB
+		defer writerDB.Close()
+		defer readerDB.Close()
+
+		if err := initSQLiteSchema(writerDB); err != nil {
+			log.Fatalf("failed to init sqlite schema: %v", err)
+		}
+		log.Printf("Connected to SQLite database at %s with WAL mode (writer=1, readers=4)\n", bgpinfoServer.cfg.dbpath)
+	} else {
+		// MySQL / MariaDB
+		sqlserver := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s",
+			bgpinfoServer.cfg.user, bgpinfoServer.cfg.pass,
+			bgpinfoServer.cfg.dbname)
+		db, err := sql.Open("mysql", sqlserver)
+		if err != nil {
+			log.Fatalf("can't open database. Got %v", err)
+		}
+		err = db.Ping()
+		if err != nil {
+			log.Fatalf("can't ping database. Got %v", err)
+		}
+		bgpinfoServer.db = db
+		bgpinfoServer.readDB = db
+		defer db.Close()
+		log.Printf("Connected to MySQL/MariaDB database %s\n", bgpinfoServer.cfg.dbname)
 	}
-	err = db.Ping()
-	if err != nil {
-		log.Fatalf("can't ping database. Got %v", err)
-	}
-	bgpinfoServer.db = db
-	defer db.Close()
 
 	// set up gRPC server
 	log.Printf("Listening on port %s\n", bgpinfoServer.cfg.port)
@@ -142,7 +175,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	}
 
 	// Validate sample at ingest
-	quality, note := validateSample(ctx, s.db, update, s.cfg.valCfg)
+	quality, note := validateSample(ctx, s.readerDB(), update, s.cfg.valCfg)
 	update.Quality = quality
 	update.QualityNote = note
 	if quality == "suspect" {
@@ -150,7 +183,7 @@ func (s *server) AddLatest(ctx context.Context, v *pb.Values) (*pb.Result, error
 	}
 
 	// update database
-	err := addLatestHelper(update, s.db)
+	err := addLatestHelper(ctx, update, s.db, s.cfg.driver)
 	if err != nil {
 		log.Printf("Got error in AddLatest: %s with update %q\n", err, v)
 		return nil, err
@@ -165,7 +198,7 @@ func (s *server) GetPrefixCount(ctx context.Context, e *pb.Empty) (*pb.PrefixCou
 	// Pull prefix counts for tweeting. Latest, 6 hours ago, and a week ago.
 	log.Println("Running GetPrefixCount")
 
-	res, err := getPrefixCountHelper(s.db)
+	res, err := getPrefixCountHelper(ctx, s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetPrefixCount: %s\n", err)
 		return nil, err
@@ -178,7 +211,7 @@ func (s *server) GetPieSubnets(ctx context.Context, e *pb.Empty) (*pb.PieSubnets
 	// Pull subnets counts to create Pie graph.
 	log.Println("Running GetPieSubnets")
 
-	res, err := getPieSubnetsHelper(s.db)
+	res, err := getPieSubnetsHelper(ctx, s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetPieSubnets: %s\n", err)
 		return nil, err
@@ -191,7 +224,7 @@ func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (
 	// Pull subnets counts to create Pie graph.
 	log.Println("Running GetMovementTotals")
 
-	res, err := getMovementTotalsHelper(t, s.db)
+	res, err := getMovementTotalsHelper(ctx, t, s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetMovementTotals: %s\n", err)
 		return nil, err
@@ -203,7 +236,7 @@ func (s *server) GetMovementTotals(ctx context.Context, t *pb.MovementRequest) (
 func (s *server) UpdateTweetBit(ctx context.Context, t *pb.Timestamp) (*pb.Result, error) {
 	// Set the tweet bit to the provided time.
 	log.Println("Running UpdateTweetBit")
-	res, err := updateTweetBitHelper(t.GetTime(), s.db)
+	res, err := updateTweetBitHelper(ctx, t.GetTime(), s.db)
 	if err != nil {
 		log.Printf("Got error in updateTweetBitHelper: %s\n", err)
 		return nil, err
@@ -216,7 +249,7 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 	// Pull RPKI counts to create Pie graph.
 	log.Println("Running GetRPKI")
 
-	res, err := getRPKIHelper(s.db)
+	res, err := getRPKIHelper(ctx, s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetRPKI: %s\n", err)
 		return nil, err
@@ -228,7 +261,7 @@ func (s *server) GetRpki(ctx context.Context, e *pb.Empty) (*pb.Roas, error) {
 func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.GetAsnameResponse, error) {
 	log.Println("Running GetAsname")
 
-	res, err := getAsnameHelper(a, s.db)
+	res, err := getAsnameHelper(ctx, a, s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetAsname: %s\n", err)
 		return nil, err
@@ -240,7 +273,7 @@ func (s *server) GetAsname(ctx context.Context, a *pb.GetAsnameRequest) (*pb.Get
 func (s *server) GetAsnames(ctx context.Context, e *pb.Empty) (*pb.GetAsnamesResponse, error) {
 	log.Println("Running GetAsNames")
 
-	res, err := getAsnamesHelper(s.db)
+	res, err := getAsnamesHelper(ctx, s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetAsnames: %s\n", err)
 		return nil, err
@@ -252,7 +285,7 @@ func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb
 	log.Println("Running UpdateAsname")
 	fmt.Printf("There are a total of %d AS numbers\n", len(asn.GetAsnNames()))
 
-	res, err := updateASNHelper(asn, s.db)
+	res, err := updateASNHelper(ctx, asn, s.db)
 	if err != nil {
 		log.Printf("Got error in UpdateAsnnames: %s\n", err)
 		return nil, err
@@ -263,7 +296,7 @@ func (s *server) UpdateAsnames(ctx context.Context, asn *pb.AsnamesRequest) (*pb
 
 func (s *server) GetSampleIndex(ctx context.Context, req *pb.SampleIndexRequest) (*pb.SampleIndexResponse, error) {
 	log.Printf("Running GetSampleIndex (since=%d, until=%d)\n", req.GetSinceTime(), req.GetUntilTime())
-	res, err := getSampleIndexHelper(req.GetSinceTime(), req.GetUntilTime(), s.db)
+	res, err := getSampleIndexHelper(ctx, req.GetSinceTime(), req.GetUntilTime(), s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetSampleIndex: %v\n", err)
 		return nil, err
@@ -273,7 +306,7 @@ func (s *server) GetSampleIndex(ctx context.Context, req *pb.SampleIndexRequest)
 
 func (s *server) GetSampleBatch(ctx context.Context, req *pb.SampleBatchRequest) (*pb.SampleBatchResponse, error) {
 	log.Printf("Running GetSampleBatch (count=%d)\n", len(req.GetKeys()))
-	res, err := getSampleBatchHelper(req.GetKeys(), s.db)
+	res, err := getSampleBatchHelper(ctx, req.GetKeys(), s.readerDB())
 	if err != nil {
 		log.Printf("Got error in GetSampleBatch: %v\n", err)
 		return nil, err
@@ -283,7 +316,7 @@ func (s *server) GetSampleBatch(ctx context.Context, req *pb.SampleBatchRequest)
 
 func (s *server) AddSampleBatch(ctx context.Context, req *pb.SampleBatchResponse) (*pb.Result, error) {
 	log.Printf("Running AddSampleBatch (count=%d)\n", len(req.GetSamples()))
-	res, err := addSampleBatchHelper(req.GetSamples(), s.db)
+	res, err := addSampleBatchHelper(ctx, req.GetSamples(), s.db, s.cfg.driver)
 	if err != nil {
 		log.Printf("Got error in AddSampleBatch: %v\n", err)
 		return nil, err
