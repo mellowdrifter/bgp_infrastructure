@@ -223,7 +223,7 @@ func getPrefixCountHelper(ctx context.Context, db *sql.DB) (*pb.PrefixCountRespo
 	}
 
 	// Six hours ago (last tweeted data)
-	sq2 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
+	sq2 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET = 1
 			ORDER BY TIME DESC LIMIT 1`
 	err = db.QueryRowContext(ctx, sq2).Scan(
 		&data.Sixhoursv4,
@@ -235,7 +235,7 @@ func getPrefixCountHelper(ctx context.Context, db *sql.DB) (*pb.PrefixCountRespo
 
 	// Last weeks numbers
 	lastWeek := int32(time.Now().Unix()) - 604800
-	sq3 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET IS NOT NULL
+	sq3 := `SELECT V4COUNT, V6COUNT FROM curated_samples WHERE TWEET = 1
 			AND TIME < ? ORDER BY TIME DESC LIMIT 1`
 	err = db.QueryRowContext(ctx, sq3, lastWeek).Scan(
 		&data.Weekagov4,

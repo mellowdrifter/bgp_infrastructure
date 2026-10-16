@@ -135,12 +135,39 @@ func TestGetPrefixCount(t *testing.T) {
 
 	populate(db)
 
+	// Set TWEET = 1 on an earlier sample to represent the 6-hour / week baseline
+	var minTime uint64
+	if err := db.QueryRow("SELECT MIN(TIME) FROM INFO").Scan(&minTime); err != nil {
+		t.Fatalf("failed to get min time: %v", err)
+	}
+	if _, err := db.Exec("UPDATE INFO SET TWEET = 1 WHERE TIME = ?", minTime); err != nil {
+		t.Fatalf("failed to update tweet bit: %v", err)
+	}
+
 	res, err := getPrefixCountHelper(context.Background(), db)
 	if err != nil {
 		t.Fatalf("getPrefixCountHelper failed: %v", err)
 	}
 	if res.GetActive_4() == 0 {
 		t.Errorf("expected non-zero active v4 count")
+	}
+	if res.GetSixhoursv4() == 0 {
+		t.Errorf("expected non-zero sixhoursv4 count")
+	}
+
+	// Verify sixhoursv4 matches the tweeted sample, not the latest sample
+	var latestV4, tweetedV4 uint32
+	if err := db.QueryRow("SELECT V4COUNT FROM curated_samples ORDER BY TIME DESC LIMIT 1").Scan(&latestV4); err != nil {
+		t.Fatalf("failed to get latest v4: %v", err)
+	}
+	if err := db.QueryRow("SELECT V4COUNT FROM curated_samples WHERE TIME = ?", minTime).Scan(&tweetedV4); err != nil {
+		t.Fatalf("failed to get tweeted v4: %v", err)
+	}
+	if res.GetActive_4() != latestV4 {
+		t.Errorf("expected Active_4 to match latest sample %d, got %d", latestV4, res.GetActive_4())
+	}
+	if res.GetSixhoursv4() != tweetedV4 {
+		t.Errorf("expected Sixhoursv4 to match tweeted sample %d, got %d", tweetedV4, res.GetSixhoursv4())
 	}
 }
 
